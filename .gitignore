@@ -1,0 +1,5 @@
+# Overlay-owned (upstream Wine ships no top-level .gitignore).
+# If upstream ever adds one, resolve by keeping both sides' entries.
+sync.log
+*.orig
+*.rej

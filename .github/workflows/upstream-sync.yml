@@ -1,0 +1,180 @@
+name: upstream-sync
+
+# Daily upstream tracking: fast-forward `upstream`, merge into `master`
+# (overlay files never collide with upstream paths), then dry-run all
+# patchsets. On failure: push a conflict branch + open an Issue with
+# logs and repair instructions. Never force-push shared branches.
+
+on:
+  schedule:
+    - cron: "0 3 * * *" # 03:00 UTC = 12:00 JST
+  workflow_dispatch:
+    inputs:
+      upstream_url:
+        description: "Upstream git URL"
+        default: "https://github.com/wine-mirror/wine.git"
+        required: false
+      dry_run:
+        description: "Fetch + check only, push nothing"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: upstream-sync
+  cancel-in-progress: false
+
+env:
+  UPSTREAM_URL: ${{ inputs.upstream_url || 'https://github.com/wine-mirror/wine.git' }}
+  UPSTREAM_BRANCH: upstream
+  MAIN_BRANCH: master
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout master (full history)
+        uses: actions/checkout@v4
+        with:
+          ref: master
+          fetch-depth: 0
+
+      - name: Git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Fetch upstream
+        run: |
+          git remote get-url upstream >/dev/null 2>&1 \
+            || git remote add upstream "$UPSTREAM_URL"
+          git fetch upstream master
+          echo "UPSTREAM_SHA=$(git rev-parse FETCH_HEAD)" >> "$GITHUB_ENV"
+
+      - name: Update upstream branch (fast-forward only)
+        run: |
+          if git show-ref --verify --quiet "refs/heads/$UPSTREAM_BRANCH"; then
+            git checkout "$UPSTREAM_BRANCH"
+            if ! git merge --ff-only FETCH_HEAD; then
+              echo "::error::upstream branch diverged (someone pushed to it). Refusing to rewrite."
+              exit 1
+            fi
+          else
+            git checkout -b "$UPSTREAM_BRANCH" FETCH_HEAD
+          fi
+          git checkout "$MAIN_BRANCH"
+
+      - name: Merge upstream into master
+        id: merge
+        run: |
+          if git merge --no-edit "$UPSTREAM_BRANCH"; then
+            echo "merged=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::master merge conflicted — overlay touched an upstream path. Fix by hand."
+            git merge --abort
+            exit 1
+          fi
+
+      - name: Patch dry-run (cheap gate before any push)
+        id: patchcheck
+        run: |
+          set -o pipefail
+          if ./scripts/apply-patches.sh --check 2>&1 | tee sync.log; then
+            echo "failed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "failed=true" >> "$GITHUB_OUTPUT"
+            grep -E '^FAILED patchset=' sync.log > failed.txt || true
+            {
+              echo "FAILED_LINES<<EOF"
+              cat failed.txt
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Push on success
+        if: steps.patchcheck.outputs.failed == 'false' && inputs.dry_run != true
+        run: |
+          git push origin "$UPSTREAM_BRANCH" "$MAIN_BRANCH"
+
+      - name: Collect diagnostics
+        if: steps.patchcheck.outputs.failed == 'true'
+        run: |
+          DATE="$(date +%Y%m%d)"
+          SHORT="$(echo "$UPSTREAM_SHA" | cut -c1-12)"
+          echo "CONFLICT_BRANCH=conflict/$DATE-$SHORT" >> "$GITHUB_ENV"
+
+      - name: Push conflict branch
+        if: steps.patchcheck.outputs.failed == 'true' && inputs.dry_run != true
+        run: |
+          git checkout -b "$CONFLICT_BRANCH"
+          git push origin "$CONFLICT_BRANCH"
+
+      - name: Ensure label
+        if: steps.patchcheck.outputs.failed == 'true' && inputs.dry_run != true
+        run: gh label create upstream-conflict --color B60205 --description "Upstream rebase broke a patchset" || true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Open or update Issue
+        if: steps.patchcheck.outputs.failed == 'true' && inputs.dry_run != true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TITLE="[upstream-sync] patch conflict at $UPSTREAM_SHA"
+          EXISTING="$(gh issue list --label upstream-conflict --state open --search "$UPSTREAM_SHA in:title" --json number --jq '.[0].number // empty')"
+          BODY="$(cat <<EOF
+          ## Upstream sync failed — patchset no longer applies
+
+          - Upstream SHA: \`$UPSTREAM_SHA\`
+          - Conflict branch: \`$CONFLICT_BRANCH\`
+          - Date (UTC): $(date -u +%Y-%m-%dT%H:%M:%SZ)
+          - Failed lines:
+
+          \`\`\`
+          $(cat failed.txt)
+          \`\`\`
+
+          <details><summary>Full dry-run log</summary>
+
+          \`\`\`
+          $(tail -n 80 sync.log)
+          \`\`\`
+
+          </details>
+
+          ## Repair (human or AI agent)
+
+          \`\`\`bash
+          git fetch origin
+          git checkout $CONFLICT_BRANCH
+          ./scripts/apply-patches.sh --check   # reproduces this failure
+          \`\`\`
+
+          1. Fix the \`.patch\` files in the failed \`patches/<name>/\` dir (rebase hunks onto new upstream).
+          2. Update \`definition\` if scope changed; drop the patchset if upstream accepted it.
+          3. \`./scripts/apply-patches.sh --check\` must print \`check passed\`.
+          4. Open a PR \`$CONFLICT_BRANCH\` -> \`master\`. CI re-runs the check.
+          5. Small batches: one patchset per commit. Never force-push \`master\`/\`upstream\`.
+
+          ## Safety
+
+          - Conflict branches are disposable (\`cattle\`); \`master\`/\`upstream\` are not.
+          - Do not edit Wine source directly — fix the \`.patch\` files.
+          EOF
+          )"
+          if [[ -n "$EXISTING" ]]; then
+            gh issue comment "$EXISTING" --body "$BODY"
+          else
+            gh issue create --title "$TITLE" --label upstream-conflict --body "$BODY"
+          fi
+
+      - name: Upload log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: upstream-sync-log
+          path: sync.log
+          retention-days: 14

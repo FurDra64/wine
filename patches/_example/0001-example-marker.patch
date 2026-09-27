@@ -1,0 +1,6 @@
+--- /dev/null
++++ b/documentation/CUSTOM-EXAMPLE.md
+@@ -0,0 +1,3 @@
++# Custom example marker
++
++This file exists only to prove the patch pipeline works. Real patchsets replace this.

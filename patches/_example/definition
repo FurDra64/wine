@@ -1,0 +1,5 @@
+Feature: _example
+Description: Disabled scaffold showing the definition schema. Copy this directory to start a new patchset.
+Author: Your Name <you@example.com>
+Upstream-Status: none
+Depends-On: none
