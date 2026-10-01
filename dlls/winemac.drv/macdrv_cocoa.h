@@ -33,16 +33,6 @@
 #define GetProcessInformation MacGetProcessInformation
 #define LoadResource MacLoadResource
 #define Polygon MacPolygon
-#ifdef __i386__
-#  define CheckMenuItem MacCheckMenuItem
-#  define DeleteMenu MacDeleteMenu
-#  define DrawMenuBar MacDrawMenuBar
-#  define EnableMenuItem MacEnableMenuItem
-#  define GetMenu MacGetMenu
-#  define IsWindowVisible MacIsWindowVisible
-#  define MoveWindow MacMoveWindow
-#  define ShowWindow MacShowWindow
-#endif
 
 #include <ApplicationServices/ApplicationServices.h>
 #include <Carbon/Carbon.h>
@@ -52,16 +42,6 @@
 #undef GetProcessInformation
 #undef LoadResource
 #undef Polygon
-#ifdef __i386__
-#  undef CheckMenuItem
-#  undef DeleteMenu
-#  undef DrawMenuBar
-#  undef EnableMenuItem
-#  undef GetMenu
-#  undef IsWindowVisible
-#  undef MoveWindow
-#  undef ShowWindow
-#endif
 
 #include <pthread.h>
 #include <stdbool.h>
@@ -278,7 +258,6 @@ enum {
     APP_QUIT_REQUESTED,
     DISPLAYS_CHANGED,
     HOTKEY_PRESS,
-    IM_SET_TEXT,
     KEY_PRESS,
     KEY_RELEASE,
     KEYBOARD_CHANGED,
@@ -336,13 +315,6 @@ typedef struct macdrv_event {
             unsigned int    keycode;
             unsigned long   time_ms;
         }                                           hotkey_press;
-        struct {
-            void           *himc;
-            CFStringRef     text;       /* new text or NULL if just completing existing text */
-            unsigned int    cursor_begin;
-            unsigned int    cursor_end;
-            bool            complete;   /* is completing text? */
-        }                                           im_set_text;
         struct {
             CGKeyCode                   keycode;
             CGEventFlags                modifiers;
@@ -542,7 +514,8 @@ extern void macdrv_release_remote_layer(void* hwnd, unsigned int context_id);
 extern bool macdrv_get_view_backing_size(WineContentView *view, int backing_size[2]);
 extern void macdrv_set_view_backing_size(WineContentView *view, const int backing_size[2]);
 extern uint32_t macdrv_window_background_color(void);
-extern bool macdrv_send_keydown_to_input_source(int keyc, unsigned int flags, int repeat, void *data);
+extern bool macdrv_send_keydown_to_input_source(int keyc, unsigned int flags, int repeat, void *update);
+extern void macdrv_clear_ime_text(void);
 extern bool macdrv_is_any_wine_window_visible(void);
 
 
@@ -580,9 +553,5 @@ extern void macdrv_destroy_status_item(WineStatusItem *item);
 extern void macdrv_set_status_item_image(WineStatusItem *item, CGImageRef cgimage);
 extern void macdrv_set_status_item_tooltip(WineStatusItem *item, CFStringRef cftip);
 
-/* ime */
-extern pthread_mutex_t ime_composition_rect_mutex;
-extern CGRect ime_composition_rect;
-extern void macdrv_clear_ime_text(void);
 
 #endif  /* __WINE_MACDRV_COCOA_H */

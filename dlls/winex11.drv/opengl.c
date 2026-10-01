@@ -1197,14 +1197,14 @@ static void x11drv_surface_flush( struct opengl_drawable *base, UINT flags )
 /***********************************************************************
  *		X11DRV_wglCreateContextAttribsARB
  */
-static struct opengl_context *x11drv_context_create( const struct opengl_context_attrs *attrs, struct opengl_context *share, BOOL *shared )
+static struct opengl_context *x11drv_context_create( const struct opengl_context_attrs *attrs, struct opengl_context *share )
 {
     GLXContext host_share = share ? share->host_context : NULL;
     int attribs[16], *attr = attribs;
     struct opengl_context *context;
     int err = 0;
 
-    TRACE( "attrs %s, share %p, shared %p\n", debugstr_opengl_context_attrs( attrs ), share, shared );
+    TRACE( "attrs %s, share %p\n", debugstr_opengl_context_attrs( attrs ), share );
 
     if (attrs->major != -1)
     {
@@ -1298,16 +1298,6 @@ static void x11drv_pbuffer_destroy( struct opengl_drawable *base )
     TRACE( "drawable %s\n", debugstr_opengl_drawable( base ) );
 
     if (gl->drawable) pglXDestroyPbuffer( gdi_display, gl->drawable );
-}
-
-static BOOL x11drv_pbuffer_updated( HDC hdc, struct opengl_drawable *base, GLenum cube_face, GLint mipmap_level )
-{
-    return GL_TRUE;
-}
-
-static UINT x11drv_pbuffer_bind( HDC hdc, struct opengl_drawable *base, GLenum buffer )
-{
-    return -1; /* use default implementation */
 }
 
 static BOOL x11drv_null_surface_create( int format, struct opengl_drawable **drawable )
@@ -1512,8 +1502,6 @@ static struct opengl_driver_funcs x11drv_driver_funcs =
     .p_context_destroy = x11drv_context_destroy,
     .p_context_activate = x11drv_context_activate,
     .p_pbuffer_create = x11drv_pbuffer_create,
-    .p_pbuffer_updated = x11drv_pbuffer_updated,
-    .p_pbuffer_bind = x11drv_pbuffer_bind,
     .p_null_surface_create = x11drv_null_surface_create,
     .p_cleanup_thread = x11drv_cleanup_thread,
 };
