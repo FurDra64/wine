@@ -65,10 +65,10 @@ static statement_t *new_with_statement(parser_ctx_t*,unsigned,expression_t*,stat
 
 static dim_decl_t *new_dim_decl(parser_ctx_t*,const WCHAR*,unsigned,BOOL,dim_list_t*);
 static dim_list_t *new_dim(parser_ctx_t*,unsigned,dim_list_t*);
-static redim_decl_t *new_redim_decl(parser_ctx_t*,const WCHAR*,expression_t*);
+static redim_decl_t *new_redim_decl(parser_ctx_t*,const WCHAR*,unsigned,expression_t*);
 static elseif_decl_t *new_elseif_decl(parser_ctx_t*,unsigned,expression_t*,statement_t*);
 static function_decl_t *new_function_decl(parser_ctx_t*,unsigned,unsigned,const WCHAR*,function_type_t,unsigned,arg_decl_t*,statement_t*);
-static arg_decl_t *new_argument_decl(parser_ctx_t*,const WCHAR*,BOOL);
+static arg_decl_t *new_argument_decl(parser_ctx_t*,const WCHAR*,unsigned,BOOL);
 static const_decl_t *new_const_decl(parser_ctx_t*,unsigned,const WCHAR*,expression_t*);
 static case_clausule_t *new_case_clausule(parser_ctx_t*,expression_t*,statement_t*,case_clausule_t*);
 
@@ -350,7 +350,7 @@ MemberDecl
     | MemberIdentifier tEMPTYBRACKETS       { $$ = new_dim_decl(ctx, $1, @1, TRUE, NULL); CHECK_ERROR; }
 
 ReDimDecl
-    : Identifier '(' ArgumentList ')'       { $$ = new_redim_decl(ctx, $1, $3); CHECK_ERROR; }
+    : Identifier '(' ArgumentList ')'       { $$ = new_redim_decl(ctx, $1, @1, $3); CHECK_ERROR; }
 
 ReDimDeclList
     : ReDimDecl                             { $$ = $1; }
@@ -675,9 +675,9 @@ ArgumentDeclList
     | ArgumentDecl ',' ArgumentDeclList         { $1->next = $3; $$ = $1; }
 
 ArgumentDecl
-    : Identifier EmptyBrackets_opt              { $$ = new_argument_decl(ctx, $1, TRUE); }
-    | tBYREF Identifier EmptyBrackets_opt       { $$ = new_argument_decl(ctx, $2, TRUE); }
-    | tBYVAL Identifier EmptyBrackets_opt       { $$ = new_argument_decl(ctx, $2, FALSE); }
+    : Identifier EmptyBrackets_opt              { $$ = new_argument_decl(ctx, $1, @1, TRUE); }
+    | tBYREF Identifier EmptyBrackets_opt       { $$ = new_argument_decl(ctx, $2, @2, TRUE); }
+    | tBYVAL Identifier EmptyBrackets_opt       { $$ = new_argument_decl(ctx, $2, @2, FALSE); }
 
 /* these keywords may also be an identifier, depending on context */
 MemberIdentifier
@@ -1078,7 +1078,7 @@ static statement_t *new_dim_statement(parser_ctx_t *ctx, unsigned loc, dim_decl_
     return &stat->stat;
 }
 
-static redim_decl_t *new_redim_decl(parser_ctx_t *ctx, const WCHAR *identifier, expression_t *dims)
+static redim_decl_t *new_redim_decl(parser_ctx_t *ctx, const WCHAR *identifier, unsigned loc, expression_t *dims)
 {
     redim_decl_t *decl;
 
@@ -1087,8 +1087,10 @@ static redim_decl_t *new_redim_decl(parser_ctx_t *ctx, const WCHAR *identifier, 
         return NULL;
 
     decl->identifier = identifier;
+    decl->loc = loc;
     decl->dims = dims;
     decl->next = NULL;
+    decl->next_declared = NULL;
     return decl;
 }
 
@@ -1233,7 +1235,7 @@ static statement_t *new_onerror_statement(parser_ctx_t *ctx, unsigned loc, BOOL 
     return &stat->stat;
 }
 
-static arg_decl_t *new_argument_decl(parser_ctx_t *ctx, const WCHAR *name, BOOL by_ref)
+static arg_decl_t *new_argument_decl(parser_ctx_t *ctx, const WCHAR *name, unsigned loc, BOOL by_ref)
 {
     arg_decl_t *arg_decl;
 
@@ -1242,6 +1244,7 @@ static arg_decl_t *new_argument_decl(parser_ctx_t *ctx, const WCHAR *name, BOOL 
         return NULL;
 
     arg_decl->name = name;
+    arg_decl->loc = loc;
     arg_decl->by_ref = by_ref;
     arg_decl->next = NULL;
     return arg_decl;
@@ -1338,12 +1341,19 @@ static class_decl_t *add_class_function(parser_ctx_t *ctx, class_decl_t *class_d
             return NULL;
         }
         if(!wcsicmp(iter->name, decl->name)) {
-            if(decl->type == FUNC_SUB || decl->type == FUNC_FUNCTION
-                    || iter->type == FUNC_SUB || iter->type == FUNC_FUNCTION) {
+            if(iter->type == FUNC_SUB || iter->type == FUNC_FUNCTION) {
                 WARN("%s::%s redefined\n", debugstr_w(class_decl->name), debugstr_w(decl->name));
                 ctx->error_loc = iter->name_loc;
                 ctx->hres = MAKE_VBSERROR(VBSE_NAME_REDEFINED);
                 return NULL;
+            }
+
+            /* The class body is parsed from its end: iter is a property that follows
+               the method decl. It replaces the method, but the member stays the default one. */
+            if(decl->type == FUNC_SUB || decl->type == FUNC_FUNCTION) {
+                if(decl->is_default)
+                    iter->is_default = TRUE;
+                return class_decl;
             }
 
             while(1) {
@@ -1375,11 +1385,32 @@ static class_decl_t *add_class_function(parser_ctx_t *ctx, class_decl_t *class_d
 
 static class_decl_t *add_dim_prop(parser_ctx_t *ctx, class_decl_t *class_decl, dim_decl_t *dim_decl, unsigned storage_flags)
 {
-    dim_decl_t *iter;
+    dim_decl_t *iter, *redefined = NULL;
 
     if(storage_flags & STORAGE_IS_DEFAULT) {
         FIXME("variant prop can't be default value\n");
         ctx->hres = E_FAIL;
+        return NULL;
+    }
+
+    /* The class body is parsed from its end, class_decl->props are the later declarations. */
+    for(iter = dim_decl->next; iter && !redefined; iter = iter->next) {
+        dim_decl_t *prev;
+        for(prev = dim_decl; prev != iter && !redefined; prev = prev->next) {
+            if(!wcsicmp(prev->name, iter->name))
+                redefined = iter;
+        }
+    }
+    for(iter = dim_decl; iter && !redefined; iter = iter->next) {
+        for(redefined = class_decl->props; redefined; redefined = redefined->next) {
+            if(!wcsicmp(redefined->name, iter->name))
+                break;
+        }
+    }
+    if(redefined) {
+        WARN("%s redefined\n", debugstr_w(redefined->name));
+        ctx->error_loc = redefined->loc;
+        ctx->hres = MAKE_VBSERROR(VBSE_NAME_REDEFINED);
         return NULL;
     }
 

@@ -1181,11 +1181,16 @@ static void *egldrv_get_proc_address( const char *name )
 }
 
 /* list of flags with which each EGL config will be combined */
-static const UINT pixel_format_flags[] =
+static const struct pixel_format_flags
 {
-    PFD_SUPPORT_GDI,
-    PFD_DOUBLEBUFFER,
-    0, /* offscreen */
+    UINT flags;
+    BOOL srgb;
+} pixel_format_flags[] =
+{
+    { .flags = PFD_SUPPORT_GDI, .srgb = FALSE },
+    { .flags = PFD_DOUBLEBUFFER, .srgb = FALSE },
+    { .flags = PFD_DOUBLEBUFFER, .srgb = TRUE },
+    { .flags = 0, /* offscreen */ .srgb = FALSE },
 };
 
 static UINT egldrv_init_pixel_formats( UINT *onscreen_count )
@@ -1237,7 +1242,7 @@ static UINT egldrv_init_pixel_formats( UINT *onscreen_count )
     return ARRAY_SIZE(pixel_format_flags) * count;
 }
 
-static BOOL describe_egl_config( EGLConfig config, struct wgl_pixel_format *fmt, UINT flags )
+static BOOL describe_egl_config( EGLConfig config, struct wgl_pixel_format *fmt, const struct pixel_format_flags *alias )
 {
     const struct opengl_funcs *funcs = &display_funcs;
     struct egl_platform *egl = &display_egl;
@@ -1251,8 +1256,8 @@ static BOOL describe_egl_config( EGLConfig config, struct wgl_pixel_format *fmt,
     memset( fmt, 0, sizeof(*fmt) );
     pfd->nSize = sizeof(*pfd);
     pfd->nVersion = 1;
-    pfd->dwFlags = PFD_SUPPORT_OPENGL | PFD_SUPPORT_COMPOSITION | flags;
-    if (flags && surface_type & EGL_WINDOW_BIT) pfd->dwFlags |= PFD_DRAW_TO_WINDOW;
+    pfd->dwFlags = PFD_SUPPORT_OPENGL | PFD_SUPPORT_COMPOSITION | alias->flags;
+    if (alias->flags && surface_type & EGL_WINDOW_BIT) pfd->dwFlags |= PFD_DRAW_TO_WINDOW;
     pfd->iPixelType = PFD_TYPE_RGBA;
     pfd->iLayerType = PFD_MAIN_PLANE;
 
@@ -1358,8 +1363,7 @@ static BOOL describe_egl_config( EGLConfig config, struct wgl_pixel_format *fmt,
     fmt->bind_to_texture_rectangle_rgb = GL_TRUE;
     fmt->bind_to_texture_rectangle_rgba = GL_TRUE;
 
-    /* TODO: Support SRGB surfaces and enable the attribute */
-    fmt->framebuffer_srgb_capable = GL_FALSE;
+    fmt->framebuffer_srgb_capable = alias->srgb;
 
     fmt->float_components = GL_FALSE;
 
@@ -1374,7 +1378,7 @@ static BOOL egldrv_describe_pixel_format( int format, struct wgl_pixel_format *d
     int count = egl->config_count;
 
     if (--format < 0 || format >= ARRAY_SIZE(pixel_format_flags) * count) return FALSE;
-    return describe_egl_config( egl->configs[format % count], desc, pixel_format_flags[format / count] );
+    return describe_egl_config( egl->configs[format % count], desc, pixel_format_flags + format / count );
 }
 
 static void egldrv_init_extensions( struct opengl_funcs *funcs, BOOLEAN extensions[GL_EXTENSION_COUNT] )
