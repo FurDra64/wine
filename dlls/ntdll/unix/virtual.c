@@ -607,6 +607,8 @@ static void *anon_mmap_tryfixed( void *start, size_t size, int prot, int flags )
 
 static void reserve_area( void *addr, void *end )
 {
+    /* use a larger alignment for 64-bit space, we don't need to reserve every single block */
+    size_t align_mask = ((ULONGLONG)(UINT_PTR)addr >> 32) ? 0xffffff : granularity_mask;
 #ifdef __APPLE__
     mach_vm_address_t address = (mach_vm_address_t)addr;
     mach_vm_address_t end_address = (mach_vm_address_t)end;
@@ -633,7 +635,7 @@ static void reserve_area( void *addr, void *end )
         if (end_address < address)
             address = end_address;
 
-        if (hole_address < address && (hole_size = (address - hole_address) & ~granularity_mask))
+        if (hole_address < address && (hole_size = (address - hole_address) & ~align_mask))
         {
             /* found a hole, attempt to reserve it. */
             mach_vm_address_t alloc_address = hole_address;
@@ -649,19 +651,20 @@ static void reserve_area( void *addr, void *end )
                 continue;
             }
         }
-        address = (address + size + granularity_mask) & ~granularity_mask;
+        address = (address + size + align_mask) & ~align_mask;
     }
 #else
     size_t size = (char *)end - (char *)addr;
 
     if (!size) return;
+    if (addr >= host_addr_space_limit) return;
 
     if (anon_mmap_tryfixed( addr, size, PROT_NONE, MAP_NORESERVE ) != MAP_FAILED)
     {
         mmap_add_reserved_area( addr, size );
         return;
     }
-    size = (size / 2) & ~granularity_mask;
+    size = (size / 2) & ~align_mask;
     if (size)
     {
         reserve_area( addr, (char *)addr + size );
@@ -669,61 +672,6 @@ static void reserve_area( void *addr, void *end )
     }
 #endif /* __APPLE__ */
 }
-
-
-static void mmap_init( const struct preload_info *preload_info )
-{
-#ifndef _WIN64
-#ifndef __APPLE__
-    char stack;
-    char * const stack_ptr = &stack;
-#endif
-    char *user_space_limit = (char *)0x7ffe0000;
-    int i;
-
-    if (preload_info)
-    {
-        /* check for a reserved area starting at the user space limit */
-        /* to avoid wasting time trying to allocate it again */
-        for (i = 0; preload_info[i].size; i++)
-        {
-            if ((char *)preload_info[i].addr > user_space_limit) break;
-            if ((char *)preload_info[i].addr + preload_info[i].size > user_space_limit)
-            {
-                user_space_limit = (char *)preload_info[i].addr + preload_info[i].size;
-                break;
-            }
-        }
-    }
-    else reserve_area( (void *)0x00010000, (void *)0x40000000 );
-
-
-#ifndef __APPLE__
-    if (stack_ptr >= user_space_limit)
-    {
-        char *end = 0;
-        char *base = stack_ptr - ((unsigned int)stack_ptr & granularity_mask) - (granularity_mask + 1);
-        if (base > user_space_limit) reserve_area( user_space_limit, base );
-        base = stack_ptr - ((unsigned int)stack_ptr & granularity_mask) + (granularity_mask + 1);
-#if defined(linux) || defined(__FreeBSD__) || defined (__FreeBSD_kernel__) || defined(__DragonFly__)
-        /* Heuristic: assume the stack is near the end of the address */
-        /* space, this avoids a lot of futile allocation attempts */
-        end = (char *)(((unsigned long)base + 0x0fffffff) & 0xf0000000);
-#endif
-        reserve_area( base, end );
-    }
-    else
-#endif
-        reserve_area( user_space_limit, 0 );
-
-#else
-    reserve_area( (void *)0x7ffff0000000, (void *)0x7ffffe000000 ); /* top-down area */
-    if (preload_info) return;
-    reserve_area( (void *)0x000000010000, (void *)0x000068000000 );
-    reserve_area( (void *)0x00007f000000, (void *)0x00007fff0000 );
-#endif
-}
-
 
 /***********************************************************************
  *           get_wow_user_space_limit
@@ -2699,8 +2647,6 @@ static NTSTATUS map_pe_header( void *ptr, size_t size, size_t map_size, int fd, 
     return STATUS_SUCCESS;  /* page protections will be updated later */
 }
 
-#ifdef _WIN64
-
 /***********************************************************************
  *           get_host_addr_space_limit
  */
@@ -2709,30 +2655,33 @@ static void *get_host_addr_space_limit(void)
 #ifdef __APPLE__
     /* See MACH_VM_MAX_ADDRESS_RAW in xnu osfmk/mach/arm/vm_param.h */
     return (void *)0x7ffffe000000;
-#else
-    unsigned int flags = MAP_PRIVATE | MAP_ANON;
+#elif defined _WIN64
     UINT_PTR addr = (UINT_PTR)1 << 63;
-
-#ifdef MAP_FIXED_NOREPLACE
-    flags |= MAP_FIXED_NOREPLACE;
-#endif
 
     while (addr >> 32)
     {
-        void *ret = mmap( (void *)addr, host_page_size, PROT_NONE, flags, -1, 0 );
+        void *ret = anon_mmap_tryfixed( (void *)addr, host_page_size, PROT_NONE, 0 );
         if (ret != MAP_FAILED)
         {
             munmap( ret, host_page_size );
-            if (ret >= (void *)addr) break;
+            break;
         }
         else if (errno == EEXIST) break;
         addr >>= 1;
     }
     return (void *)((addr << 1) - (granularity_mask + 1));
+#else
+    if (__builtin_frame_address(0) < address_space_limit)
+    {
+        void *ret = anon_mmap_tryfixed( address_space_limit, host_page_size, PROT_NONE, MAP_NORESERVE );
+        if (ret == MAP_FAILED && errno != EEXIST) return address_space_limit;
+    }
+    /* assume 4G space (and make sure that the last block is not available) */
+    address_space_limit = (void *)0xffff0000;
+    anon_mmap_tryfixed( address_space_limit, host_page_size, PROT_NONE, MAP_NORESERVE );
+    return address_space_limit;
 #endif
 }
-
-#endif /* _WIN64 */
 
 #ifdef __aarch64__
 
@@ -3569,55 +3518,6 @@ done:
 }
 
 
-/* allocate some space for the virtual heap, if possible from a reserved area */
-#ifndef _WIN64
-static void *alloc_virtual_heap( SIZE_T size )
-{
-    struct reserved_area *area;
-    const char *preload = getenv( "WINEPRELOADRESERVE" );
-    void *ret, *preload_reserve_start = NULL, *preload_reserve_end = NULL;
-
-    if (preload)
-    {
-        unsigned long start, end;
-        if (sscanf( preload, "%lx-%lx", &start, &end ) == 2)
-        {
-            preload_reserve_start = ROUND_ADDR( start, granularity_mask );
-            preload_reserve_end = (void *)ROUND_SIZE( 0, end, granularity_mask );
-        }
-        unsetenv( "WINEPRELOADRESERVE" );
-    }
-
-    size = ROUND_SIZE( 0, size, granularity_mask );
-
-    LIST_FOR_EACH_ENTRY_REV( area, &reserved_areas, struct reserved_area, entry )
-    {
-        void *base = area->base;
-        void *end = (char *)base + area->size;
-
-        if (is_beyond_limit( base, area->size, address_space_limit ))
-            address_space_limit = host_addr_space_limit = end;
-        if (preload_reserve_end >= end)
-        {
-            if (preload_reserve_start <= base) continue;  /* no space in that area */
-            if (preload_reserve_start < end) end = preload_reserve_start;
-        }
-        else if (preload_reserve_end > base)
-        {
-            if (preload_reserve_start <= base) base = preload_reserve_end;
-            else if ((char *)end - (char *)preload_reserve_end >= size) base = preload_reserve_end;
-            else end = preload_reserve_start;
-        }
-        if ((char *)end - (char *)base < size) continue;
-        ret = anon_mmap_fixed( (char *)end - size, size, PROT_READ | PROT_WRITE, 0 );
-        if (ret == MAP_FAILED) continue;
-        mmap_remove_reserved_area( ret, size );
-        return ret;
-    }
-    return anon_mmap_alloc( size, PROT_READ | PROT_WRITE );
-}
-#endif
-
 /***********************************************************************
  *           virtual_init
  */
@@ -3639,13 +3539,8 @@ void virtual_init(void)
     host_page_mask = host_page_size - 1;
     TRACE( "host page size: %uk\n", (UINT)host_page_size / 1024 );
 #endif
-
-#ifdef _WIN64
     host_addr_space_limit = get_host_addr_space_limit();
     TRACE( "host addr space limit: %p\n", host_addr_space_limit );
-#else
-    host_addr_space_limit = address_space_limit;
-#endif
 
     if (preload_info) for (int i = 0; preload_info[i].size; i++)
     {
@@ -3660,25 +3555,26 @@ void virtual_init(void)
         }
         mmap_add_reserved_area( addr, size );
     }
+    else
+    {
+        reserve_area( (void *)0x00010000, (void *)0x40000000 );
+        reserve_area( (void *)0x7f000000, (void *)0x7fff0000 );
+    }
 
-    mmap_init( preload_info );
+    if (is_win64) reserve_area( (void *)0x7ff000000000, (void *)0x7ff600000000 ); /* top-down area */
 
 #ifdef _WIN64
     pages_vprot_size = ((size_t)host_addr_space_limit >> page_shift >> pages_vprot_shift) + 1;
-    view_block_start = anon_mmap_alloc( view_block_size, PROT_READ | PROT_WRITE );
-    view_block_end = view_block_start + view_block_size / sizeof(*view_block_start);
-    free_ranges = anon_mmap_alloc( view_block_size, PROT_READ | PROT_WRITE );
     pages_vprot = anon_mmap_alloc( pages_vprot_size * sizeof(*pages_vprot), PROT_READ | PROT_WRITE );
 #else
-    /* try to find space in a reserved area for the views and pages protection table */
-    view_block_start = alloc_virtual_heap( 2 * view_block_size + (1U << (32 - page_shift)) );
-    view_block_end = view_block_start + view_block_size / sizeof(*view_block_start);
-    free_ranges = (void *)((char *)view_block_start + view_block_size);
-    pages_vprot = (void *)((char *)view_block_start + 2 * view_block_size);
+    pages_vprot = anon_mmap_alloc( 1U << (32 - page_shift), PROT_READ | PROT_WRITE );
 #endif
-    assert( view_block_start != MAP_FAILED );
-    assert( free_ranges != MAP_FAILED );
     assert( pages_vprot != MAP_FAILED );
+    view_block_start = anon_mmap_alloc( view_block_size, PROT_READ | PROT_WRITE );
+    view_block_end = view_block_start + view_block_size / sizeof(*view_block_start);
+    assert( view_block_start != MAP_FAILED );
+    free_ranges = anon_mmap_alloc( view_block_size, PROT_READ | PROT_WRITE );
+    assert( free_ranges != MAP_FAILED );
     wine_rb_init( &views_tree, compare_view );
     kernel_writewatch_init();
 
@@ -4053,10 +3949,10 @@ static void set_large_address_space(void)
         }
         else user_space_wow_limit = limit_2g - 1;
     }
-    else
+    else if (!(main_image_info.ImageCharacteristics & IMAGE_FILE_LARGE_ADDRESS_AWARE))
     {
-        if (!(main_image_info.ImageCharacteristics & IMAGE_FILE_LARGE_ADDRESS_AWARE)) return;
-        free_reserved_memory( (char *)0x80000000, address_space_limit );
+        reserve_area( (void *)limit_2g, host_addr_space_limit );
+        return;
     }
     user_space_limit = working_set_limit = address_space_limit;
 }
