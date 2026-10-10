@@ -1614,12 +1614,13 @@ static const struct opengl_driver_funcs egldrv_funcs =
     .p_context_activate = egldrv_context_activate,
 };
 
-static void dump_extensions( BOOLEAN extensions[GL_EXTENSION_COUNT] )
-{
 #define USE_GL_EXT(x) [x] = #x,
-    static const char *names[] = { ALL_EGL_EXTS ALL_GL_EXTS ALL_WGL_EXTS };
+static const char *extension_names[] = { ALL_EGL_EXTS ALL_GL_EXTS ALL_WGL_EXTS };
 #undef USE_GL_EXT
-    for (UINT i = 0; i < GL_EXTENSION_COUNT; i++) if (extensions[i]) TRACE( "- %s\n", names[i] );
+
+static void dump_extensions( const BOOLEAN extensions[GL_EXTENSION_COUNT] )
+{
+    for (UINT i = 0; i < GL_EXTENSION_COUNT; i++) if (extensions[i]) TRACE( "- %s\n", extension_names[i] );
 }
 
 static BOOL egl_init( const struct opengl_driver_funcs **driver_funcs )
@@ -1763,7 +1764,14 @@ static void init_egl_devices( struct opengl_funcs *funcs )
         if (devices[i] == display_egl.device)
         {
             display_egl.device_type = device_type;
-            memcpy( display_egl.extensions, extensions, sizeof(extensions) );
+
+            TRACE( "EGL display device extensions:\n" );
+            for (UINT i = 0; i < GL_EXTENSION_COUNT; i++)
+            {
+                if (display_egl.extensions[i] || !extensions[i]) continue;
+                TRACE( "- %s\n", extension_names[i] );
+                display_egl.extensions[i] = TRUE;
+            }
             continue;
         }
 
@@ -2083,7 +2091,7 @@ static int win32u_wglGetPixelFormat( HDC hdc )
     int format;
     HWND hwnd;
 
-    if ((hwnd = NtUserWindowFromDC( hdc )))
+    if ((hwnd = NtUserWindowFromDC( hdc )) && is_current_process_window( hwnd ))
         format = get_window_pixel_format( hwnd );
     else if ((format = get_dc_pixel_format( hdc )) < 0)
     {
@@ -2455,7 +2463,7 @@ static BOOL win32u_wglSetPixelFormat( HDC hdc, int new_format, const PIXELFORMAT
     funcs->p_get_pixel_formats( NULL, 0, &total, &onscreen );
     if (new_format <= 0 || new_format > total) return FALSE;
 
-    if ((hwnd = NtUserWindowFromDC( hdc )))
+    if ((hwnd = NtUserWindowFromDC( hdc )) && is_current_process_window( hwnd ))
     {
         struct opengl_drawable *drawable;
         int old_format;
@@ -2515,7 +2523,7 @@ static BOOL win32u_wglSetPixelFormatWINE( HDC hdc, int format )
     HWND hwnd;
 
     if (!(hwnd = NtUserWindowFromDC( hdc )) || !is_cache_dc( hdc )) return FALSE;
-    if (format && get_window_pixel_format( hwnd ) == format) return TRUE;
+    if (format && is_current_process_window( hwnd ) && get_window_pixel_format( hwnd ) == format) return TRUE;
 
     TRACE( "%p/%p format %d\n", hdc, hwnd, format );
 
