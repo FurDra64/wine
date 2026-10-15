@@ -1145,6 +1145,47 @@ struct attlist_attr * parser_dtd_get_attr_decl(struct dtd *dtd, struct domnode *
     return NULL;
 }
 
+bool parser_dtd_validate_attribute_value(struct validation_context *ctxt, struct dtd *dtd,
+        struct attlist_attr *decl, struct domnode *attr)
+{
+    bool ret = true;
+    HRESULT hr;
+    BSTR value;
+
+    if (FAILED(hr = node_get_text(attr, &value)))
+    {
+        ctxt->code = hr;
+        return false;
+    }
+
+    /* Instances must have same value for #FIXED defaults. */
+    if (decl->valuetype == ATTR_DEF_TYPE_FIXED && wcscmp(value, decl->value))
+    {
+        ctxt->code = E_DOM_ATTRIBUTE_FIXED;
+        ret = false;
+    }
+
+    if (ret && decl->type == ATTR_TYPE_ENUMERATION)
+    {
+        ret = false;
+        for (size_t i = 0; i < decl->valuelist.count; ++i)
+        {
+            if (!wcscmp(decl->valuelist.values[i], value))
+            {
+                ret = true;
+                break;
+            }
+        }
+
+        if (!ret)
+            ctxt->code = E_DOM_ATTRIBUTE_VALUE;
+    }
+
+    SysFreeString(value);
+
+    return ret;
+}
+
 struct dtd *parser_dtd_addref(struct dtd *dtd)
 {
     if (dtd)
