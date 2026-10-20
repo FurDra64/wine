@@ -1,0 +1,5 @@
+Feature: websocket-handshake
+Description: Minimal WebSocket client/server handshake in websocket.dll so .NET HttpListener WebSocket detection works (ToNSaveManager WS server under Wine)
+Author: Wine Fork <fork@example.com>
+Upstream-Status: none
+Depends-On: none

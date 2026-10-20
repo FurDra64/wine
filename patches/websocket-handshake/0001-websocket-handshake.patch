@@ -1,0 +1,235 @@
+diff --git a/dlls/websocket/websocket.c b/dlls/websocket/websocket.c
+index 8668f96..5393080 100644
+--- a/dlls/websocket/websocket.c
++++ b/dlls/websocket/websocket.c
+@@ -18,24 +18,174 @@
+ 
+ #include "wine/debug.h"
+ 
++#include <stdlib.h>
++#include <string.h>
++
+ #include "websocket.h"
+ 
+ WINE_DEFAULT_DEBUG_CHANNEL(websocket);
+ 
+-HRESULT WINAPI WebSocketCreateClientHandle(const PWEB_SOCKET_PROPERTY properties, 
++#define WEBSOCKET_HANDLE_MAGIC 0x534f4257
++
++struct websocket_handle
++{
++    ULONG magic;
++    BOOL is_server;
++    WEB_SOCKET_HTTP_HEADER *additional_headers;
++    ULONG additional_header_count;
++};
++
++static struct websocket_handle *get_handle_obj(WEB_SOCKET_HANDLE handle)
++{
++    struct websocket_handle *obj = (struct websocket_handle *)handle;
++
++    if (!obj || obj->magic != WEBSOCKET_HANDLE_MAGIC)
++        return NULL;
++    return obj;
++}
++
++static void free_additional_headers(struct websocket_handle *obj)
++{
++    ULONG i;
++
++    if (!obj || !obj->additional_headers)
++        return;
++    for (i = 0; i < obj->additional_header_count; i++)
++    {
++        free(obj->additional_headers[i].pcName);
++        free(obj->additional_headers[i].pcValue);
++    }
++    free(obj->additional_headers);
++    obj->additional_headers = NULL;
++    obj->additional_header_count = 0;
++}
++
++static HRESULT create_handle(BOOL is_server, WEB_SOCKET_HANDLE *handle)
++{
++    struct websocket_handle *obj;
++
++    if (!handle)
++        return E_INVALIDARG;
++    obj = calloc(1, sizeof(*obj));
++    if (!obj)
++        return E_OUTOFMEMORY;
++    obj->magic = WEBSOCKET_HANDLE_MAGIC;
++    obj->is_server = is_server;
++    *handle = (WEB_SOCKET_HANDLE)obj;
++    return S_OK;
++}
++
++HRESULT WINAPI WebSocketCreateClientHandle(const PWEB_SOCKET_PROPERTY properties,
++    ULONG count, WEB_SOCKET_HANDLE *handle)
++{
++    TRACE("(%p, %lu, %p)\n", properties, count, handle);
++
++    return create_handle(FALSE, handle);
++}
++
++HRESULT WINAPI WebSocketCreateServerHandle(const PWEB_SOCKET_PROPERTY properties,
+     ULONG count, WEB_SOCKET_HANDLE *handle)
+ {
+-    FIXME("(%p, %ld, %p): stub\n", properties, count, handle);
++    TRACE("(%p, %lu, %p)\n", properties, count, handle);
+ 
+-    return E_NOTIMPL;
++    return create_handle(TRUE, handle);
++}
++
++HRESULT WINAPI WebSocketBeginClientHandshake(WEB_SOCKET_HANDLE handle,
++    PCSTR subprotocols, ULONG subprotocol_count,
++    const WEB_SOCKET_HTTP_HEADER *request_headers, ULONG request_header_count,
++    const WEB_SOCKET_HTTP_HEADER *additional_headers, ULONG additional_header_count,
++    WEB_SOCKET_HTTP_HEADER **out_additional_headers, ULONG *out_additional_header_count)
++{
++    struct websocket_handle *obj = get_handle_obj(handle);
++    static const char version_name[] = "Sec-WebSocket-Version";
++    static const char version_value[] = "13";
++    WEB_SOCKET_HTTP_HEADER *headers;
++
++    TRACE("(%p, %s, %lu, %p, %lu, %p, %lu, %p, %p)\n", handle,
++        debugstr_a(subprotocols), subprotocol_count, request_headers,
++        request_header_count, additional_headers, additional_header_count,
++        out_additional_headers, out_additional_header_count);
++
++    if (!obj)
++        return E_HANDLE;
++    if (!out_additional_headers || !out_additional_header_count)
++        return E_INVALIDARG;
++
++    free_additional_headers(obj);
++
++    headers = calloc(1, sizeof(*headers));
++    if (!headers)
++        return E_OUTOFMEMORY;
++    headers[0].pcName = malloc(sizeof(version_name));
++    headers[0].pcValue = malloc(sizeof(version_value));
++    if (!headers[0].pcName || !headers[0].pcValue)
++    {
++        free(headers[0].pcName);
++        free(headers[0].pcValue);
++        free(headers);
++        return E_OUTOFMEMORY;
++    }
++    memcpy(headers[0].pcName, version_name, sizeof(version_name));
++    headers[0].ulNameLength = sizeof(version_name) - 1;
++    memcpy(headers[0].pcValue, version_value, sizeof(version_value));
++    headers[0].ulValueLength = sizeof(version_value) - 1;
++
++    obj->additional_headers = headers;
++    obj->additional_header_count = 1;
++    *out_additional_headers = headers;
++    *out_additional_header_count = 1;
++    return S_OK;
++}
++
++HRESULT WINAPI WebSocketBeginServerHandshake(WEB_SOCKET_HANDLE handle,
++    PCSTR subprotocols, const WEB_SOCKET_HTTP_HEADER *request_headers,
++    ULONG request_header_count, const WEB_SOCKET_HTTP_HEADER *additional_headers,
++    ULONG additional_header_count, WEB_SOCKET_HTTP_HEADER **response_headers,
++    ULONG *response_header_count)
++{
++    struct websocket_handle *obj = get_handle_obj(handle);
++
++    TRACE("(%p, %s, %p, %lu, %p, %lu, %p, %p)\n", handle,
++        debugstr_a(subprotocols), request_headers, request_header_count,
++        additional_headers, additional_header_count, response_headers,
++        response_header_count);
++
++    if (!obj)
++        return E_HANDLE;
++    if (!response_headers || !response_header_count)
++        return E_INVALIDARG;
++
++    *response_headers = NULL;
++    *response_header_count = 0;
++    return S_OK;
++}
++
++HRESULT WINAPI WebSocketEndServerHandshake(WEB_SOCKET_HANDLE handle)
++{
++    struct websocket_handle *obj = get_handle_obj(handle);
++
++    TRACE("(%p)\n", handle);
++
++    if (!obj)
++        return E_HANDLE;
++    return S_OK;
+ }
+ 
+ VOID WINAPI WebSocketAbortHandle(WEB_SOCKET_HANDLE handle)
+ {
+-    FIXME("(%p): stub\n", handle);
++    TRACE("(%p)\n", handle);
+ }
+ 
+ VOID WINAPI WebSocketDeleteHandle(WEB_SOCKET_HANDLE handle)
+ {
+-    FIXME("(%p): stub\n", handle);
++    struct websocket_handle *obj = get_handle_obj(handle);
++
++    TRACE("(%p)\n", handle);
++
++    if (!obj)
++        return;
++    free_additional_headers(obj);
++    obj->magic = 0;
++    free(obj);
+ }
+diff --git a/dlls/websocket/websocket.spec b/dlls/websocket/websocket.spec
+index 2b90740..6e5966a 100644
+--- a/dlls/websocket/websocket.spec
++++ b/dlls/websocket/websocket.spec
+@@ -1,12 +1,12 @@
+ @ stdcall WebSocketAbortHandle(long)
+-@ stub WebSocketBeginClientHandshake
+-@ stub WebSocketBeginServerHandshake
++@ stdcall WebSocketBeginClientHandshake(long ptr long ptr long ptr long ptr ptr)
++@ stdcall WebSocketBeginServerHandshake(long ptr ptr long ptr long ptr ptr)
+ @ stub WebSocketCompleteAction
+ @ stdcall WebSocketCreateClientHandle(ptr long ptr)
+-@ stub WebSocketCreateServerHandle
++@ stdcall WebSocketCreateServerHandle(ptr long ptr)
+ @ stdcall WebSocketDeleteHandle(long)
+ @ stub WebSocketEndClientHandshake
+-@ stub WebSocketEndServerHandshake
++@ stdcall WebSocketEndServerHandshake(long)
+ @ stub WebSocketGetAction
+ @ stub WebSocketGetGlobalProperty
+ @ stub WebSocketReceive
+diff --git a/include/websocket.h b/include/websocket.h
+index a7cdb25..91eb6b6 100644
+--- a/include/websocket.h
++++ b/include/websocket.h
+@@ -43,9 +43,25 @@ typedef struct _WEB_SOCKET_PROPERTY
+     ULONG                    ulValueSize;
+ } WEB_SOCKET_PROPERTY, *PWEB_SOCKET_PROPERTY;
+ 
++typedef struct _WEB_SOCKET_HTTP_HEADER
++{
++    PCHAR pcName;
++    ULONG ulNameLength;
++    PCHAR pcValue;
++    ULONG ulValueLength;
++} WEB_SOCKET_HTTP_HEADER, *PWEB_SOCKET_HTTP_HEADER;
++
+ VOID WINAPI WebSocketAbortHandle(WEB_SOCKET_HANDLE);
++HRESULT WINAPI WebSocketBeginClientHandshake(WEB_SOCKET_HANDLE, PCSTR, ULONG,
++    const WEB_SOCKET_HTTP_HEADER *, ULONG, const WEB_SOCKET_HTTP_HEADER *,
++    ULONG, WEB_SOCKET_HTTP_HEADER **, ULONG *);
++HRESULT WINAPI WebSocketBeginServerHandshake(WEB_SOCKET_HANDLE, PCSTR,
++    const WEB_SOCKET_HTTP_HEADER *, ULONG, const WEB_SOCKET_HTTP_HEADER *,
++    ULONG, WEB_SOCKET_HTTP_HEADER **, ULONG *);
+ HRESULT WINAPI WebSocketCreateClientHandle(const PWEB_SOCKET_PROPERTY, ULONG, WEB_SOCKET_HANDLE*);
++HRESULT WINAPI WebSocketCreateServerHandle(const PWEB_SOCKET_PROPERTY, ULONG, WEB_SOCKET_HANDLE*);
+ VOID WINAPI WebSocketDeleteHandle(WEB_SOCKET_HANDLE);
++HRESULT WINAPI WebSocketEndServerHandshake(WEB_SOCKET_HANDLE);
+ 
+ #ifdef __cplusplus
+ }
