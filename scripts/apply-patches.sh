@@ -53,6 +53,14 @@ DESTDIR="${DESTDIR:-$REPO_ROOT}"
 PATCHES_DIR="$REPO_ROOT/patches"
 SERIES="$PATCHES_DIR/series.conf"
 
+# Shadow tree for cumulative --check validation.
+# Independent dry-runs cannot validate stacked patchsets that touch the
+# same file (each dry-run sees the pristine tree, so overlaps give false
+# green/inexplicable red). For --check we additionally replay every patch
+# in series order onto a shadow copy of just the touched files, leaving
+# DESTDIR untouched. SHADOW stays empty unless CHECK==1.
+SHADOW=""
+
 [[ -f "$SERIES" ]] || { echo "error: series.conf not found: $SERIES" >&2; exit 2; }
 [[ -d "$DESTDIR" ]] || { echo "error: destdir not found: $DESTDIR" >&2; exit 2; }
 
@@ -80,6 +88,29 @@ if [[ "$LIST_ONLY" == 1 ]]; then
     exit 0
 fi
 
+if [[ "$CHECK" == 1 ]]; then
+    SHADOW="$(mktemp -d "${TMPDIR:-/tmp}/apply-patches-check.XXXXXX")"
+    trap 'rm -rf "$SHADOW"' EXIT
+    for ps_seed in "${ORDER[@]}"; do
+        seed_dir="$PATCHES_DIR/$ps_seed"
+        [[ -f "$seed_dir/definition" ]] || continue
+        shopt -s nullglob
+        seed_files=("$seed_dir"/*.patch)
+        shopt -u nullglob
+        for seed_f in "${seed_files[@]}"; do
+            while IFS= read -r hdr || [[ -n "$hdr" ]]; do
+                rel="${hdr#--- a/}"
+                rel="${rel%%$'\t'*}"
+                [[ "$rel" == "/dev/null" || "$rel" == "$hdr" ]] && continue
+                if [[ -f "$DESTDIR/$rel" && ! -f "$SHADOW/$rel" ]]; then
+                    mkdir -p "$SHADOW/$(dirname "$rel")"
+                    cp -p "$DESTDIR/$rel" "$SHADOW/$rel"
+                fi
+            done < <(grep '^--- ' "$seed_f" || true)
+        done
+    done
+fi
+
 TOTAL_FILES=0
 for ps in "${ORDER[@]}"; do
     dir="$PATCHES_DIR/$ps"
@@ -91,29 +122,27 @@ for ps in "${ORDER[@]}"; do
     [[ "${#files[@]}" -gt 0 ]] || { echo "warn: patchset=$ps has no *.patch, skipped" >&2; continue; }
     for f in "${files[@]}"; do
         base="$(basename "$f")"
-        if [[ "$BACKEND" == "patch" ]]; then
-            if [[ "$CHECK" == 1 ]]; then
-                if ! patch -p1 --dry-run --no-backup-if-mismatch -d "$DESTDIR" < "$f" > /dev/null; then
+        if [[ "$CHECK" == 1 ]]; then
+            if [[ "$BACKEND" == "patch" ]]; then
+                if ! patch -p1 --no-backup-if-mismatch -d "$SHADOW" < "$f" > /dev/null; then
                     echo "FAILED patchset=$ps file=$base" >&2
                     exit 1
                 fi
             else
-                if ! patch -p1 --no-backup-if-mismatch -d "$DESTDIR" < "$f"; then
+                if ! (cd "$SHADOW" && git apply -p1 --whitespace=fix "$f" > /dev/null); then
                     echo "FAILED patchset=$ps file=$base" >&2
                     exit 1
                 fi
             fi
+        elif [[ "$BACKEND" == "patch" ]]; then
+            if ! patch -p1 --no-backup-if-mismatch -d "$DESTDIR" < "$f"; then
+                echo "FAILED patchset=$ps file=$base" >&2
+                exit 1
+            fi
         else
-            if [[ "$CHECK" == 1 ]]; then
-                if ! git -C "$DESTDIR" apply --check -p1 "$f"; then
-                    echo "FAILED patchset=$ps file=$base" >&2
-                    exit 1
-                fi
-            else
-                if ! git -C "$DESTDIR" apply -p1 --whitespace=fix "$f"; then
-                    echo "FAILED patchset=$ps file=$base" >&2
-                    exit 1
-                fi
+            if ! git -C "$DESTDIR" apply -p1 --whitespace=fix "$f"; then
+                echo "FAILED patchset=$ps file=$base" >&2
+                exit 1
             fi
         fi
         TOTAL_FILES=$((TOTAL_FILES + 1))
