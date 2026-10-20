@@ -1,0 +1,5 @@
+Feature: dpi-hosting-behavior
+Description: Per-thread storage for GetThreadDpiHostingBehavior/SetThreadDpiHostingBehavior in user32 (ToNSaveManager right-click menu needs it; stubs always returned DEFAULT).
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: none

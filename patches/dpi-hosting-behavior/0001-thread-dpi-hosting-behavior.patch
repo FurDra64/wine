@@ -1,0 +1,50 @@
+diff --git a/dlls/user32/sysparams.c b/dlls/user32/sysparams.c
+index da0e9f4..3d69091 100644
+--- a/dlls/user32/sysparams.c
++++ b/dlls/user32/sysparams.c
+@@ -822,8 +822,10 @@ DPI_AWARENESS_CONTEXT WINAPI SetThreadDpiAwarenessContext( DPI_AWARENESS_CONTEXT
+  */
+ DPI_HOSTING_BEHAVIOR WINAPI GetThreadDpiHostingBehavior( void )
+ {
+-    FIXME("(): stub\n");
+-    return DPI_HOSTING_BEHAVIOR_DEFAULT;
++    struct ntuser_thread_info *info = NtUserGetThreadInfo();
++
++    TRACE("()\n");
++    return info->hosting_behavior;
+ }
+ 
+ /**********************************************************************
+@@ -831,8 +833,18 @@ DPI_HOSTING_BEHAVIOR WINAPI GetThreadDpiHostingBehavior( void )
+  */
+ DPI_HOSTING_BEHAVIOR WINAPI SetThreadDpiHostingBehavior( DPI_HOSTING_BEHAVIOR value )
+ {
+-    FIXME("(%d): stub\n", value);
+-    return DPI_HOSTING_BEHAVIOR_DEFAULT;
++    struct ntuser_thread_info *info = NtUserGetThreadInfo();
++    DPI_HOSTING_BEHAVIOR prev = info->hosting_behavior;
++
++    TRACE("(%d)\n", value);
++    if (value != DPI_HOSTING_BEHAVIOR_DEFAULT && value != DPI_HOSTING_BEHAVIOR_MIXED)
++    {
++        WARN("invalid hosting behavior %d.\n", value);
++        SetLastError( ERROR_INVALID_PARAMETER );
++        return DPI_HOSTING_BEHAVIOR_INVALID;
++    }
++    info->hosting_behavior = value;
++    return prev;
+ }
+ 
+ /***********************************************************************
+diff --git a/include/ntuser.h b/include/ntuser.h
+index be41b33..dc964a9 100644
+--- a/include/ntuser.h
++++ b/include/ntuser.h
+@@ -126,6 +126,7 @@ struct ntuser_thread_info
+     UINT           dpi_context;       /* DPI awareness context */
+     UINT64         client_imm;        /* client IMM thread info */
+     UINT64         wmchar_data;       /* client data for WM_CHAR mappings */
++    DPI_HOSTING_BEHAVIOR hosting_behavior; /* DPI hosting behavior */
+ };
+ 
+ #ifndef WINE_UNIX_LIB
