@@ -1,0 +1,5 @@
+Feature: http-opaque-body
+Description: Raw/opaque receive path in http.sys after a 101 (OPAQUE flag) response so WebSocket bytes flow via HttpReceiveRequestEntityBody (ToNSaveManager WS server under Wine)
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: none

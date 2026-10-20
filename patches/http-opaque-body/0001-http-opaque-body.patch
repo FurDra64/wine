@@ -1,0 +1,226 @@
+--- a/dlls/http.sys/http.c
++++ b/dlls/http.sys/http.c
+@@ -71,6 +71,13 @@
+     struct request_queue *queue;
+     HTTP_REQUEST_ID req_id;
+     HTTP_URL_CONTEXT context;
++    /* Set once a response with HTTP_SEND_RESPONSE_FLAG_OPAQUE has been sent.
++     * The connection is upgraded (e.g. WebSocket): incoming bytes are raw
++     * opaque data buffered for HttpReceiveRequestEntityBody, and the request
++     * id stays valid until the queue is closed. */
++    BOOL opaque;
++    /* Pending HttpReceiveRequestEntityBody IRP while no opaque bytes are buffered. */
++    IRP *body_irp;
+ 
+     /* Things we already parsed out of the request header in parse_request().
+      * These are valid only if "available" is TRUE. */
+@@ -149,6 +156,16 @@
+ 
+ static void close_connection(struct connection *conn)
+ {
++    if (conn->body_irp)
++    {
++        /* Complete a pending opaque read as disconnect. */
++        IRP *irp = conn->body_irp;
++        conn->body_irp = NULL;
++        IoSetCancelRoutine(irp, NULL);
++        irp->IoStatus.Status = STATUS_CONNECTION_DISCONNECTED;
++        irp->IoStatus.Information = 0;
++        IoCompleteRequest(irp, IO_NO_INCREMENT);
++    }
+     if (!conn->shutdown)
+         shutdown_connection(conn);
+     closesocket(conn->socket);
+@@ -604,6 +621,28 @@
+     shutdown_connection(conn);
+ }
+ 
++/* Complete a pending HttpReceiveRequestEntityBody IRP from buffered opaque
++ * bytes. The caller must hold http_cs and guarantee conn->body_irp != NULL
++ * and conn->len != 0. */
++static void complete_opaque_body_irp(struct connection *conn)
++{
++    IRP *irp = conn->body_irp;
++    IO_STACK_LOCATION *stack = IoGetCurrentIrpStackLocation(irp);
++    const DWORD output_len = stack->Parameters.DeviceIoControl.OutputBufferLength;
++    ULONG len = min(conn->len, output_len);
++
++    TRACE("Completing opaque body IRP %p with %lu bytes.\n", irp, len);
++
++    IoSetCancelRoutine(irp, NULL);
++    conn->body_irp = NULL;
++    memcpy(irp->AssociatedIrp.SystemBuffer, conn->buffer, len);
++    memmove(conn->buffer, conn->buffer + len, conn->len - len);
++    conn->len -= len;
++    irp->IoStatus.Status = STATUS_SUCCESS;
++    irp->IoStatus.Information = len;
++    IoCompleteRequest(irp, IO_NO_INCREMENT);
++}
++
+ static void receive_data(struct connection *conn)
+ {
+     int len, ret;
+@@ -619,6 +658,21 @@
+         return;
+     }
+ 
++    /* Grow the buffer so upgraded connections can keep buffering raw bytes. */
++    if (conn->opaque && conn->len == conn->size)
++    {
++        char *new_buffer;
++        unsigned int new_size = conn->size + 8192;
++        if (!(new_buffer = realloc(conn->buffer, new_size)))
++        {
++            ERR("Failed to allocate %u bytes of memory.\n", new_size);
++            close_connection(conn);
++            return;
++        }
++        conn->buffer = new_buffer;
++        conn->size = new_size;
++    }
++
+     /* We might be waiting for an IRP, but always call recv() anyway, since we
+      * might have been woken up by the socket closing. */
+     if ((len = recv(conn->socket, conn->buffer + conn->len, conn->size - conn->len, 0)) <= 0)
+@@ -634,6 +688,14 @@
+     }
+     conn->len += len;
+ 
++    if (conn->opaque)
++    {
++        /* Upgraded connection: buffer raw bytes for HttpReceiveRequestEntityBody. */
++        TRACE("Received %u bytes of opaque data.\n", len);
++        if (conn->body_irp && conn->len)
++            complete_opaque_body_irp(conn);
++        return;
++    }
+     if (conn->available)
+         return; /* waiting for an HttpReceiveHttpRequest() call */
+     if (conn->req_id != HTTP_NULL_ID)
+@@ -1005,9 +1067,22 @@
+     {
+         if (send(conn->socket, response->buffer, response->len, 0) >= 0)
+         {
+-            /* Clean up the connection if we are not sending more response data. */
+-            if (response->response_flags != HTTP_SEND_RESPONSE_FLAG_MORE_DATA)
++            if (response->response_flags & HTTP_SEND_RESPONSE_FLAG_OPAQUE)
++                conn->opaque = TRUE;
++            if (conn->opaque)
++            {
++                /* Upgraded connection (e.g. WebSocket): keep the request id valid
++                 * and keep reading raw bytes; never re-enter HTTP parsing. */
++                WSAEventSelect(conn->socket, request_event, FD_READ | FD_CLOSE);
++                if (response->response_flags & HTTP_SEND_RESPONSE_FLAG_DISCONNECT)
++                    close_connection(conn);
++                else if (conn->body_irp && conn->len)
++                    complete_opaque_body_irp(conn);
++            }
++            else if (!(response->response_flags
++                    & (HTTP_SEND_RESPONSE_FLAG_MORE_DATA | HTTP_SEND_RESPONSE_FLAG_OPAQUE)))
+             {
++                /* Clean up the connection if we are not sending more response data. */
+                 if (conn->content_len)
+                 {
+                     /* Discard whatever entity body is left. */
+@@ -1042,6 +1117,29 @@
+     return STATUS_CONNECTION_INVALID;
+ }
+ 
++static void WINAPI http_receive_body_cancel(DEVICE_OBJECT *device, IRP *irp)
++{
++    struct connection *conn;
++
++    TRACE("device %p, irp %p.\n", device, irp);
++
++    IoReleaseCancelSpinLock(irp->CancelIrql);
++
++    EnterCriticalSection(&http_cs);
++    LIST_FOR_EACH_ENTRY(conn, &connections, struct connection, entry)
++    {
++        if (conn->body_irp == irp)
++        {
++            conn->body_irp = NULL;
++            break;
++        }
++    }
++    LeaveCriticalSection(&http_cs);
++
++    irp->IoStatus.Status = STATUS_CANCELLED;
++    IoCompleteRequest(irp, IO_NO_INCREMENT);
++}
++
+ static NTSTATUS http_receive_body(struct request_queue *queue, IRP *irp)
+ {
+     const struct http_receive_body_params *params = irp->AssociatedIrp.SystemBuffer;
+@@ -1058,7 +1156,43 @@
+     {
+         TRACE("%lu bits remaining.\n", conn->content_len);
+ 
+-        if (conn->content_len)
++        if (conn->opaque)
++        {
++            if (conn->body_irp)
++            {
++                FIXME("Already have a pending body IRP on connection %p.\n", conn);
++                ret = STATUS_DEVICE_BUSY;
++            }
++            else if (conn->len)
++            {
++                ULONG len = min(conn->len, output_len);
++                memcpy(irp->AssociatedIrp.SystemBuffer, conn->buffer, len);
++                memmove(conn->buffer, conn->buffer + len, conn->len - len);
++                conn->len -= len;
++
++                irp->IoStatus.Information = len;
++                ret = STATUS_SUCCESS;
++            }
++            else
++            {
++                /* No opaque bytes buffered yet; pend until FD_READ or FD_CLOSE. */
++                TRACE("No opaque data buffered, pending IRP %p.\n", irp);
++
++                IoSetCancelRoutine(irp, http_receive_body_cancel);
++                if (irp->Cancel && IoSetCancelRoutine(irp, NULL))
++                {
++                    /* The IRP was canceled before we set the cancel routine. */
++                    ret = STATUS_CANCELLED;
++                }
++                else
++                {
++                    IoMarkIrpPending(irp);
++                    conn->body_irp = irp;
++                    ret = STATUS_PENDING;
++                }
++            }
++        }
++        else if (conn->content_len)
+         {
+             ULONG len = min(conn->content_len, output_len);
+             memcpy(irp->AssociatedIrp.SystemBuffer, conn->buffer, len);
+@@ -1141,11 +1275,26 @@
+ static void close_queue(struct request_queue *queue)
+ {
+     struct url *url, *url_next;
++    struct connection *conn, *conn_next;
+     struct listening_socket *listening_sock, *listening_sock_next;
+ 
+     EnterCriticalSection(&http_cs);
+     list_remove(&queue->entry);
+ 
++    /* Cancel pending opaque body reads on this queue. */
++    LIST_FOR_EACH_ENTRY_SAFE(conn, conn_next, &connections, struct connection, entry)
++    {
++        if (conn->queue == queue && conn->body_irp)
++        {
++            IRP *irp = conn->body_irp;
++            conn->body_irp = NULL;
++            IoSetCancelRoutine(irp, NULL);
++            irp->IoStatus.Status = STATUS_CANCELLED;
++            irp->IoStatus.Information = 0;
++            IoCompleteRequest(irp, IO_NO_INCREMENT);
++        }
++    }
++
+     LIST_FOR_EACH_ENTRY_SAFE(url, url_next, &queue->urls, struct url, entry)
+     {
+         free(url->url);
