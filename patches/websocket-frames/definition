@@ -1,0 +1,5 @@
+Feature: websocket-frames
+Description: RFC6455 frame I/O in websocket.dll (Receive/Send/GetAction/CompleteAction) so .NET HttpListener WebSocket echo works (ToNSaveManager WS server under Wine)
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: websocket-handshake

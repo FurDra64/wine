@@ -1,0 +1,139 @@
+--- a/dlls/websocket/websocket.c
++++ b/dlls/websocket/websocket.c
+@@ -1084,6 +1084,8 @@
+     if (!dataBuffers || !dataBufferCount || !action || !bufferType
+         || !actionContext)
+         return E_INVALIDARG;
++    /* appContext is optional: callers pass a dummy variable they never
++     * read for actions whose context they do not need. */
+     if (obj->aborted || obj->out_action)
+     {
+         *action = WEB_SOCKET_NO_ACTION;
+--- a/dlls/websocket/websocket.c
++++ b/dlls/websocket/websocket.c
+@@ -204,9 +204,13 @@
+                     *(const ULONG *)properties[i].pvValue);
+             break;
+         case WEB_SOCKET_ALLOCATED_BUFFER_PROPERTY_TYPE:
++            /* pvValue is single-indirect: it points at storage holding the
++             * native base pointer (host pins one array and passes the
++             * address of the slot containing its base). Dereference once;
++             * ulValueSize is the native range length. */
+             if (properties[i].pvValue && properties[i].ulValueSize)
+             {
+-                obj->native_base = (BYTE *)properties[i].pvValue;
++                obj->native_base = *(BYTE *const *)properties[i].pvValue;
+                 obj->native_len = properties[i].ulValueSize;
+                 obj->native_off = 0;
+                 TRACE("native buffer %p len %lu\n",
+--- a/dlls/websocket/websocket.c
++++ b/dlls/websocket/websocket.c
+@@ -1278,7 +1278,14 @@
+         if (obj->native_base && obj->native_len)
+         {
+             /* The host filled the offered native slice; shadow-copy it
+-             * into the owned window before parsing. */
++             * into the owned window before parsing. The owned window
++             * must exist even when the host supplies the wire bytes. */
++            if (!obj->recv_buf && FAILED(grow_window(obj)))
++            {
++                WARN("receive window exhausted\n");
++                obj->aborted = TRUE;
++                break;
++            }
+             if (obj->native_off + bytesTransferred > obj->native_len)
+             {
+                 WARN("native buffer overrun: %lu + %lu\n",
+--- a/dlls/websocket/websocket.c
++++ b/dlls/websocket/websocket.c
+@@ -1034,7 +1034,23 @@
+     }
+     ctx->kind = is_close ? WS_ACTION_INDICATE_CLOSE : WS_ACTION_INDICATE_RECV;
+     ctx->length = length;
+-    if (obj->recv_buffer && obj->recv_buffer->Data.pbBuffer
++    if (obj->native_base && obj->native_len >= length
++        && (length == 0 || payload || is_close))
++    {
++        /* The host validates every offered pointer against the native
++         * range [native_base, native_base + native_len). A malloc'd
++         * payload or the managed receive buffer always fails that
++         * check, so stage the message in the native scratch and offer
++         * that. Only one action is outstanding at a time, and inbound
++         * wire bytes already live in the owned window, so reusing
++         * native_base[0..length) here cannot clobber a live window. */
++        if (length)
++            memcpy(obj->native_base, payload, length);
++        obj->native_off = 0;
++        dataBuffers[0].Data.pbBuffer = obj->native_base;
++        dataBuffers[0].Data.ulBufferLength = length;
++    }
++    else if (obj->recv_buffer && obj->recv_buffer->Data.pbBuffer
+         && obj->recv_buffer->Data.ulBufferLength >= length)
+     {
+         if (length)
+@@ -1102,22 +1118,65 @@
+             || actionQueue == WEB_SOCKET_ALL_ACTION_QUEUE)
+         && obj->send_pending
+         && obj->send_frame_off < obj->send_frame_len)
++    {
++        ULONG send_remain = obj->send_frame_len - obj->send_frame_off;
++        if (obj->native_base && obj->native_len >= send_remain)
++        {
++            /* Same native-range rule as indicate: the host rejects
++             * malloc'd frame pointers, so copy the slice into the
++             * native scratch (exclusive outstanding action => safe). */
++            if (send_remain)
++                memcpy(obj->native_base,
++                    obj->send_frame + obj->send_frame_off, send_remain);
++            obj->native_off = 0;
++            return offer_network(obj, dataBuffers, dataBufferCount,
++                bufferType, appContext, actionContext, action,
++                WS_ACTION_SEND_NET, obj->native_base, send_remain,
++                obj->send_context);
++        }
+         return offer_network(obj, dataBuffers, dataBufferCount, bufferType,
+             appContext, actionContext, action, WS_ACTION_SEND_NET,
+             obj->send_frame + obj->send_frame_off,
+             obj->send_frame_len - obj->send_frame_off, obj->send_context);
++    }
+ 
+     if (actionQueue != WEB_SOCKET_SEND_ACTION_QUEUE && obj->pong_frame)
++    {
++        ULONG pong_remain = obj->pong_frame_len - obj->pong_frame_off;
++        if (obj->native_base && obj->native_len >= pong_remain)
++        {
++            if (pong_remain)
++                memcpy(obj->native_base,
++                    obj->pong_frame + obj->pong_frame_off, pong_remain);
++            obj->native_off = 0;
++            return offer_network(obj, dataBuffers, dataBufferCount,
++                bufferType, appContext, actionContext, action,
++                WS_ACTION_PONG_NET, obj->native_base, pong_remain, NULL);
++        }
+         return offer_network(obj, dataBuffers, dataBufferCount, bufferType,
+             appContext, actionContext, action, WS_ACTION_PONG_NET,
+             obj->pong_frame + obj->pong_frame_off,
+             obj->pong_frame_len - obj->pong_frame_off, NULL);
++    }
+ 
+     if (actionQueue != WEB_SOCKET_SEND_ACTION_QUEUE && obj->close_frame)
++    {
++        ULONG close_remain = obj->close_frame_len - obj->close_frame_off;
++        if (obj->native_base && obj->native_len >= close_remain)
++        {
++            if (close_remain)
++                memcpy(obj->native_base,
++                    obj->close_frame + obj->close_frame_off, close_remain);
++            obj->native_off = 0;
++            return offer_network(obj, dataBuffers, dataBufferCount,
++                bufferType, appContext, actionContext, action,
++                WS_ACTION_CLOSE_NET, obj->native_base, close_remain, NULL);
++        }
+         return offer_network(obj, dataBuffers, dataBufferCount, bufferType,
+             appContext, actionContext, action, WS_ACTION_CLOSE_NET,
+             obj->close_frame + obj->close_frame_off,
+             obj->close_frame_len - obj->close_frame_off, NULL);
++    }
+ 
+     if (actionQueue != WEB_SOCKET_SEND_ACTION_QUEUE && obj->recv_pending
+         && obj->pending_msg)

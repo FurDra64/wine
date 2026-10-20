@@ -1,0 +1,262 @@
+--- a/include/websocket.h
++++ b/include/websocket.h
+@@ -70,12 +70,12 @@
+ typedef enum _WEB_SOCKET_BUFFER_TYPE
+ {
+     WEB_SOCKET_UTF8_MESSAGE_BUFFER_TYPE    = 0x80000000,
+-    WEB_SOCKET_UTF8_FRAGMENT_BUFFER_TYPE   = 1,
+-    WEB_SOCKET_BINARY_MESSAGE_BUFFER_TYPE  = 2,
+-    WEB_SOCKET_BINARY_FRAGMENT_BUFFER_TYPE = 3,
+-    WEB_SOCKET_CLOSE_BUFFER_TYPE           = 4,
+-    WEB_SOCKET_PING_PONG_BUFFER_TYPE       = 5,
+-    WEB_SOCKET_UNSOLICITED_PONG_BUFFER_TYPE = 6,
++    WEB_SOCKET_UTF8_FRAGMENT_BUFFER_TYPE   = 0x80000001,
++    WEB_SOCKET_BINARY_MESSAGE_BUFFER_TYPE  = 0x80000002,
++    WEB_SOCKET_BINARY_FRAGMENT_BUFFER_TYPE = 0x80000003,
++    WEB_SOCKET_CLOSE_BUFFER_TYPE           = 0x80000004,
++    WEB_SOCKET_PING_PONG_BUFFER_TYPE       = 0x80000005,
++    WEB_SOCKET_UNSOLICITED_PONG_BUFFER_TYPE = 0x80000006,
+ } WEB_SOCKET_BUFFER_TYPE;
+ 
+ typedef enum _WEB_SOCKET_CLOSE_STATUS
+@@ -94,23 +94,19 @@
+     WEB_SOCKET_SECURE_HANDSHAKE_ERROR_CLOSE_STATUS = 1015,
+ } WEB_SOCKET_CLOSE_STATUS;
+ 
+-typedef struct _WEB_SOCKET_BUFFER
++typedef union _WEB_SOCKET_BUFFER
+ {
+-    WEB_SOCKET_BUFFER_TYPE BufferType;
+-    union
++    struct
+     {
+-        struct
+-        {
+-            PBYTE pbBuffer;
+-            ULONG ulBufferLength;
+-        } Data;
+-        struct
+-        {
+-            PBYTE  pbReason;
+-            ULONG  ulReasonLength;
+-            USHORT usStatus;
+-        } CloseStatus;
+-    };
++        PBYTE pbBuffer;
++        ULONG ulBufferLength;
++    } Data;
++    struct
++    {
++        PBYTE  pbReason;
++        ULONG  ulReasonLength;
++        USHORT usStatus;
++    } CloseStatus;
+ } WEB_SOCKET_BUFFER, *PWEB_SOCKET_BUFFER;
+ 
+ VOID WINAPI WebSocketAbortHandle(WEB_SOCKET_HANDLE);
+--- a/dlls/websocket/websocket.c
++++ b/dlls/websocket/websocket.c
+@@ -929,7 +929,6 @@
+     }
+     ctx->kind = kind;
+     ctx->length = length;
+-    dataBuffers[0].BufferType = 0;
+     dataBuffers[0].Data.pbBuffer = base;
+     dataBuffers[0].Data.ulBufferLength = length;
+     *dataBufferCount = 1;
+@@ -990,7 +989,6 @@
+     }
+     if (is_close)
+     {
+-        dataBuffers[0].BufferType = WEB_SOCKET_CLOSE_BUFFER_TYPE;
+         dataBuffers[0].CloseStatus.pbReason = dataBuffers[0].Data.pbBuffer;
+         dataBuffers[0].CloseStatus.ulReasonLength = length;
+         dataBuffers[0].CloseStatus.usStatus = obj->close_ind_status;
+@@ -998,7 +996,6 @@
+     }
+     else
+     {
+-        dataBuffers[0].BufferType = obj->pending_msg->type;
+         *bufferType = obj->pending_msg->type;
+     }
+     *dataBufferCount = 1;
+--- a/dlls/websocket/websocket.c
++++ b/dlls/websocket/websocket.c
+@@ -85,6 +85,15 @@
+     ULONG recv_cap;
+     ULONG recv_off;
+ 
++    /* Application-owned shared buffer (.NET pins one managed array for the
++     * handle lifetime and passes it as ALLOCATED_BUFFER). RECEIVE_FROM_NETWORK
++     * offers slices of [native_base, native_base + native_len) so the host's
++     * range check passes; bytes are shadow-copied into recv_buf on ack.
++     * Borrowed: never allocated or freed here. native_off is the offer cursor. */
++    BYTE *native_base; /* borrowed */
++    ULONG native_len;
++    ULONG native_off;
++
+     /* Fragmented message reassembly (RFC6455 section 5.4). */
+     BYTE *frag_buf; /* owned */
+     ULONG frag_len;
+@@ -167,7 +176,53 @@
+     free(msg);
+ }
+ 
+-static HRESULT create_handle(BOOL is_server, WEB_SOCKET_HANDLE *handle)
++/* Record the creation properties .NET always passes on the server path
++ * (receive/send buffer sizes plus the application-owned native buffer).
++ * Tolerant: missing or unknown properties keep the legacy malloc'd window.
++ * The native range belongs to the application and is never dereferenced here. */
++static void parse_create_properties(struct websocket_handle *obj,
++    const WEB_SOCKET_PROPERTY *properties, ULONG count)
++{
++    ULONG i;
++
++    if (!properties || !count)
++        return;
++    for (i = 0; i < count; i++)
++    {
++        switch (properties[i].Type)
++        {
++        case WEB_SOCKET_RECEIVE_BUFFER_SIZE_PROPERTY_TYPE:
++            if (properties[i].pvValue
++                && properties[i].ulValueSize >= sizeof(ULONG))
++                TRACE("receive buffer size %lu\n",
++                    *(const ULONG *)properties[i].pvValue);
++            break;
++        case WEB_SOCKET_SEND_BUFFER_SIZE_PROPERTY_TYPE:
++            if (properties[i].pvValue
++                && properties[i].ulValueSize >= sizeof(ULONG))
++                TRACE("send buffer size %lu\n",
++                    *(const ULONG *)properties[i].pvValue);
++            break;
++        case WEB_SOCKET_ALLOCATED_BUFFER_PROPERTY_TYPE:
++            if (properties[i].pvValue && properties[i].ulValueSize)
++            {
++                obj->native_base = (BYTE *)properties[i].pvValue;
++                obj->native_len = properties[i].ulValueSize;
++                obj->native_off = 0;
++                TRACE("native buffer %p len %lu\n",
++                    obj->native_base, obj->native_len);
++            }
++            break;
++        default:
++            TRACE("ignoring property type %d\n", properties[i].Type);
++            break;
++        }
++    }
++}
++
++static HRESULT create_handle(BOOL is_server,
++    const WEB_SOCKET_PROPERTY *properties, ULONG count,
++    WEB_SOCKET_HANDLE *handle)
+ {
+     struct websocket_handle *obj;
+ 
+@@ -178,6 +233,7 @@
+         return E_OUTOFMEMORY;
+     obj->magic = WEBSOCKET_HANDLE_MAGIC;
+     obj->is_server = is_server;
++    parse_create_properties(obj, properties, count);
+     *handle = (WEB_SOCKET_HANDLE)obj;
+     return S_OK;
+ }
+@@ -658,7 +714,7 @@
+ {
+     TRACE("(%p, %lu, %p)\n", properties, count, handle);
+ 
+-    return create_handle(FALSE, handle);
++    return create_handle(FALSE, properties, count, handle);
+ }
+ 
+ HRESULT WINAPI WebSocketCreateServerHandle(const PWEB_SOCKET_PROPERTY properties,
+@@ -666,7 +722,7 @@
+ {
+     TRACE("(%p, %lu, %p)\n", properties, count, handle);
+ 
+-    return create_handle(TRUE, handle);
++    return create_handle(TRUE, properties, count, handle);
+ }
+ 
+ HRESULT WINAPI WebSocketBeginClientHandshake(WEB_SOCKET_HANDLE handle,
+@@ -1071,6 +1127,8 @@
+         && !obj->aborted)
+     {
+         ULONG spare;
++        BYTE *base;
++        ULONG length;
+ 
+         compact_window(obj);
+         spare = obj->recv_cap - obj->recv_len;
+@@ -1085,9 +1143,22 @@
+             }
+             spare = obj->recv_cap - obj->recv_len;
+         }
++        base = obj->recv_buf + obj->recv_len;
++        length = spare;
++        if (obj->native_base && obj->native_len)
++        {
++            /* Offer a slice of the application-owned range so the host's
++             * range check passes; the bytes are shadow-copied on ack. */
++            if (obj->native_off >= obj->native_len)
++                obj->native_off = 0;
++            length = obj->native_len - obj->native_off;
++            if (length > spare)
++                length = spare;
++            base = obj->native_base + obj->native_off;
++        }
+         return offer_network(obj, dataBuffers, dataBufferCount, bufferType,
+             appContext, actionContext, action, WS_ACTION_RECV_NET,
+-            obj->recv_buf + obj->recv_len, spare, NULL);
++            base, length, NULL);
+     }
+ 
+     if ((actionQueue == WEB_SOCKET_SEND_ACTION_QUEUE
+@@ -1198,8 +1269,25 @@
+             obj->aborted = TRUE;
+             break;
+         }
++        if (obj->native_base && obj->native_len)
++        {
++            /* The host filled the offered native slice; shadow-copy it
++             * into the owned window before parsing. */
++            if (obj->native_off + bytesTransferred > obj->native_len)
++            {
++                WARN("native buffer overrun: %lu + %lu\n",
++                    obj->native_off, bytesTransferred);
++                obj->aborted = TRUE;
++                break;
++            }
++            memcpy(obj->recv_buf + obj->recv_len,
++                obj->native_base + obj->native_off, bytesTransferred);
++            obj->native_off += bytesTransferred;
++        }
+         obj->recv_len += bytesTransferred;
+         parse_available(obj);
++        if (obj->native_base && (obj->pending_msg || obj->close_ind_pending))
++            obj->native_off = 0;
+         break;
+     case WS_ACTION_INDICATE_RECV:
+         free_message(obj->pending_msg);
+--- a/include/websocket.h
++++ b/include/websocket.h
+@@ -30,7 +30,7 @@
+     WEB_SOCKET_RECEIVE_BUFFER_SIZE_PROPERTY_TYPE,
+     WEB_SOCKET_SEND_BUFFER_SIZE_PROPERTY_TYPE,
+     WEB_SOCKET_DISABLE_MASKING_PROPERTY_TYPE,
+-    WEB_SOCKET_ALLOCATED_MASKING_PROPERTY_TYPE,
++    WEB_SOCKET_ALLOCATED_BUFFER_PROPERTY_TYPE,
+     WEB_SOCKET_DISABLE_UTF8_VERIFICATION_PROPERTY_TYPE,
+     WEB_SOCKET_KEEPALIVE_INTERVAL_PROPERTY_TYPE,
+     WEB_SOCKET_SUPPORTED_VERSIONS_PROPERTY_TYPE,
+--- a/include/websocket.h
++++ b/include/websocket.h
+@@ -38,6 +38,8 @@
+ 
+ typedef struct _WEB_SOCKET_PROPERTY
+ {
++    /* Field order is ABI: Type, pointer-sized value, size. The padding
++     * after Type is significant; do not reorder or pack this struct. */
+     WEB_SOCKET_PROPERTY_TYPE Type;
+     PVOID                    pvValue;
+     ULONG                    ulValueSize;

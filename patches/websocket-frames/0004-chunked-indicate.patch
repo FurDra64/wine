@@ -1,0 +1,341 @@
+--- a/dlls/websocket/websocket.c
++++ b/dlls/websocket/websocket.c
+@@ -69,6 +69,7 @@
+     WEB_SOCKET_BUFFER_TYPE type; /* UTF8_MESSAGE or BINARY_MESSAGE */
+     BYTE *payload;               /* owned */
+     ULONG length;
++    ULONG indicate_off; /* bytes already delivered via INDICATE chunks */
+ };
+ 
+ struct websocket_handle
+@@ -338,6 +339,7 @@
+         return E_OUTOFMEMORY;
+     msg->type = type;
+     msg->length = length;
++    msg->indicate_off = 0;
+     msg->payload = NULL;
+     if (length)
+     {
+@@ -1034,7 +1036,23 @@
+     }
+     ctx->kind = is_close ? WS_ACTION_INDICATE_CLOSE : WS_ACTION_INDICATE_RECV;
+     ctx->length = length;
+-    if (obj->native_base && obj->native_len >= length
++    if (!is_close && obj->native_base && obj->native_len)
++    {
++        /* A message may exceed the native scratch: deliver it in
++         * native-sized chunks across successive indications. Only one
++         * action is outstanding at a time, so the scratch is free. */
++        ULONG off = obj->pending_msg->indicate_off;
++        ULONG chunk = (off < length) ? length - off : 0;
++        if (chunk > obj->native_len)
++            chunk = obj->native_len;
++        if (chunk)
++            memcpy(obj->native_base, payload + off, chunk);
++        obj->native_off = 0;
++        ctx->length = chunk;
++        dataBuffers[0].Data.pbBuffer = obj->native_base;
++        dataBuffers[0].Data.ulBufferLength = chunk;
++    }
++    else if (obj->native_base && obj->native_len >= length
+         && (length == 0 || payload || is_close))
+     {
+         /* The host validates every offered pointer against the native
+@@ -1120,18 +1138,22 @@
+         && obj->send_frame_off < obj->send_frame_len)
+     {
+         ULONG send_remain = obj->send_frame_len - obj->send_frame_off;
+-        if (obj->native_base && obj->native_len >= send_remain)
++        ULONG send_chunk = send_remain;
++        if (obj->native_base && obj->native_len)
+         {
+             /* Same native-range rule as indicate: the host rejects
+-             * malloc'd frame pointers, so copy the slice into the
+-             * native scratch (exclusive outstanding action => safe). */
+-            if (send_remain)
++             * malloc'd frame pointers, so copy through the native
++             * scratch, chunked when the frame exceeds it. Exclusive
++             * outstanding action => the scratch is always free here. */
++            if (send_chunk > obj->native_len)
++                send_chunk = obj->native_len;
++            if (send_chunk)
+                 memcpy(obj->native_base,
+-                    obj->send_frame + obj->send_frame_off, send_remain);
++                    obj->send_frame + obj->send_frame_off, send_chunk);
+             obj->native_off = 0;
+             return offer_network(obj, dataBuffers, dataBufferCount,
+                 bufferType, appContext, actionContext, action,
+-                WS_ACTION_SEND_NET, obj->native_base, send_remain,
++                WS_ACTION_SEND_NET, obj->native_base, send_chunk,
+                 obj->send_context);
+         }
+         return offer_network(obj, dataBuffers, dataBufferCount, bufferType,
+@@ -1362,6 +1384,14 @@
+             obj->native_off = 0;
+         break;
+     case WS_ACTION_INDICATE_RECV:
++        if (obj->pending_msg)
++        {
++            obj->pending_msg->indicate_off += bytesTransferred;
++            if (obj->pending_msg->indicate_off > obj->pending_msg->length)
++                obj->pending_msg->indicate_off = obj->pending_msg->length;
++            if (obj->pending_msg->indicate_off < obj->pending_msg->length)
++                break; /* more chunks to deliver: receive stays pending */
++        }
+         free_message(obj->pending_msg);
+         obj->pending_msg = NULL;
+         obj->recv_pending = FALSE;
+--- a/dlls/websocket/websocket.c
++++ b/dlls/websocket/websocket.c
+@@ -225,6 +225,19 @@
+     }
+ }
+ 
++/* Upper bound for any single native-scratch offer. The host range-checks
++ * every offered pointer against [native_base, native_base + native_len)
++ * and additionally rejects a full-range 16544-byte offer (16224 passes),
++ * so clamp all scratch offers to 16KB. */
++static ULONG native_offer_max(struct websocket_handle *obj)
++{
++    if (!obj->native_base || !obj->native_len)
++        return 0;
++    if (obj->native_len > 16384)
++        return 16384;
++    return obj->native_len > 1 ? obj->native_len - 1 : 0;
++}
++
+ static HRESULT create_handle(BOOL is_server,
+     const WEB_SOCKET_PROPERTY *properties, ULONG count,
+     WEB_SOCKET_HANDLE *handle)
+@@ -1043,8 +1056,11 @@
+          * action is outstanding at a time, so the scratch is free. */
+         ULONG off = obj->pending_msg->indicate_off;
+         ULONG chunk = (off < length) ? length - off : 0;
+-        if (chunk > obj->native_len)
+-            chunk = obj->native_len;
++        ULONG max = native_offer_max(obj);
++        if (!max)
++            chunk = 0;
++        else if (chunk > max)
++            chunk = max;
+         if (chunk)
+             memcpy(obj->native_base, payload + off, chunk);
+         obj->native_off = 0;
+@@ -1139,14 +1155,15 @@
+     {
+         ULONG send_remain = obj->send_frame_len - obj->send_frame_off;
+         ULONG send_chunk = send_remain;
+-        if (obj->native_base && obj->native_len)
++        ULONG send_max = native_offer_max(obj);
++        if (send_max)
+         {
+             /* Same native-range rule as indicate: the host rejects
+              * malloc'd frame pointers, so copy through the native
+              * scratch, chunked when the frame exceeds it. Exclusive
+              * outstanding action => the scratch is always free here. */
+-            if (send_chunk > obj->native_len)
+-                send_chunk = obj->native_len;
++            if (send_chunk > send_max)
++                send_chunk = send_max;
+             if (send_chunk)
+                 memcpy(obj->native_base,
+                     obj->send_frame + obj->send_frame_off, send_chunk);
+@@ -1165,15 +1182,19 @@
+     if (actionQueue != WEB_SOCKET_SEND_ACTION_QUEUE && obj->pong_frame)
+     {
+         ULONG pong_remain = obj->pong_frame_len - obj->pong_frame_off;
+-        if (obj->native_base && obj->native_len >= pong_remain)
+-        {
+-            if (pong_remain)
++        ULONG pong_chunk = pong_remain;
++        ULONG pong_max = native_offer_max(obj);
++        if (pong_max)
++        {
++            if (pong_chunk > pong_max)
++                pong_chunk = pong_max;
++            if (pong_chunk)
+                 memcpy(obj->native_base,
+-                    obj->pong_frame + obj->pong_frame_off, pong_remain);
++                    obj->pong_frame + obj->pong_frame_off, pong_chunk);
+             obj->native_off = 0;
+             return offer_network(obj, dataBuffers, dataBufferCount,
+                 bufferType, appContext, actionContext, action,
+-                WS_ACTION_PONG_NET, obj->native_base, pong_remain, NULL);
++                WS_ACTION_PONG_NET, obj->native_base, pong_chunk, NULL);
+         }
+         return offer_network(obj, dataBuffers, dataBufferCount, bufferType,
+             appContext, actionContext, action, WS_ACTION_PONG_NET,
+@@ -1184,15 +1205,19 @@
+     if (actionQueue != WEB_SOCKET_SEND_ACTION_QUEUE && obj->close_frame)
+     {
+         ULONG close_remain = obj->close_frame_len - obj->close_frame_off;
+-        if (obj->native_base && obj->native_len >= close_remain)
+-        {
+-            if (close_remain)
++        ULONG close_chunk = close_remain;
++        ULONG close_max = native_offer_max(obj);
++        if (close_max)
++        {
++            if (close_chunk > close_max)
++                close_chunk = close_max;
++            if (close_chunk)
+                 memcpy(obj->native_base,
+-                    obj->close_frame + obj->close_frame_off, close_remain);
++                    obj->close_frame + obj->close_frame_off, close_chunk);
+             obj->native_off = 0;
+             return offer_network(obj, dataBuffers, dataBufferCount,
+                 bufferType, appContext, actionContext, action,
+-                WS_ACTION_CLOSE_NET, obj->native_base, close_remain, NULL);
++                WS_ACTION_CLOSE_NET, obj->native_base, close_chunk, NULL);
+         }
+         return offer_network(obj, dataBuffers, dataBufferCount, bufferType,
+             appContext, actionContext, action, WS_ACTION_CLOSE_NET,
+@@ -1241,6 +1266,11 @@
+             length = obj->native_len - obj->native_off;
+             if (length > spare)
+                 length = spare;
++            {
++                ULONG max = native_offer_max(obj);
++                if (max && length > max)
++                    length = max;
++            }
+             base = obj->native_base + obj->native_off;
+         }
+         return offer_network(obj, dataBuffers, dataBufferCount, bufferType,
+--- a/dlls/websocket/websocket.c
++++ b/dlls/websocket/websocket.c
+@@ -963,8 +963,16 @@
+         return E_HANDLE;
+     if (obj->recv_pending)
+     {
+-        WARN("receive already pending on handle %p\n", handle);
+-        return E_INVALIDARG;
++        /* A chunked indication in progress (partial message delivered,
++         * no action outstanding) accepts the next Receive for the
++         * following chunk; any other overlap is a protocol violation. */
++        if (!obj->pending_msg || !obj->pending_msg->indicate_off
++            || obj->pending_msg->indicate_off >= obj->pending_msg->length
++            || obj->out_action)
++        {
++            WARN("receive already pending on handle %p\n", handle);
++            return E_INVALIDARG;
++        }
+     }
+     /* The caller keeps its buffer alive until the indication completes, so
+      * only the struct is copied; the payload pointer stays borrowed and is
+@@ -1029,6 +1037,7 @@
+     struct ws_action_ctx *ctx = malloc(sizeof(*ctx));
+     BYTE *payload;
+     ULONG length;
++    BOOL fragment = FALSE; /* this chunk is non-final: more bytes follow */
+ 
+     if (!ctx)
+         return E_OUTOFMEMORY;
+@@ -1061,6 +1070,7 @@
+             chunk = 0;
+         else if (chunk > max)
+             chunk = max;
++        fragment = (off + chunk) < length;
+         if (chunk)
+             memcpy(obj->native_base, payload + off, chunk);
+         obj->native_off = 0;
+@@ -1104,6 +1114,15 @@
+         dataBuffers[0].CloseStatus.usStatus = obj->close_ind_status;
+         *bufferType = WEB_SOCKET_CLOSE_BUFFER_TYPE;
+     }
++    else if (fragment)
++    {
++        /* Non-final chunk: FRAGMENT so the host reports EndOfMessage
++         * false and the application receives again for the next chunk;
++         * the final chunk keeps the MESSAGE type (EndOfMessage true). */
++        *bufferType = (obj->pending_msg->type == WEB_SOCKET_UTF8_MESSAGE_BUFFER_TYPE)
++            ? WEB_SOCKET_UTF8_FRAGMENT_BUFFER_TYPE
++            : WEB_SOCKET_BINARY_FRAGMENT_BUFFER_TYPE;
++    }
+     else
+     {
+         *bufferType = obj->pending_msg->type;
+--- a/dlls/websocket/websocket.c
++++ b/dlls/websocket/websocket.c
+@@ -1066,6 +1066,12 @@
+         ULONG off = obj->pending_msg->indicate_off;
+         ULONG chunk = (off < length) ? length - off : 0;
+         ULONG max = native_offer_max(obj);
++        /* Never offer more than the application's receive buffer can
++         * take in one indication: the host reports EOM as soon as it
++         * cannot consume the whole offered chunk. */
++        if (obj->recv_buffer && obj->recv_buffer->Data.ulBufferLength
++            && obj->recv_buffer->Data.ulBufferLength < max)
++            max = obj->recv_buffer->Data.ulBufferLength;
+         if (!max)
+             chunk = 0;
+         else if (chunk > max)
+--- a/dlls/websocket/websocket.c
++++ b/dlls/websocket/websocket.c
+@@ -1066,12 +1066,19 @@
+         ULONG off = obj->pending_msg->indicate_off;
+         ULONG chunk = (off < length) ? length - off : 0;
+         ULONG max = native_offer_max(obj);
+-        /* Never offer more than the application's receive buffer can
+-         * take in one indication: the host reports EOM as soon as it
+-         * cannot consume the whole offered chunk. */
++        /* Never offer more than the application can consume in one
++         * indication: the host reports EOM as soon as it cannot consume
++         * the whole offered chunk. With a known receive buffer, cap to
++         * it; on the server path WebSocketReceive passes NULL, so the
++         * app space is unknown and a conservative 1KB applies (any app
++         * buffer >= 1KB then sees EOM only on the final chunk). */
+         if (obj->recv_buffer && obj->recv_buffer->Data.ulBufferLength
+             && obj->recv_buffer->Data.ulBufferLength < max)
+             max = obj->recv_buffer->Data.ulBufferLength;
++        else if ((!obj->recv_buffer
++                || !obj->recv_buffer->Data.ulBufferLength)
++            && max > 1024)
++            max = 1024;
+         if (!max)
+             chunk = 0;
+         else if (chunk > max)
+--- a/dlls/websocket/websocket.c
++++ b/dlls/websocket/websocket.c
+@@ -126,6 +126,14 @@
+     BOOL recv_pending;
+     WEB_SOCKET_BUFFER *recv_buffer; /* owned struct copy; pbBuffer borrowed */
+     PVOID recv_context;
++    /* NoAction pulse: the host pump consumes every indication up to the
++     * next NoAction and returns only the last one to the application, so
++     * a multi-chunk message must surface one chunk per application
++     * Receive. Set when an INDICATE chunk leaves bytes undelivered;
++     * the next receive-queue GetAction answers NoAction once, letting
++     * the pump return the chunk, and the application's following
++     * Receive collects the next chunk. */
++    BOOL noaction_due;
+ 
+     /* Auto-generated frames. A ping is answered with a pong, a close with
+      * a close reply; both surface as SEND_TO_NETWORK on the receive queue. */
+@@ -1183,6 +1191,12 @@
+         *action = WEB_SOCKET_NO_ACTION;
+         return S_OK;
+     }
++    if (obj->noaction_due && actionQueue != WEB_SOCKET_SEND_ACTION_QUEUE)
++    {
++        obj->noaction_due = FALSE;
++        *action = WEB_SOCKET_NO_ACTION;
++        return S_OK;
++    }
+     if (obj->recv_pending && actionQueue != WEB_SOCKET_SEND_ACTION_QUEUE)
+         parse_available(obj);
+ 
+@@ -1458,7 +1472,12 @@
+             if (obj->pending_msg->indicate_off > obj->pending_msg->length)
+                 obj->pending_msg->indicate_off = obj->pending_msg->length;
+             if (obj->pending_msg->indicate_off < obj->pending_msg->length)
+-                break; /* more chunks to deliver: receive stays pending */
++            {
++                /* More chunks remain: pulse NoAction next so the host
++                 * pump returns this chunk to the application now. */
++                obj->noaction_due = TRUE;
++                break;
++            }
+         }
+         free_message(obj->pending_msg);
+         obj->pending_msg = NULL;

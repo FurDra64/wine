@@ -1,0 +1,17 @@
+--- a/dlls/websocket/websocket.c
++++ b/dlls/websocket/websocket.c
+@@ -858,8 +858,13 @@
+         return E_INVALIDARG;
+     if (obj->aborted)
+         return E_HANDLE;
+-    if (obj->close_sent)
++    if (obj->close_sent && bufferType != WEB_SOCKET_CLOSE_BUFFER_TYPE)
+     {
++        /* Data frames after close are a protocol violation, but a CLOSE
++         * send is the idempotent close handshake itself (e.g. the
++         * application's CloseAsync answering a received close): always
++         * allow it, replacing any unsent auto-reply. Rejecting it makes
++         * the host abort the handle. */
+         WARN("send after close on handle %p\n", handle);
+         return E_INVALIDARG;
+     }

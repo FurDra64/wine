@@ -1,0 +1,1260 @@
+--- a/dlls/websocket/websocket.c
++++ b/dlls/websocket/websocket.c
+@@ -27,12 +27,111 @@
+ 
+ #define WEBSOCKET_HANDLE_MAGIC 0x534f4257
+ 
++/* RFC6455 frame opcodes */
++#define WS_OP_CONTINUATION 0x0
++#define WS_OP_TEXT         0x1
++#define WS_OP_BINARY       0x2
++#define WS_OP_CLOSE        0x8
++#define WS_OP_PING         0x9
++#define WS_OP_PONG         0xa
++
++/* Receive window and message limits. The window only needs to hold one
++ * inbound frame head at a time; fragmented messages accumulate separately. */
++#define WS_INITIAL_WINDOW    4096
++#define WS_MAX_WINDOW        (8 * 1024 * 1024)
++#define WS_MAX_MESSAGE       (32 * 1024 * 1024)
++#define WS_MAX_CLOSE_REASON  123
++
++/* Kinds of outstanding GetAction actions. Exactly one action may be
++ * outstanding per handle; its context is handed to the application and
++ * must come back via WebSocketCompleteAction before the next GetAction
++ * returns anything but NO_ACTION. */
++enum ws_action_kind
++{
++    WS_ACTION_SEND_NET,
++    WS_ACTION_PONG_NET,
++    WS_ACTION_CLOSE_NET,
++    WS_ACTION_RECV_NET,
++    WS_ACTION_INDICATE_RECV,
++    WS_ACTION_INDICATE_CLOSE,
++    WS_ACTION_INDICATE_SEND,
++};
++
++struct ws_action_ctx
++{
++    enum ws_action_kind kind;
++    ULONG length; /* wire bytes offered (network actions) */
++};
++
++/* One complete inbound data message awaiting indication. */
++struct ws_message
++{
++    WEB_SOCKET_BUFFER_TYPE type; /* UTF8_MESSAGE or BINARY_MESSAGE */
++    BYTE *payload;               /* owned */
++    ULONG length;
++};
++
+ struct websocket_handle
+ {
+     ULONG magic;
+     BOOL is_server;
+     WEB_SOCKET_HTTP_HEADER *additional_headers;
+     ULONG additional_header_count;
++
++    /* Wire receive window. recv_off is the parse cursor; bytes in
++     * [recv_off, recv_len) are not yet parsed into frames. */
++    BYTE *recv_buf; /* owned */
++    ULONG recv_len;
++    ULONG recv_cap;
++    ULONG recv_off;
++
++    /* Fragmented message reassembly (RFC6455 section 5.4). */
++    BYTE *frag_buf; /* owned */
++    ULONG frag_len;
++    ULONG frag_cap;
++    WEB_SOCKET_BUFFER_TYPE frag_type; /* message type the fragments belong to */
++    BOOL frag_active;
++
++    /* One complete inbound message awaiting INDICATE_RECEIVE_COMPLETE. */
++    struct ws_message *pending_msg; /* owned */
++
++    /* Close indication awaiting delivery. Stored apart from pending_msg so
++     * a close frame arriving behind a queued data message is not lost. */
++    BOOL close_ind_pending;
++    USHORT close_ind_status;
++    BYTE *close_ind_reason; /* owned, at most WS_MAX_CLOSE_REASON bytes */
++    ULONG close_ind_reason_len;
++
++    /* One outstanding send (WebSocketSend). Only the serialized frame is
++     * kept; it owns a copy of the application payload. */
++    BOOL send_pending;
++    WEB_SOCKET_BUFFER_TYPE send_type;
++    PVOID send_context;
++    BYTE *send_frame; /* owned, unmasked server-side frame */
++    ULONG send_frame_len;
++    ULONG send_frame_off; /* bytes acknowledged via CompleteAction */
++    BOOL send_frag_active; /* fragmented send sequence in progress */
++
++    /* One outstanding receive (WebSocketReceive). */
++    BOOL recv_pending;
++    WEB_SOCKET_BUFFER *recv_buffer; /* owned struct copy; pbBuffer borrowed */
++    PVOID recv_context;
++
++    /* Auto-generated frames. A ping is answered with a pong, a close with
++     * a close reply; both surface as SEND_TO_NETWORK on the receive queue. */
++    BYTE *pong_frame; /* owned */
++    ULONG pong_frame_len;
++    ULONG pong_frame_off;
++    BYTE *close_frame; /* owned */
++    ULONG close_frame_len;
++    ULONG close_frame_off;
++
++    /* Outstanding GetAction action awaiting CompleteAction (at most one). */
++    struct ws_action_ctx *out_action; /* owned */
++
++    BOOL close_sent;
++    BOOL close_received;
++    BOOL aborted;
+ };
+ 
+ static struct websocket_handle *get_handle_obj(WEB_SOCKET_HANDLE handle)
+@@ -60,6 +159,14 @@
+     obj->additional_header_count = 0;
+ }
+ 
++static void free_message(struct ws_message *msg)
++{
++    if (!msg)
++        return;
++    free(msg->payload);
++    free(msg);
++}
++
+ static HRESULT create_handle(BOOL is_server, WEB_SOCKET_HANDLE *handle)
+ {
+     struct websocket_handle *obj;
+@@ -75,6 +182,477 @@
+     return S_OK;
+ }
+ 
++static BOOL valid_buffer_type(WEB_SOCKET_BUFFER_TYPE type)
++{
++    switch (type)
++    {
++    case WEB_SOCKET_UTF8_MESSAGE_BUFFER_TYPE:
++    case WEB_SOCKET_UTF8_FRAGMENT_BUFFER_TYPE:
++    case WEB_SOCKET_BINARY_MESSAGE_BUFFER_TYPE:
++    case WEB_SOCKET_BINARY_FRAGMENT_BUFFER_TYPE:
++    case WEB_SOCKET_CLOSE_BUFFER_TYPE:
++    case WEB_SOCKET_PING_PONG_BUFFER_TYPE:
++    case WEB_SOCKET_UNSOLICITED_PONG_BUFFER_TYPE:
++        return TRUE;
++    default:
++        return FALSE;
++    }
++}
++
++/* Serialize one server-side (unmasked) frame. Returns an owned buffer. */
++static HRESULT build_frame(BYTE opcode, BOOL fin, const BYTE *payload,
++    ULONG length, BYTE **out, ULONG *out_len)
++{
++    BYTE *frame;
++    ULONG hdr = 2;
++
++    if (length >= 126)
++        hdr += (length > 0xffff) ? 8 : 2;
++    frame = malloc(hdr + length);
++    if (!frame)
++        return E_OUTOFMEMORY;
++    frame[0] = opcode | (fin ? 0x80 : 0x00);
++    if (length < 126)
++    {
++        frame[1] = (BYTE)length;
++    }
++    else if (length <= 0xffff)
++    {
++        frame[1] = 126;
++        frame[2] = (BYTE)(length >> 8);
++        frame[3] = (BYTE)length;
++    }
++    else
++    {
++        frame[1] = 127;
++        frame[2] = frame[3] = frame[4] = frame[5] = 0;
++        frame[6] = (BYTE)(length >> 24);
++        frame[7] = (BYTE)(length >> 16);
++        frame[8] = (BYTE)(length >> 8);
++        frame[9] = (BYTE)length;
++    }
++    if (length && payload)
++        memcpy(frame + hdr, payload, length);
++    *out = frame;
++    *out_len = hdr + length;
++    return S_OK;
++}
++
++/* Drop consumed wire bytes and slide the remainder to the front. */
++static void compact_window(struct websocket_handle *obj)
++{
++    if (!obj->recv_off)
++        return;
++    if (obj->recv_off < obj->recv_len)
++        memmove(obj->recv_buf, obj->recv_buf + obj->recv_off,
++            obj->recv_len - obj->recv_off);
++    obj->recv_len -= obj->recv_off;
++    obj->recv_off = 0;
++}
++
++/* Grow the receive window so GetAction can offer spare bytes. */
++static HRESULT grow_window(struct websocket_handle *obj)
++{
++    ULONG new_cap = obj->recv_cap ? obj->recv_cap * 2 : WS_INITIAL_WINDOW;
++    BYTE *new_buf;
++
++    if (new_cap > WS_MAX_WINDOW)
++        new_cap = WS_MAX_WINDOW;
++    if (new_cap <= obj->recv_cap)
++        return E_OUTOFMEMORY;
++    new_buf = realloc(obj->recv_buf, new_cap);
++    if (!new_buf)
++        return E_OUTOFMEMORY;
++    obj->recv_buf = new_buf;
++    obj->recv_cap = new_cap;
++    return S_OK;
++}
++
++/* Queue a complete inbound data message. The payload is copied. */
++static HRESULT queue_message(struct websocket_handle *obj,
++    WEB_SOCKET_BUFFER_TYPE type, const BYTE *payload, ULONG length)
++{
++    struct ws_message *msg = malloc(sizeof(*msg));
++
++    if (!msg)
++        return E_OUTOFMEMORY;
++    msg->type = type;
++    msg->length = length;
++    msg->payload = NULL;
++    if (length)
++    {
++        msg->payload = malloc(length);
++        if (!msg->payload)
++        {
++            free(msg);
++            return E_OUTOFMEMORY;
++        }
++        memcpy(msg->payload, payload, length);
++    }
++    obj->pending_msg = msg;
++    return S_OK;
++}
++
++/* Append an unmasked payload chunk to the fragment accumulator. */
++static HRESULT append_fragment(struct websocket_handle *obj,
++    const BYTE *payload, ULONG length)
++{
++    BYTE *new_buf;
++    ULONG new_len = obj->frag_len + length;
++
++    if (new_len < obj->frag_len || new_len > WS_MAX_MESSAGE)
++        return E_OUTOFMEMORY;
++    if (new_len > obj->frag_cap)
++    {
++        ULONG new_cap = obj->frag_cap ? obj->frag_cap * 2 : 1024;
++
++        while (new_cap < new_len)
++            new_cap *= 2;
++        if (new_cap > WS_MAX_MESSAGE)
++            new_cap = WS_MAX_MESSAGE;
++        if (new_cap < new_len)
++            return E_OUTOFMEMORY;
++        new_buf = realloc(obj->frag_buf, new_cap);
++        if (!new_buf)
++            return E_OUTOFMEMORY;
++        obj->frag_buf = new_buf;
++        obj->frag_cap = new_cap;
++    }
++    if (length)
++        memcpy(obj->frag_buf + obj->frag_len, payload, length);
++    obj->frag_len = new_len;
++    return S_OK;
++}
++
++static void abort_handle(struct websocket_handle *obj)
++{
++    WARN("protocol error, aborting handle %p\n", obj);
++    obj->aborted = TRUE;
++}
++
++/* Answer an inbound ping with a pong carrying the same payload. */
++static void queue_pong(struct websocket_handle *obj,
++    const BYTE *payload, ULONG length)
++{
++    BYTE *frame = NULL;
++    ULONG frame_len = 0;
++
++    if (FAILED(build_frame(WS_OP_PONG, TRUE, payload, length, &frame, &frame_len)))
++    {
++        WARN("out of memory building pong\n");
++        obj->aborted = TRUE;
++        return;
++    }
++    free(obj->pong_frame);
++    obj->pong_frame = frame;
++    obj->pong_frame_len = frame_len;
++    obj->pong_frame_off = 0;
++}
++
++/* Handle one complete inbound close frame: latch the close indication and
++ * queue a close reply echoing the status and reason. */
++static void handle_close_frame(struct websocket_handle *obj,
++    const BYTE *payload, ULONG length)
++{
++    USHORT status = WEB_SOCKET_SUCCESS_CLOSE_STATUS;
++    ULONG reason_len = 0;
++    const BYTE *reason = NULL;
++    BYTE *frame = NULL, close_payload[2 + WS_MAX_CLOSE_REASON];
++    ULONG frame_len = 0, close_len;
++
++    if (length >= 2)
++    {
++        status = (USHORT)((payload[0] << 8) | payload[1]);
++        reason = payload + 2;
++        reason_len = length - 2;
++        if (reason_len > WS_MAX_CLOSE_REASON)
++            reason_len = WS_MAX_CLOSE_REASON;
++    }
++    TRACE("close received status %u reason_len %lu\n", status, reason_len);
++
++    free(obj->close_ind_reason);
++    obj->close_ind_reason = NULL;
++    obj->close_ind_reason_len = 0;
++    if (reason_len)
++    {
++        obj->close_ind_reason = malloc(reason_len);
++        if (!obj->close_ind_reason)
++        {
++            WARN("out of memory storing close reason\n");
++            obj->aborted = TRUE;
++            return;
++        }
++        memcpy(obj->close_ind_reason, reason, reason_len);
++        obj->close_ind_reason_len = reason_len;
++    }
++    obj->close_ind_status = status;
++    obj->close_ind_pending = TRUE;
++    obj->close_received = TRUE;
++
++    if (!obj->close_sent)
++    {
++        close_payload[0] = (BYTE)(status >> 8);
++        close_payload[1] = (BYTE)status;
++        if (reason_len)
++            memcpy(close_payload + 2, reason, reason_len);
++        close_len = 2 + reason_len;
++        if (FAILED(build_frame(WS_OP_CLOSE, TRUE, close_payload, close_len,
++                &frame, &frame_len)))
++        {
++            WARN("out of memory building close reply\n");
++            obj->aborted = TRUE;
++            return;
++        }
++        free(obj->close_frame);
++        obj->close_frame = frame;
++        obj->close_frame_len = frame_len;
++        obj->close_frame_off = 0;
++        obj->close_sent = TRUE;
++    }
++}
++
++/* Process one complete data frame payload (already unmasked into a
++ * temporary copy). Advances fragmentation or queues a message. */
++static void handle_data_frame(struct websocket_handle *obj, BYTE opcode,
++    BOOL fin, const BYTE *payload, ULONG length)
++{
++    WEB_SOCKET_BUFFER_TYPE base;
++
++    if (opcode == WS_OP_CONTINUATION)
++    {
++        if (!obj->frag_active)
++        {
++            abort_handle(obj);
++            return;
++        }
++        if (FAILED(append_fragment(obj, payload, length)))
++        {
++            WARN("out of memory accumulating fragment\n");
++            obj->aborted = TRUE;
++            return;
++        }
++        if (fin)
++        {
++            if (FAILED(queue_message(obj, obj->frag_type,
++                    obj->frag_buf, obj->frag_len)))
++            {
++                WARN("out of memory queueing reassembled message\n");
++                obj->aborted = TRUE;
++                return;
++            }
++            free(obj->frag_buf);
++            obj->frag_buf = NULL;
++            obj->frag_len = obj->frag_cap = 0;
++            obj->frag_active = FALSE;
++        }
++        return;
++    }
++
++    if (obj->frag_active)
++    {
++        abort_handle(obj);
++        return;
++    }
++    base = (opcode == WS_OP_TEXT) ? WEB_SOCKET_UTF8_MESSAGE_BUFFER_TYPE
++        : WEB_SOCKET_BINARY_MESSAGE_BUFFER_TYPE;
++    if (fin)
++    {
++        if (FAILED(queue_message(obj, base, payload, length)))
++        {
++            WARN("out of memory queueing message\n");
++            obj->aborted = TRUE;
++        }
++        return;
++    }
++    obj->frag_type = base;
++    obj->frag_active = TRUE;
++    free(obj->frag_buf);
++    obj->frag_buf = NULL;
++    obj->frag_len = obj->frag_cap = 0;
++    if (FAILED(append_fragment(obj, payload, length)))
++    {
++        WARN("out of memory starting fragment\n");
++        obj->aborted = TRUE;
++        obj->frag_active = FALSE;
++    }
++}
++
++/* Parse complete frames out of the receive window. Stops when the window
++ * holds no complete frame or when a message is ready for indication.
++ * Data past a received close is consumed and ignored; control frames stay
++ * interleaved correctly because they never touch fragment state. */
++static void parse_available(struct websocket_handle *obj)
++{
++    ULONG off = obj->recv_off;
++    BYTE *unmasked = NULL;
++
++    while (!obj->pending_msg && !obj->aborted)
++    {
++        BYTE b0, b1, opcode;
++        BOOL fin, masked;
++        ULONG hdr = 2, length = 0, i;
++        const BYTE *payload, *key = NULL;
++
++        if (obj->recv_len - off < 2)
++            break;
++        b0 = obj->recv_buf[off];
++        b1 = obj->recv_buf[off + 1];
++        fin = (b0 & 0x80) != 0;
++        opcode = b0 & 0x0f;
++        masked = (b1 & 0x80) != 0;
++        if (b0 & 0x70)
++        {
++            abort_handle(obj);
++            break;
++        }
++        if ((b1 & 0x7f) < 126)
++        {
++            length = b1 & 0x7f;
++        }
++        else if ((b1 & 0x7f) == 126)
++        {
++            if (obj->recv_len - off < 4)
++                break;
++            length = ((ULONG)obj->recv_buf[off + 2] << 8)
++                | obj->recv_buf[off + 3];
++            hdr = 4;
++        }
++        else
++        {
++            ULONG hi;
++
++            if (obj->recv_len - off < 10)
++                break;
++            hi = ((ULONG)obj->recv_buf[off + 2] << 24)
++                | ((ULONG)obj->recv_buf[off + 3] << 16)
++                | ((ULONG)obj->recv_buf[off + 4] << 8)
++                | obj->recv_buf[off + 5];
++            length = ((ULONG)obj->recv_buf[off + 6] << 24)
++                | ((ULONG)obj->recv_buf[off + 7] << 16)
++                | ((ULONG)obj->recv_buf[off + 8] << 8)
++                | obj->recv_buf[off + 9];
++            if (hi)
++            {
++                abort_handle(obj);
++                break;
++            }
++            hdr = 10;
++        }
++        if (masked)
++            hdr += 4;
++        if (length > WS_MAX_WINDOW)
++        {
++            /* Declared payload can never fit the window. */
++            abort_handle(obj);
++            break;
++        }
++        if (obj->recv_len - off < hdr + length)
++        {
++            if (obj->recv_off + hdr <= obj->recv_len
++                && obj->recv_len == obj->recv_cap)
++            {
++                /* Window full with a partial frame: grow so the rest fits. */
++                obj->recv_off = off;
++                if (FAILED(grow_window(obj)))
++                {
++                    WARN("receive window exhausted\n");
++                    obj->aborted = TRUE;
++                }
++                return;
++            }
++            break;
++        }
++        if (masked)
++            key = obj->recv_buf + off + hdr - 4;
++        payload = obj->recv_buf + off + hdr;
++        off += hdr + length;
++
++        if (opcode >= WS_OP_CLOSE)
++        {
++            if (!fin || length > WS_MAX_CLOSE_REASON + 2)
++            {
++                abort_handle(obj);
++                break;
++            }
++            if (opcode == WS_OP_PING)
++            {
++                if (length)
++                {
++                    unmasked = malloc(length);
++                    if (!unmasked)
++                    {
++                        WARN("out of memory for ping payload\n");
++                        obj->aborted = TRUE;
++                        break;
++                    }
++                    for (i = 0; i < length; i++)
++                        unmasked[i] = payload[i] ^ (masked ? key[i % 4] : 0);
++                    queue_pong(obj, unmasked, length);
++                    free(unmasked);
++                    unmasked = NULL;
++                }
++                else
++                    queue_pong(obj, NULL, 0);
++            }
++            else if (opcode == WS_OP_CLOSE)
++            {
++                if (length)
++                {
++                    unmasked = malloc(length);
++                    if (!unmasked)
++                    {
++                        WARN("out of memory for close payload\n");
++                        obj->aborted = TRUE;
++                        break;
++                    }
++                    for (i = 0; i < length; i++)
++                        unmasked[i] = payload[i] ^ (masked ? key[i % 4] : 0);
++                    handle_close_frame(obj, unmasked, length);
++                    free(unmasked);
++                    unmasked = NULL;
++                }
++                else
++                    handle_close_frame(obj, NULL, 0);
++            }
++            else if (opcode != WS_OP_PONG)
++            {
++                abort_handle(obj);
++                break;
++            }
++            /* Pong frames carry no information the API exposes; drop them. */
++            continue;
++        }
++
++        if (opcode != WS_OP_CONTINUATION && opcode != WS_OP_TEXT
++            && opcode != WS_OP_BINARY)
++        {
++            abort_handle(obj);
++            break;
++        }
++        if (obj->close_received)
++            continue; /* data after close is ignored */
++        if (length)
++        {
++            unmasked = malloc(length);
++            if (!unmasked)
++            {
++                WARN("out of memory for frame payload\n");
++                obj->aborted = TRUE;
++                break;
++            }
++            for (i = 0; i < length; i++)
++                unmasked[i] = payload[i] ^ (masked ? key[i % 4] : 0);
++            handle_data_frame(obj, opcode, fin, unmasked, length);
++            free(unmasked);
++            unmasked = NULL;
++        }
++        else
++            handle_data_frame(obj, opcode, fin, NULL, 0);
++    }
++    obj->recv_off = off;
++    compact_window(obj);
++}
++
+ HRESULT WINAPI WebSocketCreateClientHandle(const PWEB_SOCKET_PROPERTY properties,
+     ULONG count, WEB_SOCKET_HANDLE *handle)
+ {
+@@ -172,9 +750,495 @@
+     return S_OK;
+ }
+ 
++/* Queue one application send as a single serialized server-side frame.
++ * Only one send may be outstanding; a second WebSocketSend while one is
++ * pending fails. This DLL never touches sockets: the frame leaves the
++ * handle through GetAction (SEND_TO_NETWORK) for the host to write. */
++HRESULT WINAPI WebSocketSend(WEB_SOCKET_HANDLE handle,
++    WEB_SOCKET_BUFFER_TYPE bufferType, const WEB_SOCKET_BUFFER *buffer,
++    PVOID context)
++{
++    struct websocket_handle *obj = get_handle_obj(handle);
++    const BYTE *payload = NULL;
++    ULONG length = 0;
++    BYTE opcode = WS_OP_BINARY;
++    BOOL fin = TRUE;
++    BYTE *frame = NULL;
++    ULONG frame_len = 0;
++    BYTE close_payload[2 + WS_MAX_CLOSE_REASON];
++
++    TRACE("(%p, %d, %p, %p)\n", handle, bufferType, buffer, context);
++
++    if (!obj)
++        return E_HANDLE;
++    if (!valid_buffer_type(bufferType))
++        return E_INVALIDARG;
++    if (obj->aborted)
++        return E_HANDLE;
++    if (obj->close_sent)
++    {
++        WARN("send after close on handle %p\n", handle);
++        return E_INVALIDARG;
++    }
++    if (obj->send_pending)
++    {
++        WARN("send already pending on handle %p\n", handle);
++        return E_INVALIDARG;
++    }
++
++    switch (bufferType)
++    {
++    case WEB_SOCKET_CLOSE_BUFFER_TYPE:
++    {
++        USHORT status = WEB_SOCKET_SUCCESS_CLOSE_STATUS;
++
++        if (buffer)
++        {
++            status = buffer->CloseStatus.usStatus
++                ? buffer->CloseStatus.usStatus
++                : WEB_SOCKET_SUCCESS_CLOSE_STATUS;
++            payload = buffer->CloseStatus.pbReason;
++            length = buffer->CloseStatus.ulReasonLength;
++            if (length > WS_MAX_CLOSE_REASON)
++                return E_INVALIDARG;
++        }
++        close_payload[0] = (BYTE)(status >> 8);
++        close_payload[1] = (BYTE)status;
++        if (length)
++            memcpy(close_payload + 2, payload, length);
++        payload = close_payload;
++        length += 2;
++        opcode = WS_OP_CLOSE;
++        obj->close_sent = TRUE;
++        break;
++    }
++    case WEB_SOCKET_PING_PONG_BUFFER_TYPE:
++        if (buffer)
++        {
++            payload = buffer->Data.pbBuffer;
++            length = buffer->Data.ulBufferLength;
++        }
++        if (length > WS_MAX_CLOSE_REASON + 2)
++            return E_INVALIDARG;
++        opcode = WS_OP_PING;
++        break;
++    case WEB_SOCKET_UNSOLICITED_PONG_BUFFER_TYPE:
++        if (buffer)
++        {
++            payload = buffer->Data.pbBuffer;
++            length = buffer->Data.ulBufferLength;
++        }
++        if (length > WS_MAX_CLOSE_REASON + 2)
++            return E_INVALIDARG;
++        opcode = WS_OP_PONG;
++        break;
++    default:
++        if (!buffer || (!buffer->Data.pbBuffer && buffer->Data.ulBufferLength))
++            return E_INVALIDARG;
++        payload = buffer->Data.pbBuffer;
++        length = buffer->Data.ulBufferLength;
++        if (bufferType == WEB_SOCKET_UTF8_MESSAGE_BUFFER_TYPE
++            || bufferType == WEB_SOCKET_UTF8_FRAGMENT_BUFFER_TYPE)
++            opcode = WS_OP_TEXT;
++        if (bufferType == WEB_SOCKET_UTF8_FRAGMENT_BUFFER_TYPE
++            || bufferType == WEB_SOCKET_BINARY_FRAGMENT_BUFFER_TYPE)
++        {
++            /* A fragment continues (or starts) a fragmented message and
++             * is never final; a MESSAGE type terminates the sequence. */
++            fin = FALSE;
++            if (obj->send_frag_active)
++                opcode = WS_OP_CONTINUATION;
++            obj->send_frag_active = TRUE;
++        }
++        else
++        {
++            if (obj->send_frag_active)
++                opcode = WS_OP_CONTINUATION;
++            obj->send_frag_active = FALSE;
++        }
++        break;
++    }
++
++    if (FAILED(build_frame(opcode, fin, payload, length, &frame, &frame_len)))
++        return E_OUTOFMEMORY;
++    obj->send_frame = frame;
++    obj->send_frame_len = frame_len;
++    obj->send_frame_off = 0;
++    obj->send_type = bufferType;
++    obj->send_context = context;
++    obj->send_pending = TRUE;
++    return S_OK;
++}
++
++/* Register one receive operation. Only one receive may be outstanding; a
++ * second WebSocketReceive while one is pending fails. The payload itself
++ * arrives in two phases: RECEIVE_FROM_NETWORK hands the caller our wire
++ * window to fill, INDICATE_RECEIVE_COMPLETE hands back the parsed message. */
++HRESULT WINAPI WebSocketReceive(WEB_SOCKET_HANDLE handle,
++    WEB_SOCKET_BUFFER *buffer, PVOID context)
++{
++    struct websocket_handle *obj = get_handle_obj(handle);
++    WEB_SOCKET_BUFFER *copy = NULL;
++
++    TRACE("(%p, %p, %p)\n", handle, buffer, context);
++
++    if (!obj)
++        return E_HANDLE;
++    if (obj->aborted)
++        return E_HANDLE;
++    if (obj->recv_pending)
++    {
++        WARN("receive already pending on handle %p\n", handle);
++        return E_INVALIDARG;
++    }
++    /* The caller keeps its buffer alive until the indication completes, so
++     * only the struct is copied; the payload pointer stays borrowed and is
++     * never freed by this DLL. */
++    if (buffer)
++    {
++        copy = malloc(sizeof(*copy));
++        if (!copy)
++            return E_OUTOFMEMORY;
++        *copy = *buffer;
++    }
++    free(obj->recv_buffer);
++    obj->recv_buffer = copy;
++    obj->recv_context = context;
++    obj->recv_pending = TRUE;
++    return S_OK;
++}
++
++/* Fill the caller's buffer array with one network action. The returned
++ * pointers are borrowed: valid until the matching CompleteAction. */
++static HRESULT offer_network(struct websocket_handle *obj,
++    WEB_SOCKET_BUFFER *dataBuffers, ULONG *dataBufferCount,
++    WEB_SOCKET_BUFFER_TYPE *bufferType, PVOID *appContext,
++    PVOID *actionContext, WEB_SOCKET_ACTION *action,
++    enum ws_action_kind kind, BYTE *base, ULONG length, PVOID context)
++{
++    struct ws_action_ctx *ctx = malloc(sizeof(*ctx));
++
++    TRACE("action %d length %lu\n", kind, length);
++
++    if (!ctx)
++        return E_OUTOFMEMORY;
++    if (*dataBufferCount < 1)
++    {
++        free(ctx);
++        return E_INVALIDARG;
++    }
++    ctx->kind = kind;
++    ctx->length = length;
++    dataBuffers[0].BufferType = 0;
++    dataBuffers[0].Data.pbBuffer = base;
++    dataBuffers[0].Data.ulBufferLength = length;
++    *dataBufferCount = 1;
++    *bufferType = 0;
++    if (appContext)
++        *appContext = context;
++    *actionContext = ctx;
++    obj->out_action = ctx;
++    *action = (kind == WS_ACTION_RECV_NET)
++        ? WEB_SOCKET_RECEIVE_FROM_NETWORK_ACTION
++        : WEB_SOCKET_SEND_TO_NETWORK_ACTION;
++    return S_OK;
++}
++
++/* Offer the parsed inbound message (or close) for indication. Prefers the
++ * application's receive buffer when it fits; otherwise the borrowed
++ * handle-owned payload is returned for the caller to copy out. */
++static HRESULT offer_indicate(struct websocket_handle *obj,
++    WEB_SOCKET_BUFFER *dataBuffers, ULONG *dataBufferCount,
++    WEB_SOCKET_BUFFER_TYPE *bufferType, PVOID *appContext,
++    PVOID *actionContext, WEB_SOCKET_ACTION *action, BOOL is_close)
++{
++    struct ws_action_ctx *ctx = malloc(sizeof(*ctx));
++    BYTE *payload;
++    ULONG length;
++
++    if (!ctx)
++        return E_OUTOFMEMORY;
++    if (*dataBufferCount < 1)
++    {
++        free(ctx);
++        return E_INVALIDARG;
++    }
++    if (is_close)
++    {
++        payload = obj->close_ind_reason;
++        length = obj->close_ind_reason_len;
++    }
++    else
++    {
++        payload = obj->pending_msg->payload;
++        length = obj->pending_msg->length;
++    }
++    ctx->kind = is_close ? WS_ACTION_INDICATE_CLOSE : WS_ACTION_INDICATE_RECV;
++    ctx->length = length;
++    if (obj->recv_buffer && obj->recv_buffer->Data.pbBuffer
++        && obj->recv_buffer->Data.ulBufferLength >= length)
++    {
++        if (length)
++            memcpy(obj->recv_buffer->Data.pbBuffer, payload, length);
++        dataBuffers[0].Data.pbBuffer = obj->recv_buffer->Data.pbBuffer;
++        dataBuffers[0].Data.ulBufferLength = length;
++    }
++    else
++    {
++        dataBuffers[0].Data.pbBuffer = payload;
++        dataBuffers[0].Data.ulBufferLength = length;
++    }
++    if (is_close)
++    {
++        dataBuffers[0].BufferType = WEB_SOCKET_CLOSE_BUFFER_TYPE;
++        dataBuffers[0].CloseStatus.pbReason = dataBuffers[0].Data.pbBuffer;
++        dataBuffers[0].CloseStatus.ulReasonLength = length;
++        dataBuffers[0].CloseStatus.usStatus = obj->close_ind_status;
++        *bufferType = WEB_SOCKET_CLOSE_BUFFER_TYPE;
++    }
++    else
++    {
++        dataBuffers[0].BufferType = obj->pending_msg->type;
++        *bufferType = obj->pending_msg->type;
++    }
++    *dataBufferCount = 1;
++    if (appContext)
++        *appContext = obj->recv_context;
++    *actionContext = ctx;
++    obj->out_action = ctx;
++    *action = WEB_SOCKET_INDICATE_RECEIVE_COMPLETE_ACTION;
++    return S_OK;
++}
++
++HRESULT WINAPI WebSocketGetAction(WEB_SOCKET_HANDLE handle,
++    WEB_SOCKET_ACTION_QUEUE actionQueue, WEB_SOCKET_BUFFER *dataBuffers,
++    ULONG *dataBufferCount, WEB_SOCKET_ACTION *action,
++    WEB_SOCKET_BUFFER_TYPE *bufferType, PVOID *appContext, PVOID *actionContext)
++{
++    struct websocket_handle *obj = get_handle_obj(handle);
++    HRESULT hr;
++
++    TRACE("(%p, %d, %p, %p, %p, %p, %p, %p)\n", handle, actionQueue,
++        dataBuffers, dataBufferCount, action, bufferType, appContext,
++        actionContext);
++
++    if (!obj)
++        return E_HANDLE;
++    if (actionQueue != WEB_SOCKET_SEND_ACTION_QUEUE
++        && actionQueue != WEB_SOCKET_RECEIVE_ACTION_QUEUE
++        && actionQueue != WEB_SOCKET_ALL_ACTION_QUEUE)
++        return E_INVALIDARG;
++    if (!dataBuffers || !dataBufferCount || !action || !bufferType
++        || !actionContext)
++        return E_INVALIDARG;
++    if (obj->aborted || obj->out_action)
++    {
++        *action = WEB_SOCKET_NO_ACTION;
++        return S_OK;
++    }
++    if (obj->recv_pending && actionQueue != WEB_SOCKET_SEND_ACTION_QUEUE)
++        parse_available(obj);
++
++    if ((actionQueue == WEB_SOCKET_SEND_ACTION_QUEUE
++            || actionQueue == WEB_SOCKET_ALL_ACTION_QUEUE)
++        && obj->send_pending
++        && obj->send_frame_off < obj->send_frame_len)
++        return offer_network(obj, dataBuffers, dataBufferCount, bufferType,
++            appContext, actionContext, action, WS_ACTION_SEND_NET,
++            obj->send_frame + obj->send_frame_off,
++            obj->send_frame_len - obj->send_frame_off, obj->send_context);
++
++    if (actionQueue != WEB_SOCKET_SEND_ACTION_QUEUE && obj->pong_frame)
++        return offer_network(obj, dataBuffers, dataBufferCount, bufferType,
++            appContext, actionContext, action, WS_ACTION_PONG_NET,
++            obj->pong_frame + obj->pong_frame_off,
++            obj->pong_frame_len - obj->pong_frame_off, NULL);
++
++    if (actionQueue != WEB_SOCKET_SEND_ACTION_QUEUE && obj->close_frame)
++        return offer_network(obj, dataBuffers, dataBufferCount, bufferType,
++            appContext, actionContext, action, WS_ACTION_CLOSE_NET,
++            obj->close_frame + obj->close_frame_off,
++            obj->close_frame_len - obj->close_frame_off, NULL);
++
++    if (actionQueue != WEB_SOCKET_SEND_ACTION_QUEUE && obj->recv_pending
++        && obj->pending_msg)
++        return offer_indicate(obj, dataBuffers, dataBufferCount, bufferType,
++            appContext, actionContext, action, FALSE);
++
++    if (actionQueue != WEB_SOCKET_SEND_ACTION_QUEUE && obj->recv_pending
++        && obj->close_ind_pending)
++        return offer_indicate(obj, dataBuffers, dataBufferCount, bufferType,
++            appContext, actionContext, action, TRUE);
++
++    if (actionQueue != WEB_SOCKET_SEND_ACTION_QUEUE && obj->recv_pending
++        && !obj->aborted)
++    {
++        ULONG spare;
++
++        compact_window(obj);
++        spare = obj->recv_cap - obj->recv_len;
++        if (!spare)
++        {
++            hr = grow_window(obj);
++            if (FAILED(hr))
++            {
++                WARN("receive window exhausted\n");
++                obj->aborted = TRUE;
++                return hr;
++            }
++            spare = obj->recv_cap - obj->recv_len;
++        }
++        return offer_network(obj, dataBuffers, dataBufferCount, bufferType,
++            appContext, actionContext, action, WS_ACTION_RECV_NET,
++            obj->recv_buf + obj->recv_len, spare, NULL);
++    }
++
++    if ((actionQueue == WEB_SOCKET_SEND_ACTION_QUEUE
++            || actionQueue == WEB_SOCKET_ALL_ACTION_QUEUE)
++        && obj->send_pending
++        && obj->send_frame_off >= obj->send_frame_len)
++    {
++        struct ws_action_ctx *ctx = malloc(sizeof(*ctx));
++
++        if (!ctx)
++            return E_OUTOFMEMORY;
++        ctx->kind = WS_ACTION_INDICATE_SEND;
++        ctx->length = 0;
++        *dataBufferCount = 0;
++        *bufferType = obj->send_type;
++        if (appContext)
++            *appContext = obj->send_context;
++        *actionContext = ctx;
++        obj->out_action = ctx;
++        *action = WEB_SOCKET_INDICATE_SEND_COMPLETE_ACTION;
++        return S_OK;
++    }
++
++    *action = WEB_SOCKET_NO_ACTION;
++    return S_OK;
++}
++
++/* Resolve one outstanding action. Network actions must report exactly the
++ * offered byte count: a short/over write is a transport failure and aborts
++ * the handle, while a zero-byte receive means the peer went away and only
++ * cancels the pending receive. Indicate completions release the indicated
++ * state; a receive completes exactly one indication per WebSocketReceive. */
++VOID WINAPI WebSocketCompleteAction(WEB_SOCKET_HANDLE handle,
++    PVOID actionContext, ULONG bytesTransferred)
++{
++    struct websocket_handle *obj = get_handle_obj(handle);
++    struct ws_action_ctx *ctx;
++
++    TRACE("(%p, %p, %lu)\n", handle, actionContext, bytesTransferred);
++
++    if (!obj || !actionContext || actionContext != obj->out_action)
++    {
++        WARN("stale or foreign action context %p on handle %p\n",
++            actionContext, handle);
++        return;
++    }
++    ctx = obj->out_action;
++    obj->out_action = NULL;
++
++    switch (ctx->kind)
++    {
++    case WS_ACTION_SEND_NET:
++        if (bytesTransferred != ctx->length)
++        {
++            WARN("send length mismatch: %lu vs %lu\n",
++                bytesTransferred, ctx->length);
++            obj->aborted = TRUE;
++            break;
++        }
++        obj->send_frame_off += bytesTransferred;
++        break;
++    case WS_ACTION_PONG_NET:
++        if (bytesTransferred != ctx->length)
++        {
++            WARN("pong length mismatch: %lu vs %lu\n",
++                bytesTransferred, ctx->length);
++            obj->aborted = TRUE;
++            break;
++        }
++        obj->pong_frame_off += bytesTransferred;
++        if (obj->pong_frame_off >= obj->pong_frame_len)
++        {
++            free(obj->pong_frame);
++            obj->pong_frame = NULL;
++            obj->pong_frame_len = obj->pong_frame_off = 0;
++        }
++        break;
++    case WS_ACTION_CLOSE_NET:
++        if (bytesTransferred != ctx->length)
++        {
++            WARN("close length mismatch: %lu vs %lu\n",
++                bytesTransferred, ctx->length);
++            obj->aborted = TRUE;
++            break;
++        }
++        obj->close_frame_off += bytesTransferred;
++        if (obj->close_frame_off >= obj->close_frame_len)
++        {
++            free(obj->close_frame);
++            obj->close_frame = NULL;
++            obj->close_frame_len = obj->close_frame_off = 0;
++        }
++        break;
++    case WS_ACTION_RECV_NET:
++        if (!bytesTransferred)
++        {
++            /* End of stream: cancel the pending receive. */
++            TRACE("zero-byte receive, cancelling pending receive\n");
++            obj->recv_pending = FALSE;
++            free(obj->recv_buffer);
++            obj->recv_buffer = NULL;
++            break;
++        }
++        if (obj->recv_len + bytesTransferred > obj->recv_cap)
++        {
++            WARN("receive overrun: %lu + %lu\n",
++                obj->recv_len, bytesTransferred);
++            obj->aborted = TRUE;
++            break;
++        }
++        obj->recv_len += bytesTransferred;
++        parse_available(obj);
++        break;
++    case WS_ACTION_INDICATE_RECV:
++        free_message(obj->pending_msg);
++        obj->pending_msg = NULL;
++        obj->recv_pending = FALSE;
++        free(obj->recv_buffer);
++        obj->recv_buffer = NULL;
++        break;
++    case WS_ACTION_INDICATE_CLOSE:
++        free(obj->close_ind_reason);
++        obj->close_ind_reason = NULL;
++        obj->close_ind_reason_len = 0;
++        obj->close_ind_pending = FALSE;
++        obj->recv_pending = FALSE;
++        free(obj->recv_buffer);
++        obj->recv_buffer = NULL;
++        break;
++    case WS_ACTION_INDICATE_SEND:
++        free(obj->send_frame);
++        obj->send_frame = NULL;
++        obj->send_frame_len = obj->send_frame_off = 0;
++        obj->send_context = NULL;
++        obj->send_pending = FALSE;
++        break;
++    }
++    free(ctx);
++}
++
+ VOID WINAPI WebSocketAbortHandle(WEB_SOCKET_HANDLE handle)
+ {
++    struct websocket_handle *obj = get_handle_obj(handle);
++
+     TRACE("(%p)\n", handle);
++
++    if (obj)
++        obj->aborted = TRUE;
+ }
+ 
+ VOID WINAPI WebSocketDeleteHandle(WEB_SOCKET_HANDLE handle)
+@@ -186,6 +1250,15 @@
+     if (!obj)
+         return;
+     free_additional_headers(obj);
++    free(obj->recv_buf);
++    free(obj->frag_buf);
++    free_message(obj->pending_msg);
++    free(obj->close_ind_reason);
++    free(obj->send_frame);
++    free(obj->pong_frame);
++    free(obj->close_frame);
++    free(obj->recv_buffer);
++    free(obj->out_action);
+     obj->magic = 0;
+     free(obj);
+ }
+--- a/dlls/websocket/websocket.spec
++++ b/dlls/websocket/websocket.spec
+@@ -1,13 +1,13 @@
+ @ stdcall WebSocketAbortHandle(long)
+ @ stdcall WebSocketBeginClientHandshake(long ptr long ptr long ptr long ptr ptr)
+ @ stdcall WebSocketBeginServerHandshake(long ptr ptr long ptr long ptr ptr)
+-@ stub WebSocketCompleteAction
++@ stdcall WebSocketCompleteAction(long ptr long)
+ @ stdcall WebSocketCreateClientHandle(ptr long ptr)
+ @ stdcall WebSocketCreateServerHandle(ptr long ptr)
+ @ stdcall WebSocketDeleteHandle(long)
+ @ stub WebSocketEndClientHandshake
+ @ stdcall WebSocketEndServerHandshake(long)
+-@ stub WebSocketGetAction
++@ stdcall WebSocketGetAction(long long ptr ptr ptr ptr ptr ptr)
+ @ stub WebSocketGetGlobalProperty
+-@ stub WebSocketReceive
+-@ stub WebSocketSend
++@ stdcall WebSocketReceive(long ptr ptr)
++@ stdcall WebSocketSend(long long ptr ptr)
+--- a/include/websocket.h
++++ b/include/websocket.h
+@@ -51,6 +51,68 @@
+     ULONG ulValueLength;
+ } WEB_SOCKET_HTTP_HEADER, *PWEB_SOCKET_HTTP_HEADER;
+ 
++typedef enum _WEB_SOCKET_ACTION
++{
++    WEB_SOCKET_NO_ACTION                    = 0,
++    WEB_SOCKET_SEND_TO_NETWORK_ACTION       = 1,
++    WEB_SOCKET_INDICATE_SEND_COMPLETE_ACTION = 2,
++    WEB_SOCKET_RECEIVE_FROM_NETWORK_ACTION  = 3,
++    WEB_SOCKET_INDICATE_RECEIVE_COMPLETE_ACTION = 4,
++} WEB_SOCKET_ACTION;
++
++typedef enum _WEB_SOCKET_ACTION_QUEUE
++{
++    WEB_SOCKET_SEND_ACTION_QUEUE    = 1,
++    WEB_SOCKET_RECEIVE_ACTION_QUEUE = 2,
++    WEB_SOCKET_ALL_ACTION_QUEUE     = 3,
++} WEB_SOCKET_ACTION_QUEUE;
++
++typedef enum _WEB_SOCKET_BUFFER_TYPE
++{
++    WEB_SOCKET_UTF8_MESSAGE_BUFFER_TYPE    = 0x80000000,
++    WEB_SOCKET_UTF8_FRAGMENT_BUFFER_TYPE   = 1,
++    WEB_SOCKET_BINARY_MESSAGE_BUFFER_TYPE  = 2,
++    WEB_SOCKET_BINARY_FRAGMENT_BUFFER_TYPE = 3,
++    WEB_SOCKET_CLOSE_BUFFER_TYPE           = 4,
++    WEB_SOCKET_PING_PONG_BUFFER_TYPE       = 5,
++    WEB_SOCKET_UNSOLICITED_PONG_BUFFER_TYPE = 6,
++} WEB_SOCKET_BUFFER_TYPE;
++
++typedef enum _WEB_SOCKET_CLOSE_STATUS
++{
++    WEB_SOCKET_SUCCESS_CLOSE_STATUS               = 1000,
++    WEB_SOCKET_ENDPOINT_UNAVAILABLE_CLOSE_STATUS  = 1001,
++    WEB_SOCKET_PROTOCOL_ERROR_CLOSE_STATUS        = 1002,
++    WEB_SOCKET_INVALID_DATA_TYPE_CLOSE_STATUS     = 1003,
++    WEB_SOCKET_EMPTY_CLOSE_STATUS                 = 1005,
++    WEB_SOCKET_ABORTED_CLOSE_STATUS               = 1006,
++    WEB_SOCKET_INVALID_PAYLOAD_CLOSE_STATUS       = 1007,
++    WEB_SOCKET_POLICY_VIOLATION_CLOSE_STATUS      = 1008,
++    WEB_SOCKET_MESSAGE_TOO_BIG_CLOSE_STATUS       = 1009,
++    WEB_SOCKET_UNSUPPORTED_EXTENSIONS_CLOSE_STATUS = 1010,
++    WEB_SOCKET_SERVER_ERROR_CLOSE_STATUS          = 1011,
++    WEB_SOCKET_SECURE_HANDSHAKE_ERROR_CLOSE_STATUS = 1015,
++} WEB_SOCKET_CLOSE_STATUS;
++
++typedef struct _WEB_SOCKET_BUFFER
++{
++    WEB_SOCKET_BUFFER_TYPE BufferType;
++    union
++    {
++        struct
++        {
++            PBYTE pbBuffer;
++            ULONG ulBufferLength;
++        } Data;
++        struct
++        {
++            PBYTE  pbReason;
++            ULONG  ulReasonLength;
++            USHORT usStatus;
++        } CloseStatus;
++    };
++} WEB_SOCKET_BUFFER, *PWEB_SOCKET_BUFFER;
++
+ VOID WINAPI WebSocketAbortHandle(WEB_SOCKET_HANDLE);
+ HRESULT WINAPI WebSocketBeginClientHandshake(WEB_SOCKET_HANDLE, PCSTR, ULONG,
+     const WEB_SOCKET_HTTP_HEADER *, ULONG, const WEB_SOCKET_HTTP_HEADER *,
+@@ -58,10 +120,17 @@
+ HRESULT WINAPI WebSocketBeginServerHandshake(WEB_SOCKET_HANDLE, PCSTR,
+     const WEB_SOCKET_HTTP_HEADER *, ULONG, const WEB_SOCKET_HTTP_HEADER *,
+     ULONG, WEB_SOCKET_HTTP_HEADER **, ULONG *);
++VOID WINAPI WebSocketCompleteAction(WEB_SOCKET_HANDLE, PVOID, ULONG);
+ HRESULT WINAPI WebSocketCreateClientHandle(const PWEB_SOCKET_PROPERTY, ULONG, WEB_SOCKET_HANDLE*);
+ HRESULT WINAPI WebSocketCreateServerHandle(const PWEB_SOCKET_PROPERTY, ULONG, WEB_SOCKET_HANDLE*);
+ VOID WINAPI WebSocketDeleteHandle(WEB_SOCKET_HANDLE);
+ HRESULT WINAPI WebSocketEndServerHandshake(WEB_SOCKET_HANDLE);
++HRESULT WINAPI WebSocketGetAction(WEB_SOCKET_HANDLE, WEB_SOCKET_ACTION_QUEUE,
++    WEB_SOCKET_BUFFER *, ULONG *, WEB_SOCKET_ACTION *, WEB_SOCKET_BUFFER_TYPE *,
++    PVOID *, PVOID *);
++HRESULT WINAPI WebSocketReceive(WEB_SOCKET_HANDLE, WEB_SOCKET_BUFFER *, PVOID);
++HRESULT WINAPI WebSocketSend(WEB_SOCKET_HANDLE, WEB_SOCKET_BUFFER_TYPE,
++    const WEB_SOCKET_BUFFER *, PVOID);
+ 
+ #ifdef __cplusplus
+ }
+--- a/dlls/websocket/websocket.c
++++ b/dlls/websocket/websocket.c
+@@ -1120,9 +1120,10 @@
+ 
+ /* Resolve one outstanding action. Network actions must report exactly the
+  * offered byte count: a short/over write is a transport failure and aborts
+- * the handle, while a zero-byte receive means the peer went away and only
+- * cancels the pending receive. Indicate completions release the indicated
+- * state; a receive completes exactly one indication per WebSocketReceive. */
++ * the handle, while a zero-byte receive ack leaves the receive pending so
++ * the host can retry after its next socket read. Indicate completions
++ * release the indicated state; a receive completes exactly one indication
++ * per WebSocketReceive. */
+ VOID WINAPI WebSocketCompleteAction(WEB_SOCKET_HANDLE handle,
+     PVOID actionContext, ULONG bytesTransferred)
+ {
+@@ -1187,11 +1188,10 @@
+     case WS_ACTION_RECV_NET:
+         if (!bytesTransferred)
+         {
+-            /* End of stream: cancel the pending receive. */
+-            TRACE("zero-byte receive, cancelling pending receive\n");
+-            obj->recv_pending = FALSE;
+-            free(obj->recv_buffer);
+-            obj->recv_buffer = NULL;
++            /* Zero-byte ack before any bytes arrive: keep the receive
++             * pending so the host can fill the window on the next read.
++             * Only WebSocketAbortHandle cancels a pending receive. */
++            TRACE("zero-byte receive ack, keeping pending receive\n");
+             break;
+         }
+         if (obj->recv_len + bytesTransferred > obj->recv_cap)
