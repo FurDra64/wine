@@ -608,7 +608,7 @@ static NSString* WineLocalizedString(unsigned int stringID)
             }
         }
 
-        NSDisableScreenUpdates();
+        [NSAnimationContext beginGrouping];
 
         // Go from back to front so that all windows in front of one which is
         // elevated for full-screen are also elevated.
@@ -661,7 +661,7 @@ static NSString* WineLocalizedString(unsigned int stringID)
             prev = window;
         }];
 
-        NSEnableScreenUpdates();
+        [NSAnimationContext endGrouping];
 
         [wineWindows release];
 
@@ -2694,6 +2694,21 @@ bool macdrv_select_input_source(TISInputSourceRef input_source)
 
     OnMainThread(^{
         ret = (TISSelectInputSource(input_source) == noErr);
+    });
+
+    return ret;
+}
+
+bool macdrv_get_ime_open_status(TISInputSourceRef input_source)
+{
+    __block bool ret;
+
+    dispatch_sync(dispatch_get_main_queue(), ^{
+        CFStringRef type = TISGetInputSourceProperty(input_source, kTISPropertyInputSourceType);
+        CFStringRef mode = TISGetInputSourceProperty(input_source, kTISPropertyInputModeID);
+
+        ret = !CFEqual(type, kTISTypeKeyboardLayout) &&
+              (!mode || !CFEqual(mode, CFSTR("com.apple.inputmethod.Roman")));
     });
 
     return ret;

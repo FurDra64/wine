@@ -844,6 +844,7 @@ typedef struct COPYFILE2_EXTENDED_PARAMETERS
 
 #define REPLACEFILE_WRITE_THROUGH       0x00000001
 #define REPLACEFILE_IGNORE_MERGE_ERRORS 0x00000002
+#define REPLACEFILE_IGNORE_ACL_ERRORS   0x00000004
 
 #define FS_CASE_SENSITIVE               FILE_CASE_SENSITIVE_SEARCH
 #define FS_CASE_IS_PRESERVED            FILE_CASE_PRESERVED_NAMES
@@ -1246,6 +1247,22 @@ typedef struct _WIN32_STREAM_ID {
 #define LOGON_WITH_PROFILE          0x00000001
 #define LOGON_NETCREDENTIALS_ONLY   0x00000002
 #define LOGON_ZERO_PASSWORD_BUFFER  0x80000000
+
+/* logon types for LogonUserA/W() */
+#define LOGON32_LOGON_INTERACTIVE       2
+#define LOGON32_LOGON_NETWORK           3
+#define LOGON32_LOGON_BATCH             4
+#define LOGON32_LOGON_SERVICE           5
+#define LOGON32_LOGON_UNLOCK            7
+#define LOGON32_LOGON_NETWORK_CLEARTEXT 8
+#define LOGON32_LOGON_NEW_CREDENTIALS   9
+
+/* logon providers for LogonUserA/W() */
+#define LOGON32_PROVIDER_DEFAULT        0
+#define LOGON32_PROVIDER_WINNT35        1
+#define LOGON32_PROVIDER_WINNT40        2
+#define LOGON32_PROVIDER_WINNT50        3
+#define LOGON32_PROVIDER_VIRTUAL        4
 
 /* one-time initialisation API */
 typedef RTL_RUN_ONCE  INIT_ONCE;
@@ -1820,6 +1837,9 @@ WINBASEAPI HMODULE     WINAPI GetModuleHandleW(LPCWSTR);
 WINBASEAPI BOOL        WINAPI GetModuleHandleExA(DWORD,LPCSTR,HMODULE*);
 WINBASEAPI BOOL        WINAPI GetModuleHandleExW(DWORD,LPCWSTR,HMODULE*);
 #define                       GetModuleHandleEx WINELIB_NAME_AW(GetModuleHandleEx)
+WINBASEAPI BOOL        WINAPI GetNamedPipeClientComputerNameA(HANDLE,LPSTR,ULONG);
+WINBASEAPI BOOL        WINAPI GetNamedPipeClientComputerNameW(HANDLE,LPWSTR,ULONG);
+#define                       GetNamedPipeClientComputerName WINELIB_NAME_AW(GetNamedPipeClientComputerName)
 WINBASEAPI BOOL        WINAPI GetNamedPipeClientProcessId(HANDLE,PULONG);
 WINBASEAPI BOOL        WINAPI GetNamedPipeClientSessionId(HANDLE,PULONG);
 WINBASEAPI BOOL        WINAPI GetNamedPipeHandleStateA(HANDLE,LPDWORD,LPDWORD,LPDWORD,LPDWORD,LPSTR,DWORD);

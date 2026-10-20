@@ -438,11 +438,11 @@ static void get_monitor_info_from_edid( struct edid_monitor_info *info, const un
     for (i = 0; i < 3; ++i)
     {
         d = w & 0x1f;
-        if (!d || d - 1 > 'Z' - 'A') return;
+        if (!d || d - 1 > 'Z' - 'A') goto skip_id;
         info->monitor_id_string[2 - i] = 'A' + d - 1;
         w >>= 5;
     }
-    if (w) return;
+    if (w) goto skip_id;
     w = edid[10] | (edid[11] << 8); /* Product code, little endian. */
     info->manufacturer = *(unsigned short *)(edid + 8);
     info->product_code = w;
@@ -450,6 +450,7 @@ static void get_monitor_info_from_edid( struct edid_monitor_info *info, const un
     info->flags = MONITOR_INFO_HAS_MONITOR_ID;
     TRACE( "Monitor id %s.\n", info->monitor_id_string );
 
+skip_id:
     for (i = 0; i < 4; ++i)
     {
         if (edid[54 + i * 18] || edid[54 + i * 18 + 1])
@@ -2059,7 +2060,7 @@ static UINT add_screen_size( SIZE *sizes, UINT count, SIZE size )
     while (i < count && memcmp( sizes + i, &size, sizeof(size) )) i++;
     if (i < count) return 0;
 
-    TRACE( "adding size %s\n", wine_dbgstr_point((POINT *)&size) );
+    TRACE( "adding size %s\n", debugstr_size( &size ) );
     sizes[i] = size;
     return 1;
 }

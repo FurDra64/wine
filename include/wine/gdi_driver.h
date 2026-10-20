@@ -38,6 +38,7 @@
 #include "shellapi.h"
 #include "ddk/d3dkmthk.h"
 #include "kbd.h"
+#include "wine/vulkan.h"
 #include "wine/list.h"
 #include "wine/debug.h"
 
@@ -56,6 +57,11 @@ static inline const char *debugstr_window_rects( const struct window_rects *rect
 {
     return wine_dbg_sprintf( "{ window %s, client %s, visible %s }", wine_dbgstr_rect( &rects->window ),
                              wine_dbgstr_rect( &rects->client ), wine_dbgstr_rect( &rects->visible ) );
+}
+
+static inline const char *debugstr_size( const SIZE *size )
+{
+    return wine_dbgstr_point( (POINT *)size );
 }
 
 /* convert a visible rect to the corresponding window rect, using the window_rects offsets */
@@ -257,6 +263,8 @@ struct client_surface_funcs
     void (*update)( struct client_surface *surface );
     /* present the client surface if necessary, hdc != NULL when offscreen, called from render thread */
     void (*present)( struct client_surface *surface, HDC hdc );
+    /* try to set the client surface color space directly for vulkan pass-through */
+    BOOL (*set_color_space)( struct client_surface *surface, VkColorSpaceKHR color_space );
 };
 
 struct client_surface
@@ -379,7 +387,7 @@ struct user_driver_funcs
     const KBDTABLES *(*pKbdLayerDescriptor)(HKL);
     void    (*pReleaseKbdTables)(const KBDTABLES *);
     /* IME functions */
-    UINT    (*pImeToAsciiEx)(UINT,UINT,const BYTE*,HIMC);
+    UINT    (*pImeToAsciiEx)(UINT,UINT,const BYTE*,void *);
     void    (*pNotifyIMEStatus)(HWND,UINT);
     BOOL    (*pSetIMECompositionRect)(HWND,RECT);
     /* cursor/icon functions */

@@ -149,6 +149,7 @@ struct macdrv_thread_data
     CGEventFlags                last_modifiers;
     UInt32                      dead_key_state;
     HKL                         active_keyboard_layout;
+    bool                        ime_open;
     WORD                        keyc2vkey[128];
     WORD                        keyc2scan[128];
 };
@@ -206,7 +207,7 @@ extern BOOL macdrv_SetCursorPos(INT x, INT y);
 extern BOOL macdrv_RegisterHotKey(HWND hwnd, UINT mod_flags, UINT vkey);
 extern void macdrv_UnregisterHotKey(HWND hwnd, UINT modifiers, UINT vkey);
 extern SHORT macdrv_VkKeyScanEx(WCHAR wChar, HKL hkl);
-extern UINT macdrv_ImeToAsciiEx(UINT vkey, UINT vsc, const BYTE *state, HIMC himc);
+extern UINT macdrv_ImeToAsciiEx(UINT vkey, UINT vsc, const BYTE *state, void *update);
 extern UINT macdrv_MapVirtualKeyEx(UINT wCode, UINT wMapType, HKL hkl);
 extern INT macdrv_ToUnicodeEx(UINT virtKey, UINT scanCode, const BYTE *lpKeyState,
                               LPWSTR bufW, int bufW_size, UINT flags, HKL hkl);
@@ -220,6 +221,11 @@ extern BOOL macdrv_ProcessEvents(DWORD mask);
 extern void macdrv_ThreadDetach(void);
 #endif
 
+/* ime.c */
+extern pthread_mutex_t ime_composition_rect_mutex;
+extern CGRect ime_composition_rect;
+extern void macdrv_ime_set_text(HWND hwnd, CFStringRef text, bool complete,
+                                unsigned int cursor_begin, unsigned int cursor_end, void *update);
 
 /* macdrv private window data */
 struct macdrv_win_data
@@ -228,7 +234,6 @@ struct macdrv_win_data
     WineWindow         *cocoa_window;
     WineContentView    *client_view;
     struct window_rects rects;                  /* window rects in monitor DPI, relative to parent client area */
-    int                 pixel_format;           /* pixel format for GL */
     HANDLE              drag_event;             /* event to signal that Cocoa-driven window dragging has ended */
     unsigned int        on_screen : 1;          /* is window ordered in? (minimized or not) */
     unsigned int        shaped : 1;             /* is window using a custom region shape? */
