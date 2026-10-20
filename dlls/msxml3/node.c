@@ -1457,7 +1457,7 @@ HRESULT node_clone_domnode(struct domnode *node, bool deep, struct domnode **clo
 
     *cloned = NULL;
 
-    if (FAILED(hr = domnode_create(node->type, node->name, SysStringLen(node->name), node->uri, SysStringLen(node->uri),
+    if (FAILED(hr = domnode_create(node->type, node->qname, SysStringLen(node->qname), node->uri, SysStringLen(node->uri),
             node->owner, &object)))
     {
         return hr;
@@ -5014,6 +5014,9 @@ static bool node_dtd_validate_node(struct validation_context *ctxt, struct dtd *
                 ret &= node_dtd_validate_attribute(ctxt, dtd, attr);
                 attr = domnode_get_next_attribute_sibling(attr);
             }
+
+            if (ret)
+                ret &= parser_dtd_check_required_attributes(ctxt, dtd, node);
 
             if ((child = domnode_get_first_child(node)))
             {
