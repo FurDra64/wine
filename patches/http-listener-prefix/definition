@@ -1,0 +1,5 @@
+Feature: http-listener-prefix
+Description: Allow multiple URL prefixes per httpapi url_group and accept benign server properties (WatsonWebsocket registers 127.0.0.1 + localhost prefixes; .NET HttpListener sets timeouts/QoS/queue-length properties).
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: none
