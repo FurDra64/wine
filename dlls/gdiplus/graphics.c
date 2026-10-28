@@ -3824,7 +3824,7 @@ end:
 static GpStatus SOFTWARE_GdipDrawThinPath(GpGraphics *graphics, GpPen *pen, GpPath *path)
 {
     GpStatus stat;
-    GpPath *flat_path, *anchor_path;
+    GpPath *flat_path, *anchor_path = NULL;
     GpRegion *anchor_region;
     GpMatrix* transform;
     GpRectF gp_bound_rect;
@@ -6746,7 +6746,7 @@ GpStatus WINGDIPAPI GdipDrawString(GpGraphics *graphics, GDIPCONST WCHAR *string
         if (scaled_rect.Height >= 0.5)
         {
             scaled_rect.Height -= margin_x * 2.0 * rel_height;
-            if (scaled_rect.Width < 0.5) /* doesn't fit */
+            if (scaled_rect.Height < 0.5) /* doesn't fit */
                 goto end;
         }
     }
