@@ -32,6 +32,14 @@ diff --git a/dlls/winex11.drv/x11drv.h b/dlls/winex11.drv/x11drv.h
 index 9436f35e1c..5975c860b6 100644
 --- a/dlls/winex11.drv/x11drv.h
 +++ b/dlls/winex11.drv/x11drv.h
+@@ -53,4 +53,7 @@
+ #ifdef HAVE_X11_EXTENSIONS_XRANDR_H
+ #include <X11/extensions/Xrandr.h>
+ #endif
++#ifdef HAVE_X11_EXTENSIONS_XSHM_H
++#include <X11/extensions/XShm.h>
++#endif
+ #undef BOOL
 @@ -368,14 +368,33 @@
  struct x11drv_client_surface
  {
