@@ -1,0 +1,5 @@
+Feature: ge-proton-HACK-ntdll-add-optiscaler-inection-hack
+Description: Ported from GE-Proton proton/0002-HACK-ntdll-add-optiscaler-inection-hack.patch. HACK: ntdll: add optiscaler injection hack
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: none

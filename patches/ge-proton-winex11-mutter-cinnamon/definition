@@ -1,0 +1,5 @@
+Feature: ge-proton-winex11-mutter-cinnamon
+Description: Ported from GE-Proton proton/winex11-mutter-cinnamon.patch. winex11: add Muffin (Cinnamon) to Mutter detection
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: none

@@ -1,0 +1,5 @@
+Feature: ge-pending-ntdll-reserve-top-down-space-for-large-address-aware-wow64
+Description: Ported from GE-Proton wine-hotfixes/pending/ntdll-reserve-top-down-space-for-large-address-aware-wow64.patch. ntdll: Reserve some space for top-down allocation in large
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: none

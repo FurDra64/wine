@@ -1,0 +1,5 @@
+Feature: ge-pending-ws2_32-validate-connect-address
+Description: Ported from GE-Proton wine-hotfixes/pending/ws2_32-validate-connect-address.patch. ws2_32: Avoid dereferencing a missing connect address.
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: none

@@ -1,0 +1,5 @@
+Feature: ge-game-return-to-krondor-text-bitmap-readback
+Description: Ported from GE-Proton game-patches/return-to-krondor-text-bitmap-readback.patch. win32u: Restore Return to Krondor's text bitmap readback.
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: none

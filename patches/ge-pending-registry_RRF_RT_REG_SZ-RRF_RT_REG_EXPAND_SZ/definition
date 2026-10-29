@@ -1,0 +1,5 @@
+Feature: ge-pending-registry_RRF_RT_REG_SZ-RRF_RT_REG_EXPAND_SZ
+Description: Ported from GE-Proton wine-hotfixes/pending/registry_RRF_RT_REG_SZ-RRF_RT_REG_EXPAND_SZ.patch.
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: none

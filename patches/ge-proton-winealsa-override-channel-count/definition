@@ -1,0 +1,5 @@
+Feature: ge-proton-winealsa-override-channel-count
+Description: Ported from GE-Proton proton/winealsa-override-channel-count.patch. winealsa: Add channel count override variable
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: none

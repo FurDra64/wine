@@ -1,0 +1,5 @@
+Feature: ge-pending-ntdll-prefer-native-version-resource-heuristics
+Description: Ported from GE-Proton wine-hotfixes/pending/ntdll-prefer-native-version-resource-heuristics.patch. ntdll: Add heuristics to prefer native dll based on the
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: none

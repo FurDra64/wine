@@ -1,0 +1,5 @@
+Feature: ge-game-max-payne-cpu-detection
+Description: Ported from GE-Proton game-patches/max-payne-cpu-detection.patch. ntdll: Fix Max Payne's truncated CPUID leaf count.
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: none

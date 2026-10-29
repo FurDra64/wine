@@ -1,0 +1,5 @@
+Feature: ge-proton-nv_low_latency_wine
+Description: Ported from GE-Proton proton/83-nv_low_latency_wine.patch. win32u: Add support for VK_NV_low_latency2
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: none

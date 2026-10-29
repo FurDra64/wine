@@ -1,0 +1,5 @@
+Feature: ge-game-assettocorsa-hud
+Description: Ported from GE-Proton game-patches/assettocorsa-hud.patch. Revert "dwrite: Release file streams when building
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: none

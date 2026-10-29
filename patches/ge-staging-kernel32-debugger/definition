@@ -1,0 +1,5 @@
+Feature: ge-staging-kernel32-debugger
+Description: Ported from GE-Proton patches/wine-hotfixes/wine-staging/kernel32-Debugger/. GE-rebased wine-staging pick.
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: none

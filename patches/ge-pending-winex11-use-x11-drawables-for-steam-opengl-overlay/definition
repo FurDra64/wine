@@ -1,0 +1,5 @@
+Feature: ge-pending-winex11-use-x11-drawables-for-steam-opengl-overlay
+Description: Ported from GE-Proton wine-hotfixes/pending/winex11-use-x11-drawables-for-steam-opengl-overlay.patch. winex11: Use X11 drawables with the Steam OpenGL overlay.
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: none

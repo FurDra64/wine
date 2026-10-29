@@ -1,0 +1,5 @@
+Feature: ge-pending-crypt32-wc3-preserve-exclusive-root-and-test-layouts
+Description: Ported from GE-Proton wine-hotfixes/pending/crypt32-wc3-preserve-exclusive-root-and-test-layouts.patch. crypt32: Preserve legacy exclusive roots and test chain configuration layouts.
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: none

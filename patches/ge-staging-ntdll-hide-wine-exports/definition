@@ -1,0 +1,5 @@
+Feature: ge-staging-ntdll-hide-wine-exports
+Description: Ported from GE-Proton patches/wine-hotfixes/wine-staging/ntdll-Hide_Wine_Exports/. GE-rebased wine-staging pick.
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: none

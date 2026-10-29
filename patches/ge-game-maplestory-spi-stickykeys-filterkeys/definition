@@ -1,0 +1,5 @@
+Feature: ge-game-maplestory-spi-stickykeys-filterkeys
+Description: Ported from GE-Proton game-patches/maplestory-spi-stickykeys-filterkeys.patch. win32u: Accept SPI_SETSTICKYKEYS/SPI_SETFILTERKEYS as ignored
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: none

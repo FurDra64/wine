@@ -1,0 +1,5 @@
+Feature: ge-pending-crypt32-pfx-record-machine-keyset-in-prov-info
+Description: Ported from GE-Proton wine-hotfixes/pending/crypt32-pfx-record-machine-keyset-in-prov-info.patch.
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: none

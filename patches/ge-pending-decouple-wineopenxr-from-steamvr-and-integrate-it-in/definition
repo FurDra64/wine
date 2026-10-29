@@ -1,0 +1,5 @@
+Feature: ge-pending-decouple-wineopenxr-from-steamvr-and-integrate-it-in
+Description: Ported from GE-Proton wine-hotfixes/pending/0001-decouple-wineopenxr-from-steamvr-and-integrate-it-in.patch. decouple wineopenxr from steamvr and integrate it into wine
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: none

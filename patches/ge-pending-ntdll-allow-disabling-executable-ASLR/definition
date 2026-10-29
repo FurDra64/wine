@@ -1,0 +1,5 @@
+Feature: ge-pending-ntdll-allow-disabling-executable-ASLR
+Description: Ported from GE-Proton wine-hotfixes/pending/0002-ntdll-allow-disabling-executable-ASLR.patch. ntdll: Allow disabling executable ASLR per process
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: none

@@ -1,0 +1,5 @@
+Feature: ge-pending-crypt32-wc3-check-exclusive-flags-size
+Description: Ported from GE-Proton wine-hotfixes/pending/crypt32-wc3-check-exclusive-flags-size.patch. crypt32: Don't access
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: none

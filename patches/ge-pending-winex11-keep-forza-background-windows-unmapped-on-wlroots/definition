@@ -1,0 +1,5 @@
+Feature: ge-pending-winex11-keep-forza-background-windows-unmapped-on-wlroots
+Description: Ported from GE-Proton wine-hotfixes/pending/winex11-keep-forza-background-windows-unmapped-on-wlroots.patch. winex11: Keep Forza backing windows unmapped on wlroots.
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: none

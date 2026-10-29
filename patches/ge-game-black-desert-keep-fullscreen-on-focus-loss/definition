@@ -1,0 +1,5 @@
+Feature: ge-game-black-desert-keep-fullscreen-on-focus-loss
+Description: Ported from GE-Proton game-patches/black-desert-keep-fullscreen-on-focus-loss.patch. win32u: Keep Black Desert fullscreen across application deactivation.
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: none

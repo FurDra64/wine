@@ -1,0 +1,5 @@
+Feature: ge-game-ai-limit-dx12-compute-shader-fallback
+Description: Ported from GE-Proton game-patches/ai-limit-dx12-compute-shader-fallback.patch. ntdll: Allow AI LIMIT to reuse DXBC compute shaders in DX12.
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: none

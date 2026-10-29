@@ -1,0 +1,5 @@
+Feature: ge-proton-ntdll-Implement-IOCTL_SERIAL_GET_DTRRTS-for-serial-dev
+Description: Ported from GE-Proton proton/0001-ntdll-Implement-IOCTL_SERIAL_GET_DTRRTS-for-serial-dev.patch. ntdll: Implement IOCTL_SERIAL_GET_DTRRTS for serial devices.
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: none

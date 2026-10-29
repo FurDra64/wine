@@ -1,0 +1,5 @@
+Feature: ge-pending-win32u-share-selected-cursors-across-processes
+Description: Ported from GE-Proton wine-hotfixes/pending/win32u-share-selected-cursors-across-processes.patch. win32u: Share selected cursor images across processes.
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: none

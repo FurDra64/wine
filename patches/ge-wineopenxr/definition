@@ -1,0 +1,5 @@
+Feature: ge-wineopenxr
+Description: Ported from GE-Proton patches/wineopenxr/. Decouple wineopenxr from SteamVR (external-tree variant; cf. ge-pending-decouple-wineopenxr integrated variant).
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: none

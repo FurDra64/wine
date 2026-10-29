@@ -1,0 +1,5 @@
+Feature: ge-game-pso2_hack
+Description: Ported from GE-Proton game-patches/pso2_hack.patch.
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: none

@@ -1,0 +1,5 @@
+Feature: ge-qcap-dshow
+Description: Ported from GE-Proton patches/wine-hotfixes/qcap-dshow-fixes/. qcap Smart-Tee/v4l fixes.
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: none

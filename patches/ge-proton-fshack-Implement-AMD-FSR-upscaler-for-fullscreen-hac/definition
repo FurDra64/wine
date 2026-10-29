@@ -1,0 +1,5 @@
+Feature: ge-proton-fshack-Implement-AMD-FSR-upscaler-for-fullscreen-hac
+Description: Ported from GE-Proton proton/0001-fshack-Implement-AMD-FSR-upscaler-for-fullscreen-hac.patch. win32u: fshack: Implement AMD FSR upscaler for fullscreen
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: none

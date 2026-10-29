@@ -1,0 +1,5 @@
+Feature: ge-game-eac_60101_timeout
+Description: Ported from GE-Proton game-patches/eac_60101_timeout.patch. Avoids EAC 60101
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: none

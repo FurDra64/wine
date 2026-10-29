@@ -1,0 +1,5 @@
+Feature: ge-pending-ntdll-retry-native-view-allocation-with-effective-range
+Description: Ported from GE-Proton wine-hotfixes/pending/ntdll-retry-native-view-allocation-with-effective-range.patch. ntdll: Reuse the effective range after clearing native views
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: none

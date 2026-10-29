@@ -1,0 +1,5 @@
+Feature: ge-proton-win32u-add-env-switch-to-disable-wm-decorations
+Description: Ported from GE-Proton proton/0001-win32u-add-env-switch-to-disable-wm-decorations.patch. win32u: add env switch to disable wm decorations
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: none

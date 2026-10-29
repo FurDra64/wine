@@ -1,0 +1,5 @@
+Feature: ge-proton-build_failure_prevention-add-nls
+Description: Ported from GE-Proton proton/build_failure_prevention-add-nls.patch. makedep: Add the nls subdir to __tooldeps__
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: none

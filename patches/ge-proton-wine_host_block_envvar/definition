@@ -1,0 +1,5 @@
+Feature: ge-proton-wine_host_block_envvar
+Description: Ported from GE-Proton proton/wine_host_block_envvar.patch.
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: none

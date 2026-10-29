@@ -1,0 +1,5 @@
+Feature: ge-pending-ntdll-keep-builtin-amd-ags-ahead-of-version-heuristic
+Description: Ported from GE-Proton wine-hotfixes/pending/ntdll-keep-builtin-amd-ags-ahead-of-version-heuristic.patch. ntdll: Keep builtin amd_ags_x64 ahead of version heuristic
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: none

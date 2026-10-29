@@ -1,0 +1,5 @@
+Feature: ge-pending-HACK-kernel32-Spoof-GetProcAddress-of-KiUserApcDispa
+Description: Ported from GE-Proton wine-hotfixes/pending/0009-HACK-kernel32-Spoof-GetProcAddress-of-KiUserApcDispa.patch. HACK: kernel32: Spoof GetProcAddress of
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: none

@@ -1,0 +1,5 @@
+Feature: ge-pending-urlmon-pump-thread-user-messages-during-synchronous-bind
+Description: Ported from GE-Proton wine-hotfixes/pending/urlmon-pump-thread-user-messages-during-synchronous-bind.patch. urlmon: Pump thread user messages during synchronous binds.
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: none
