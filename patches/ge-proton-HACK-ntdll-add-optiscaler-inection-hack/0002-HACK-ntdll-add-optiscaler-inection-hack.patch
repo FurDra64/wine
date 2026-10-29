@@ -11,7 +11,7 @@ diff --git a/dlls/ntdll/loader.c b/dlls/ntdll/loader.c
 index 53b58ad13794..ee8cc9190de8 100644
 --- a/dlls/ntdll/loader.c
 +++ b/dlls/ntdll/loader.c
-@@ -3498,6 +3498,48 @@ static NTSTATUS find_dll_file( const WCHAR *load_path, const WCHAR *libname, UNI
+@@ -3498,6 +3498,53 @@ static NTSTATUS find_dll_file( const WCHAR *load_path, const WCHAR *libname, UNI
  }
  
  
@@ -31,7 +31,12 @@ index 53b58ad13794..ee8cc9190de8 100644
 +    HANDLE handle;
 +
 +    if ( cached == -1 ) {
-+        cached = get_env( L"WINE_OPTISCALER_NAME", dllW, sizeof(dllW));
++        UNICODE_STRING var_name, var_value;
++        RtlInitUnicodeString( &var_name, L\"WINE_OPTISCALER_NAME\" );
++        var_value.Buffer = dllW;
++        var_value.Length = 0;
++        var_value.MaximumLength = sizeof(dllW);
++        cached = (RtlQueryEnvironmentVariable_U( NULL, &var_name, &var_value ) == STATUS_SUCCESS);
 +        if ( !cached ) return FALSE;
 +    }
 +
