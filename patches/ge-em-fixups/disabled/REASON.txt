@@ -1,0 +1,15 @@
+ge-em-fixups: 54 patches disabled 2026-10-30 (cumulative scratch replay vs upstream Wine 11.20 base 57211ba).
+
+Method: clean base 57211ba, `git apply --check -p1` in glob order with
+skip-on-fail (cumulative). Remaining 19 main-dir patches apply 19/19.
+These 54 fail the same way standalone or cumulatively.
+
+Cause (uniform): context drift vs 11.20, missing base symbols/structs —
+Wayland opaque-carrier/client-presentation stack (0010-0024, 0038-0052,
+0055/0057/0060/0064/0066-0072/0075), system-thread ntdll/server series
+base (0030-0036), kernelbase/process, winex11, setupapi hunks.
+Not absorbed upstream (reverse-apply check: 0/54 already-applied).
+Manual port required once the base stack lands; re-enable逐件 after rebase.
+
+Fail list: 0008,0010-0024,0026-0028,0030-0036,0038-0052,0055,0057,0060,
+0064,0066-0070,0072,0073,0075, winewayland-ignore-steam-desktop-virtual-controller.

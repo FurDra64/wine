@@ -200,7 +200,7 @@ index cd5b6f96..a313f6b6 100644
      wl_surface_commit(surface->wl_surface);
      wl_display_flush(process_wayland.wl_display);
  
-@@ -684,6 +756,12 @@ void wayland_surface_clear_role(struct wayland_surface *surface)
+@@ -682,8 +682,14 @@ void wayland_surface_clear_role(struct wayland_surface *surface)
              surface->xdg_toplevel_icon = NULL;
          }
  
@@ -211,8 +211,10 @@ index cd5b6f96..a313f6b6 100644
 +        }
 +
          if (surface->xdg_toplevel)
-     if (process_wayland.wp_content_type_manager_v1)
-     {
+         {
+             xdg_toplevel_destroy(surface->xdg_toplevel);
+             surface->xdg_toplevel = NULL;
+         }
 @@ -978,8 +1056,10 @@ static BOOL wayland_surface_reconfigure_xdg(struct wayland_surface *surface, REC
      }
      /* If this is the initial configure, and we have a compatible requested
@@ -261,10 +263,12 @@ index dbab35fb..da546c09 100644
      enum wayland_surface_config_state state;
      /* The scale (i.e., normalized dpi) the window is rendering at. */
      double scale;
-@@ -318,6 +322,7 @@ struct wayland_surface
+@@ -317,8 +317,9 @@ struct wayland_surface
+         struct
          {
              struct xdg_toplevel *xdg_toplevel;
              struct xdg_toplevel_icon_v1 *xdg_toplevel_icon;
+             struct wl_output *requested_output;
 +            struct zxdg_toplevel_decoration_v1 *zxdg_toplevel_decoration_v1;
          };
          struct

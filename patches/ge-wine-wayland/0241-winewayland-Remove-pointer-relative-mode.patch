@@ -34,23 +34,18 @@ index 36dc5e45042..49e22afcfe4 100644
      static unsigned int once;
  
      if (!process_wayland.zwp_pointer_constraints_v1)
-@@ -1089,26 +1089,7 @@ static void wayland_pointer_update_constraint(struct wl_surface *wl_surface,
+@@ -1119,21 +1119,7 @@ static void wayland_pointer_update_constraint(struct wl_surface *wl_surface,
          }
      }
  
--    if (!process_wayland.zwp_relative_pointer_manager_v1)
--    {
--        if (!once++)
--            ERR("zwp_relative_pointer_manager_v1 isn't supported, skipping relative motion\n");
--        return;
--    }
--
 -    needs_relative = !is_visible && pointer->constraint_hwnd &&
 -                     pointer->constraint_hwnd == pointer->focused_hwnd;
 -
 -    if (needs_relative)
 -    {
 -        pointer->relative_mode = TRUE;
+-        pointer->frame.dx = pointer->frame.dy = 0.0;
+-        pointer->frame.dx_raw = pointer->frame.dy_raw = 0.0;
 -        TRACE("Enabling relative motion\n");
 -    }
 -    else if (!needs_relative)
@@ -87,11 +82,11 @@ diff --git a/dlls/winewayland.drv/waylanddrv.h b/dlls/winewayland.drv/waylanddrv
 index 0b4f2be6357..9f7501723bd 100644
 --- a/dlls/winewayland.drv/waylanddrv.h
 +++ b/dlls/winewayland.drv/waylanddrv.h
-@@ -161,7 +161,6 @@ struct wayland_pointer
+@@ -150,7 +150,6 @@ struct wayland_pointer
      HWND constraint_hwnd;
+-    BOOL relative_mode;
      BOOL pending_warp;
      POINT warp;
--    BOOL relative_mode;
      uint32_t enter_serial;
      uint32_t button_serial;
      struct wayland_cursor cursor;

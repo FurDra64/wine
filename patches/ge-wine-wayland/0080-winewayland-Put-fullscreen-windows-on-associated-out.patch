@@ -119,21 +119,19 @@ diff --git a/dlls/winewayland.drv/wayland_surface.c b/dlls/winewayland.drv/wayla
 index 46c0f0b4..8b8579e9 100644
 --- a/dlls/winewayland.drv/wayland_surface.c
 +++ b/dlls/winewayland.drv/wayland_surface.c
-@@ -575,6 +575,8 @@ void wayland_surface_clear_role(struct wayland_surface *surface)
+@@ -708,5 +708,7 @@ void wayland_surface_clear_role(struct wayland_surface *surface)
              xdg_surface_destroy(surface->xdg_surface);
              surface->xdg_surface = NULL;
          }
 +
 +        surface->requested_output = NULL;
          break;
- 
-     case WAYLAND_SURFACE_ROLE_SUBSURFACE:
+     }
 diff --git a/dlls/winewayland.drv/waylanddrv.h b/dlls/winewayland.drv/waylanddrv.h
 index f8c02109..47ab8ab5 100644
 --- a/dlls/winewayland.drv/waylanddrv.h
 +++ b/dlls/winewayland.drv/waylanddrv.h
-@@ -309,6 +309,7 @@ struct wayland_surface
-             struct xdg_surface *xdg_surface;
+@@ -311,5 +311,6 @@ struct wayland_surface
              struct xdg_toplevel *xdg_toplevel;
              struct xdg_toplevel_icon_v1 *xdg_toplevel_icon;
 +            struct wl_output *requested_output;

@@ -19,40 +19,50 @@ diff --git a/dlls/winewayland.drv/Makefile.in b/dlls/winewayland.drv/Makefile.in
 index b01d9e64..80fb6b77 100644
 --- a/dlls/winewayland.drv/Makefile.in
 +++ b/dlls/winewayland.drv/Makefile.in
-@@ -32,6 +32,7 @@ SOURCES = \
+@@ -32,8 +32,9 @@ SOURCES = \
  	waylanddrv_main.c \
  	window.c \
  	window_surface.c \
-+	xdg-activation-v1.xml \
  	wlr-data-control-unstable-v1.xml \
++	xdg-activation-v1.xml \
+ 	xdg-decoration-unstable-v1.xml \
  	xdg-output-unstable-v1.xml \
  	xdg-shell.xml \
+ 	xdg-toplevel-icon-v1.xml \
 diff --git a/dlls/winewayland.drv/wayland.c b/dlls/winewayland.drv/wayland.c
 index 4b96ad46..a6ded432 100644
 --- a/dlls/winewayland.drv/wayland.c
 +++ b/dlls/winewayland.drv/wayland.c
-@@ -286,6 +286,11 @@ static void registry_handle_global_remove(void *data, struct wl_registry *regist
-         process_wayland.wp_content_type_manager_v1 =
-             wl_registry_bind(registry, id, &wp_content_type_manager_v1_interface, 1);
+@@ -240,12 +240,17 @@ static void registry_handle_global(void *data, struct wl_registry *registry,
      }
+ #ifdef WL_FIXES_ACK_GLOBAL_REMOVE
+     else if (strcmp(interface, "wl_fixes") == 0)
+     {
+         if (version < 2)
+             return;
+ 
+         process_wayland.wl_fixes =
+             wl_registry_bind(registry, id, &wl_fixes_interface, 2);
+     }
+ #endif
 +    else if (strcmp(interface, "xdg_activation_v1") == 0)
 +    {
 +        process_wayland.xdg_activation_v1 =
 +            wl_registry_bind(registry, id, &xdg_activation_v1_interface, 1);
 +    }
  }
- 
- static const struct wl_registry_listener registry_listener = {
-@@ -411,6 +416,9 @@ BOOL wayland_process_init(void)
+@@ -438,8 +438,11 @@ BOOL wayland_process_init(void)
      if (!process_wayland.wp_content_type_manager_v1)
          WARN("Wayland compositor doesn't support optional wp_content_type_manager_v1!\n");
+ 
+     if (!process_wayland.zxdg_decoration_manager_v1)
+         WARN("Wayland compositor doesn't support optional zxdg_decoration_manager_v1!\n");
  
 +    if (!process_wayland.xdg_activation_v1)
 +        ERR("Wayland compositor doesn't support xdg_activation_v1! (Flash Window will not be supported)\n");
 +
      process_wayland.initialized = TRUE;
  
-     return TRUE;
 diff --git a/dlls/winewayland.drv/wayland_surface.c b/dlls/winewayland.drv/wayland_surface.c
 index 8b8579e9..4445d880 100644
 --- a/dlls/winewayland.drv/wayland_surface.c
@@ -109,9 +119,9 @@ diff --git a/dlls/winewayland.drv/waylanddrv.h b/dlls/winewayland.drv/waylanddrv
 index 42fb4a9f..1fd3c23e 100644
 --- a/dlls/winewayland.drv/waylanddrv.h
 +++ b/dlls/winewayland.drv/waylanddrv.h
-@@ -45,6 +45,7 @@
- #include "xdg-toplevel-tag-v1-client-protocol.h"
+@@ -46,6 +46,7 @@
  #include "content-type-v1-client-protocol.h"
+ #include "xdg-decoration-unstable-v1-client-protocol.h"
  #include "color-management-v1-client-protocol.h"
 +#include "xdg-activation-v1-client-protocol.h"
  

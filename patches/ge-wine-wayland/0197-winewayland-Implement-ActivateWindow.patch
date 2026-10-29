@@ -16,15 +16,16 @@ diff --git a/dlls/winewayland.drv/wayland_surface.c b/dlls/winewayland.drv/wayla
 index 5b3a9983727..3ffa8150b98 100644
 --- a/dlls/winewayland.drv/wayland_surface.c
 +++ b/dlls/winewayland.drv/wayland_surface.c
-@@ -1887,7 +1887,6 @@ static void xdg_activation_token_handle_done(void *user_data,
+@@ -1889,7 +1889,6 @@ static void xdg_activation_token_handle_done(void *user_data,
      struct wayland_win_data *data;
      struct wayland_surface *surface;
  
--
+ 
      if ((data = wayland_win_data_get(hwnd)))
      {
          if ((surface = data->wayland_surface))
-@@ -1895,32 +1894,47 @@ static void xdg_activation_token_handle_done(void *user_data,
+             xdg_activation_v1_activate(process_wayland.xdg_activation_v1, token, surface->wl_surface);
+@@ -1909,32 +1908,47 @@ static void xdg_activation_token_handle_done(void *user_data,
          wayland_win_data_release(data);
      }
  

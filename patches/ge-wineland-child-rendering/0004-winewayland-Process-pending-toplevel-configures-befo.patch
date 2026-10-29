@@ -13,24 +13,24 @@ Treat pending compositor configures as authoritative until promotion, mark
 them processed before rawpos can flush, and ensure contents afterwards if
 rawpos did not promote the configure.
 ---
- dlls/winewayland.drv/window.c | 30 ++++++++++++++++++++++++++++--
- 1 file changed, 28 insertions(+), 2 deletions(-)
+dlls/winewayland.drv/window.c | 30 ++++++++++++++++++++++++++++--
+1 file changed, 28 insertions(+), 2 deletions(-)
 
 diff --git a/dlls/winewayland.drv/window.c b/dlls/winewayland.drv/window.c
-index 313f5b81440..f8a2b0a8fd4 100644
+index b3ed4fa4..e9bd7563 100644
 --- a/dlls/winewayland.drv/window.c
 +++ b/dlls/winewayland.drv/window.c
-@@ -343,8 +343,7 @@ static BOOL wayland_win_data_create_wayland_surface(struct wayland_win_data *dat
+@@ -283,8 +283,7 @@ static BOOL wayland_win_data_create_wayland_surface(struct wayland_win_data *dat
+ 
  static void wayland_surface_update_state_toplevel(struct wayland_surface *surface)
  {
-     const RECT *rect = &surface->window.rect;
 -    BOOL processing_config = surface->processing.serial &&
 -                             !surface->processing.processed;
 +    BOOL processing_config = surface->processing.serial;
  
      TRACE("hwnd=%p window_state=%#x %s->state=%#x\n",
            surface->hwnd, surface->window.state,
-@@ -418,6 +417,7 @@ static void wayland_surface_update_state_toplevel(struct wayland_surface *surfac
+@@ -330,6 +329,7 @@ static void wayland_surface_update_state_toplevel(struct wayland_surface *surfac
      }
      else
      {
@@ -38,10 +38,11 @@ index 313f5b81440..f8a2b0a8fd4 100644
          surface->processing.processed = TRUE;
      }
  }
-@@ -986,7 +986,33 @@ static void wayland_configure_window(HWND hwnd)
-         flags |= SWP_NOSENDCHANGING;
+@@ -769,6 +769,32 @@ static void wayland_configure_window(HWND hwnd)
      }
  
+     NtUserSetRawWindowPos(hwnd, rect, flags, FALSE);
++
 +    /* Mark pending configures processed before rawpos can flush. */
 +    if ((data = wayland_win_data_get(hwnd)))
 +    {
@@ -52,8 +53,6 @@ index 313f5b81440..f8a2b0a8fd4 100644
 +            wayland_win_data_update_wayland_state(data);
 +        wayland_win_data_release(data);
 +    }
-+
-     NtUserSetRawWindowPos(hwnd, rect, flags, FALSE);
 +
 +    /* Ack/promote the processed configure if rawpos did not flush it. */
 +    if ((data = wayland_win_data_get(hwnd)))

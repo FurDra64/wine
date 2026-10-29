@@ -14,7 +14,7 @@ Avoid dependencies on host system for core protocols.
 diff --git a/dlls/winewayland.drv/Makefile.in b/dlls/winewayland.drv/Makefile.in
 --- a/dlls/winewayland.drv/Makefile.in
 +++ b/dlls/winewayland.drv/Makefile.in
-@@ -24,6 +24,7 @@ SOURCES = \
+@@ -23,6 +23,7 @@
  	viewporter.xml \
  	vulkan.c \
  	wayland.c \
@@ -3481,4 +3481,6 @@ diff --git a/dlls/winewayland.drv/waylanddrv.h b/dlls/winewayland.drv/waylanddrv
 +#include "wayland-client-protocol.h"
  #include <xkbcommon/xkbcommon.h>
  #include <xkbcommon/xkbregistry.h>
- #include "cursor-shape-v1-client-protocol.h"
+ #ifdef HAVE_XKBCOMMON_XKBCOMMON_COMPOSE_H
+-- 
+2.55.0

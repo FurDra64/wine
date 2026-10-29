@@ -13,7 +13,7 @@ diff --git a/dlls/winewayland.drv/wayland_output.c b/dlls/winewayland.drv/waylan
 index f1e8e596df5..2d9eb7197c4 100644
 --- a/dlls/winewayland.drv/wayland_output.c
 +++ b/dlls/winewayland.drv/wayland_output.c
-@@ -278,11 +278,28 @@ static void output_handle_scale(void *data, struct wl_output *wl_output,
+@@ -259,11 +259,28 @@ static void output_handle_scale(void *data, struct wl_output *wl_output,
  {
  }
  
@@ -24,7 +24,7 @@ index f1e8e596df5..2d9eb7197c4 100644
 +
 +    free(output->pending.name);
 +    output->pending.name = strdup(name);
-+    output->pending.flags |= WAYLAND_OUTPUT_NAME;
++    output->pending_flags |= WAYLAND_OUTPUT_CHANGED_NAME;
 +}
 +
 +static void output_handle_description(void *data, struct wl_output *wl_output,
@@ -43,7 +43,7 @@ index f1e8e596df5..2d9eb7197c4 100644
  };
  
  static void zxdg_output_v1_handle_logical_position(void *data,
-@@ -323,11 +340,6 @@ static void zxdg_output_v1_handle_name(void *data,
+@@ -305,11 +324,6 @@ static void zxdg_output_v1_handle_name(void *data,
                                         struct zxdg_output_v1 *zxdg_output_v1,
                                         const char *name)
  {
@@ -51,11 +51,11 @@ index f1e8e596df5..2d9eb7197c4 100644
 -
 -    free(output->pending.name);
 -    output->pending.name = strdup(name);
--    output->pending.flags |= WAYLAND_OUTPUT_NAME;
+-    output->pending_flags |= WAYLAND_OUTPUT_CHANGED_NAME;
  }
  
  static void zxdg_output_v1_handle_description(void *data,
-@@ -570,10 +582,10 @@ BOOL wayland_output_create(uint32_t id, uint32_t version)
+@@ -343,10 +357,10 @@ BOOL wayland_output_create(uint32_t id, uint32_t version)
          goto err;
      }
  

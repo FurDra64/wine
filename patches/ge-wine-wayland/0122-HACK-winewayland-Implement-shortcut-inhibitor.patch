@@ -179,7 +179,9 @@ diff --git a/dlls/winewayland.drv/wayland.c b/dlls/winewayland.drv/wayland.c
 index a6ded432..a1d0684d 100644
 --- a/dlls/winewayland.drv/wayland.c
 +++ b/dlls/winewayland.drv/wayland.c
-@@ -291,6 +291,11 @@ static void registry_handle_global_remove(void *data, struct wl_registry *regist
+@@ -254,7 +254,12 @@ static void registry_handle_global(void *data, struct wl_registry *registry,
+     else if (strcmp(interface, "xdg_activation_v1") == 0)
+     {
          process_wayland.xdg_activation_v1 =
              wl_registry_bind(registry, id, &xdg_activation_v1_interface, 1);
      }
@@ -190,7 +192,6 @@ index a6ded432..a1d0684d 100644
 +    }
  }
  
- static const struct wl_registry_listener registry_listener = {
 diff --git a/dlls/winewayland.drv/wayland_surface.c b/dlls/winewayland.drv/wayland_surface.c
 index 4445d880..658eb00f 100644
 --- a/dlls/winewayland.drv/wayland_surface.c
@@ -256,9 +257,7 @@ diff --git a/dlls/winewayland.drv/waylanddrv.h b/dlls/winewayland.drv/waylanddrv
 index 1fd3c23e..7e3ebc43 100644
 --- a/dlls/winewayland.drv/waylanddrv.h
 +++ b/dlls/winewayland.drv/waylanddrv.h
-@@ -46,6 +46,7 @@
- #include "content-type-v1-client-protocol.h"
- #include "color-management-v1-client-protocol.h"
+@@ -54,4 +54,5 @@
  #include "xdg-activation-v1-client-protocol.h"
 +#include "keyboard-shortcuts-inhibit-unstable-v1-client-protocol.h"
  

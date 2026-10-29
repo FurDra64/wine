@@ -12,13 +12,13 @@ Route those exposes through a private window message so they run on the owning
 thread. Keep the initial configure flush inline for non-overlay windows, preserving
 the existing path for one-shot GDI windows that may draw before they pump messages.
 ---
- dlls/winewayland.drv/wayland_surface.c | 22 +++++++++++++----
- dlls/winewayland.drv/waylanddrv.h      |  1 +
- dlls/winewayland.drv/window.c          | 33 +++++++++++++++++++++++++-
- 3 files changed, 51 insertions(+), 5 deletions(-)
+dlls/winewayland.drv/wayland_surface.c | 22 +++++++++++++++++-----
+dlls/winewayland.drv/waylanddrv.h      |  1 +
+dlls/winewayland.drv/window.c          | 33 ++++++++++++++++++++++++++++++++-
+3 files changed, 50 insertions(+), 6 deletions(-)
 
 diff --git a/dlls/winewayland.drv/wayland_surface.c b/dlls/winewayland.drv/wayland_surface.c
-index 69cc5ee9553..178458a1367 100644
+index b2219d52..03c8daef 100644
 --- a/dlls/winewayland.drv/wayland_surface.c
 +++ b/dlls/winewayland.drv/wayland_surface.c
 @@ -40,6 +40,20 @@
@@ -32,7 +32,7 @@ index 69cc5ee9553..178458a1367 100644
 +     * event thread taking the surface lock before win_data_mutex. */
 +    if (allow_inline && !window_surface_needs_child_overlays(hwnd))
 +    {
-+        NtUserExposeWindowSurface(hwnd, 0, NULL, 0);
++        NtUserExposeWindowSurface(hwnd, 0, NULL);
 +        return;
 +    }
 +
@@ -42,40 +42,33 @@ index 69cc5ee9553..178458a1367 100644
  struct wayland_hwnd_dmabuf_surface;
  
  struct wayland_hwnd_dmabuf_buffer
-@@ -279,7 +293,7 @@ static void xdg_surface_handle_configure(void *private, struct xdg_surface *xdg_
+@@ -355,10 +369,7 @@ static void xdg_surface_handle_configure(void *private, struct xdg_surface *xdg_
  
      /* Flush the window surface in case there is content that we weren't
       * able to flush before due to the lack of the initial configure. */
--    if (should_expose) NtUserExposeWindowSurface(hwnd, 0, NULL, 0);
-+    if (should_expose) request_window_surface_expose(hwnd, TRUE);
+-    if (initial_configure)
+-    {
+-        NtUserExposeWindowSurface(hwnd, 0, NULL);
+-    }
++    if (initial_configure) request_window_surface_expose(hwnd, TRUE);
  }
  
  static const struct xdg_surface_listener xdg_surface_listener =
-@@ -435,7 +449,7 @@ static void zwlr_layer_surface_v1_handle_configure(void *private,
-     }
- 
-     wayland_win_data_release(data);
--    NtUserExposeWindowSurface(hwnd, 0, NULL, 0);
-+    request_window_surface_expose(hwnd, FALSE);
- }
- 
- static void zwlr_layer_surface_v1_handle_closed(void *private,
-@@ -476,8 +490,8 @@ void wp_fractional_scale_handle_scale(void* user_data,
+@@ -457,7 +468,8 @@ void wp_fractional_scale_handle_scale(void* user_data,
  
      wayland_win_data_release(data);
  
--    NtUserExposeWindowSurface(hwnd, 0, NULL, 0);
--    NtUserPostMessage(hwnd, WM_WINE_UPDATEWINDOWSTATE, 0, 0);
+-    NtUserExposeWindowSurface(hwnd, 0, NULL);
 +    request_window_surface_expose(hwnd, FALSE);
 +    update_window_state(hwnd);
  }
  
  static const struct wp_fractional_scale_v1_listener wp_fractional_scale_listener =
 diff --git a/dlls/winewayland.drv/waylanddrv.h b/dlls/winewayland.drv/waylanddrv.h
-index 76eb8fecada..31a448b5077 100644
+index f959e3bd..f202f8d1 100644
 --- a/dlls/winewayland.drv/waylanddrv.h
 +++ b/dlls/winewayland.drv/waylanddrv.h
-@@ -87,6 +87,7 @@ enum wayland_window_message
+@@ -73,6 +73,7 @@ enum wayland_window_message
      WM_WAYLAND_CONFIGURE,
      WM_WAYLAND_SET_FOREGROUND,
      WM_WAYLAND_DMABUF_FRAME,
@@ -84,12 +77,12 @@ index 76eb8fecada..31a448b5077 100644
  
  enum wayland_surface_config_state
 diff --git a/dlls/winewayland.drv/window.c b/dlls/winewayland.drv/window.c
-index 4f9a5845576..cf9d7d47917 100644
+index 1e941083..4b083d9b 100644
 --- a/dlls/winewayland.drv/window.c
 +++ b/dlls/winewayland.drv/window.c
-@@ -996,8 +996,39 @@ LRESULT WAYLAND_WindowMessage(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
-         WAYLAND_MapNotifyIconPoint((POINT *)lp);
-         return 0;
+@@ -795,8 +795,39 @@ LRESULT WAYLAND_DesktopWindowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
+ }
+ 
      case WM_WAYLAND_DMABUF_FRAME:
 -        /* Import a frame published for a descendant of this toplevel. */
 +    {
@@ -124,7 +117,7 @@ index 4f9a5845576..cf9d7d47917 100644
 +    case WM_WAYLAND_EXPOSE:
 +        /* Event-thread callbacks use this for exposes that must follow the
 +         * window-thread lock order. */
-+        NtUserExposeWindowSurface(hwnd, 0, NULL, 0);
++        NtUserExposeWindowSurface(hwnd, 0, NULL);
          return 0;
-     default:
-         FIXME("got window msg %x hwnd %p wp %lx lp %lx\n", msg, hwnd, (long)wp, lp);
+ /*****************************************************************
+  *		WAYLAND_SetLayeredWindowAttributes

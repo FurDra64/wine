@@ -1,0 +1,38 @@
+ge-ds5-haptic: 118 patches disabled 2026-10-30 (cumulative scratch replay vs Wine 11.20 HEAD f39c8da4).
+
+Method: fresh worktree at HEAD, applied 0001-0019 (19/19 GREEN), then
+`git apply --check -p1` in glob order 0020+ with skip-on-fail (cumulative).
+Main dir keeps 81 (0001-0019 + 62 GREEN from 0020+); these 118 fail the
+same way standalone or cumulatively.
+
+Cause A (head of cascade, NOT rebaseable):
+0020-winepulse-reconnect-dualsense-mono-speaker-streams.patch needs the
+Valve-only `struct pulse_period` mechanism (`pulse_reconnect_dualsense_mono_streams
+(struct pulse_period *current_period)` + `dualsense_mono_streams` list,
+`pulse_stream_dualsense_mono()`, `pulse_dualsense_mono_reconnect()`).
+`struct pulse_period` is absent from wine-11.20 dlls/winepulse.drv/pulse.c,
+so 0020 cannot be rebased. Moved to disabled/ with this reason.
+
+Cause B (MONO-cascade, 65 files incl. 0020):
+Patches referencing `dualsense_mono_*` symbols introduced only by 0020
+(dualsense_mono_streams, pulse_stream_dualsense_mono,
+pulse_dualsense_mono_reconnect, dualsense_mono_registered, etc.).
+Without 0020 in the stack they have missing-base symbols and cannot apply;
+re-enable in order after 0020 lands (or after an equivalent mono base).
+
+Cause C (context drift / missing base, 52 files without dualsense_mono):
+Hunks target code absent or restructured in 11.20 — winepulse pulse.c
+hotplug/retarget paths, mmdevapi devenum, sechost service.c Sony HID paths,
+setupapi devinst, xinput Makefile/main.c, kernelbase env/RTPC, winebus
+udev/main/hid, dinput tests, include/wine/hid.h. Not absorbed upstream
+(patch context not present in tree). Manual port required; re-enable逐件
+after rebase.
+
+Verify: remaining 81 main-dir patches apply 81/81 with the same
+skip-on-fail replay. Main dir RED = 0.
+
+Fail list (118): 0020,0027,0028,0035,0038,0039,0043,0047,0049,0052,0058,
+0060,0061,0063-0066,0069-0073,0075,0078,0079,0081-0089,0091-0093,0095,
+0097-0101,0103,0109-0118,0120-0126,0128,0129,0134,0135,0137-0139,0142,
+0144-0148,0150,0151,0152-0159,0162,0164-0175,0182,0183,0185-0192,0194,
+0195,0197,0200-0203,0205,0206,0208,0209.

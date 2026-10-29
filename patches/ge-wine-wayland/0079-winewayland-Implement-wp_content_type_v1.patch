@@ -17,14 +17,15 @@ diff --git a/dlls/winewayland.drv/Makefile.in b/dlls/winewayland.drv/Makefile.in
 index e88f327d..b01d9e64 100644
 --- a/dlls/winewayland.drv/Makefile.in
 +++ b/dlls/winewayland.drv/Makefile.in
-@@ -6,6 +6,7 @@ IMPORTS = user32 win32u
+@@ -6,7 +6,8 @@ IMPORTS = user32 win32u
  
  VER_FILEDESCRIPTION_STR = "Wine Wayland driver"
  
-+	content-type-v1.xml \
  SOURCES = \
  	alpha-modifier-v1.xml \
  	color-management-v1.xml \
++	content-type-v1.xml \
+ 	cursor-shape-v1.xml \
 diff --git a/dlls/winewayland.drv/content-type-v1.xml b/dlls/winewayland.drv/content-type-v1.xml
 new file mode 100644
 index 00000000..65a1acb8
@@ -189,19 +190,19 @@ diff --git a/dlls/winewayland.drv/wayland_surface.c b/dlls/winewayland.drv/wayla
 index b22c133c..46c0f0b4 100644
 --- a/dlls/winewayland.drv/wayland_surface.c
 +++ b/dlls/winewayland.drv/wayland_surface.c
-@@ -360,6 +360,8 @@ void wayland_surface_destroy(struct wayland_surface *surface)
-         surface->wp_alpha_modifier_surface_v1 = NULL;
-     }
+@@ -1364,6 +1364,8 @@ static void wayland_client_surface_destroy(struct client_surface *client)
+ 
+     TRACE("%s\n", debugstr_client_surface(client));
  
 +    if (surface->wp_content_type_v1)
 +        wp_content_type_v1_destroy(surface->wp_content_type_v1);
+     if (surface->color_management)
+         wp_color_management_surface_v1_destroy(surface->color_management);
      if (surface->wp_viewport)
-     {
-         wp_viewport_destroy(surface->wp_viewport);
-@@ -548,6 +550,21 @@ void wayland_surface_clear_role(struct wayland_surface *surface)
-         }
+@@ -1604,6 +1604,21 @@ struct client_surface *WAYLAND_CreateClientSurface(HWND hwnd, int pixel_format,
+         goto err;
+     }
  
-         if (surface->xdg_toplevel)
 +    if (process_wayland.wp_content_type_manager_v1)
 +    {
 +        client->wp_content_type_v1 =
@@ -217,9 +218,9 @@ index b22c133c..46c0f0b4 100644
 +        }
 +    }
 +
-         {
-             xdg_toplevel_destroy(surface->xdg_toplevel);
-             surface->xdg_toplevel = NULL;
+     return &client->client;
+ 
+ err:
 diff --git a/dlls/winewayland.drv/waylanddrv.h b/dlls/winewayland.drv/waylanddrv.h
 index 76d9036d..f8c02109 100644
 --- a/dlls/winewayland.drv/waylanddrv.h

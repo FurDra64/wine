@@ -652,12 +652,14 @@ index af3982d1..5330f975 100644
      uint32_t global_id;
      unsigned int pending_flags;
      struct wayland_output_state pending;
-@@ -379,6 +403,8 @@ BOOL wayland_process_init(void);
+@@ -380,8 +380,10 @@ BOOL wayland_process_init(void);
  BOOL wayland_output_create(uint32_t id, uint32_t version);
  void wayland_output_destroy(struct wayland_output *output);
  void wayland_output_use_xdg_extension(struct wayland_output *output);
 +void wayland_output_use_image_description(struct wayland_output *output);
 +void wayland_color_manager_init(void);
+ struct wayland_output *wayland_output_for_rect(const RECT *rect);
  
  /**********************************************************************
   *          Wayland surface
+  */

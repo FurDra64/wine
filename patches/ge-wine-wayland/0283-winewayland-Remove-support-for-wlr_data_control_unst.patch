@@ -6,27 +6,14 @@ Subject: [PATCH 283/285] winewayland: Remove support for
  wlr_data_control_unstable_v1.
 
 ---
- dlls/winewayland.drv/Makefile.in              |   1 -
  dlls/winewayland.drv/wayland.c                |  14 +-
  dlls/winewayland.drv/wayland_data_device.c    | 192 ++----------
  dlls/winewayland.drv/waylanddrv.h             |   8 -
  dlls/winewayland.drv/waylanddrv_main.c        |   3 +-
  .../wlr-data-control-unstable-v1.xml          | 278 ------------------
- 6 files changed, 29 insertions(+), 467 deletions(-)
+ 5 files changed, 29 insertions(+), 467 deletions(-)
  delete mode 100644 dlls/winewayland.drv/wlr-data-control-unstable-v1.xml
 
-diff --git a/dlls/winewayland.drv/Makefile.in b/dlls/winewayland.drv/Makefile.in
-index 177edede77c..04f2c4aa57d 100644
---- a/dlls/winewayland.drv/Makefile.in
-+++ b/dlls/winewayland.drv/Makefile.in
-@@ -34,7 +34,6 @@ SOURCES = \
- 	waylanddrv_main.c \
- 	window.c \
- 	window_surface.c \
--	wlr-data-control-unstable-v1.xml \
- 	xdg-activation-v1.xml \
- 	xdg-decoration-unstable-v1.xml \
- 	xdg-output-unstable-v1.xml \
 diff --git a/dlls/winewayland.drv/wayland.c b/dlls/winewayland.drv/wayland.c
 index ad36bd20773..8121ab1a67a 100644
 --- a/dlls/winewayland.drv/wayland.c

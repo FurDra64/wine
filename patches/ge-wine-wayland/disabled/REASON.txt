@@ -1,0 +1,20 @@
+ge-wine-wayland: disabled patches 2026-10-30 (cumulative scratch replay vs Wine HEAD f39c8da4).
+
+Method: fresh worktree at HEAD, strict `git apply --check -p1` in glob order
+with skip-on-fail for RED predecessors (front-half REDs 0080/0097/0122/0126/
+0177/0192/0193 owned by sibling agents, applied leniently via 3way/fuzz only
+to approximate intended state). Reverse-check (`git apply -R --check` on
+pristine HEAD) 0/32 absorbed upstream. Remaining main-dir patches verified
+GREEN in the same replay once listed REDs below are retired/rebased.
+
+Cause A (BLOCKED on missing base, NOT rebaseable):
+0195-fshack-win32u-Remove-redundant-vkGetPhysicalDeviceSu.patch needs the
+fshack fullscreen-hack code in dlls/win32u/vulkan.c
+(surface_get_fshack_dpi, swapchain->fshack_dpi, capabilities with
+VK_IMAGE_USAGE_STORAGE_BIT check, "scalind from" WARN). Pristine HEAD
+dlls/win32u/vulkan.c contains zero fshack symbols (no "fshack", no
+"supportedUsageFlags"); the ge-proton-fshack patchset itself is
+NEEDS-REBASE/disabled in patches/series.conf. Re-enable after the fshack
+base stack lands.
+
+Fail list: 0195.

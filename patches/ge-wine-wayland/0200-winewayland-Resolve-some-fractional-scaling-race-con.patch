@@ -108,7 +108,7 @@ index 77f507234d2..08ef642290f 100644
  
      if (!(data = wayland_win_data_get(hwnd))) return;
      if (!(surface = data->wayland_surface))
-@@ -602,25 +602,22 @@ static void wayland_configure_window(HWND hwnd)
+@@ -602,20 +602,18 @@ static void wayland_configure_window(HWND hwnd)
          flags |= SWP_FRAMECHANGED;
      }
      /* Transitions between decoration modes may entail a frame change. */
@@ -116,7 +116,7 @@ index 77f507234d2..08ef642290f 100644
      {
          flags |= SWP_FRAMECHANGED;
      }
-
+ 
 -    surface_rect = map_rect_to_surface(surface, surface->window.rect);
 -
      /* If the window is already fullscreen and its size is compatible with what
@@ -130,7 +130,8 @@ index 77f507234d2..08ef642290f 100644
      {
          flags |= SWP_NOSIZE;
      }
- 
+@@ -642,5 +640,4 @@ static void wayland_configure_window(HWND hwnd)
+     /* TODO: Move window based on which outputs it is mapped on */
      SetRect(&rect, 0, 0, width, height);
 -    rect = map_rect_from_surface(surface, rect);
      OffsetRect(&rect, data->rects.window.left, data->rects.window.top);

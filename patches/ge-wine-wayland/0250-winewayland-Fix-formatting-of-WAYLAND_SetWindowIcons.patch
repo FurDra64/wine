@@ -13,7 +13,7 @@ diff --git a/dlls/winewayland.drv/window.c b/dlls/winewayland.drv/window.c
 index 08ef642290f..7d74ffcf9e8 100644
 --- a/dlls/winewayland.drv/window.c
 +++ b/dlls/winewayland.drv/window.c
-@@ -714,21 +714,20 @@ void WAYLAND_SetWindowIcons(HWND hwnd, HICON icon, const ICONINFO *ii, HICON ico
+@@ -714,22 +714,20 @@ void WAYLAND_SetWindowIcons(HWND hwnd, HICON icon, const ICONINFO *ii, HICON ico
      struct wayland_surface *surface;
      struct wayland_win_data *data;
  
@@ -32,7 +32,8 @@ index 08ef642290f..7d74ffcf9e8 100644
 -            {
 -                wayland_surface_set_icon_buffer(surface, ICON_BIG, ii);
 -                if (icon_small) wayland_surface_set_icon_buffer(surface, ICON_SMALL, ii_small);
--                if (wayland_surface_is_toplevel(surface)) wayland_surface_assign_icon(surface);
+-                if (wayland_surface_is_toplevel(surface))
+-                    wayland_surface_assign_icon(surface);
 -            }
 -            wayland_win_data_release(data);
 -        }
