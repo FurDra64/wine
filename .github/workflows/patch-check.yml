@@ -9,6 +9,7 @@ on:
       - 'patches/**'
       - 'patches/series.conf'
       - 'scripts/**'
+      - '.github/workflows/patch-check.yml'
   pull_request:
     paths:
       - 'patches/**'
