@@ -1,5 +1,0 @@
-Feature: ge-staging-mmsystemdll16-midihdr-refcount
-Description: Ported from GE-Proton patches/wine-hotfixes/wine-staging/mmsystem.dll16-MIDIHDR_Refcount/. GE-rebased wine-staging pick.
-Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
-Upstream-Status: none
-Depends-On: none
