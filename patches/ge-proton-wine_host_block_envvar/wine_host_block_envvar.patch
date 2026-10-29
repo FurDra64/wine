@@ -27,7 +27,7 @@ index eef2c34b3e4..7d1c137ec7d 100644
 +        end = p + strcspn(p, ",; \t\r\n");
 +        if (*end) *end++ = '\0';
 +
-+        if (*p && !strcasecmp(name, p))
++        if (*p && !_stricmp(name, p))
 +        {
 +            free(copy);
 +            return TRUE;
