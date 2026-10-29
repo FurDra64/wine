@@ -32,7 +32,7 @@ index 53b58ad13794..ee8cc9190de8 100644
 +
 +    if ( cached == -1 ) {
 +        UNICODE_STRING var_name, var_value;
-+        RtlInitUnicodeString( &var_name, L\"WINE_OPTISCALER_NAME\" );
++        RtlInitUnicodeString( &var_name, L"WINE_OPTISCALER_NAME" );
 +        var_value.Buffer = dllW;
 +        var_value.Length = 0;
 +        var_value.MaximumLength = sizeof(dllW);
