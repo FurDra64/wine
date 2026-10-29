@@ -21,7 +21,7 @@ Fixes: https://github.com/GloriousEggroll/proton-ge-custom/issues/837
 diff --git a/dlls/win32u/vulkan.c b/dlls/win32u/vulkan.c
 --- a/dlls/win32u/vulkan.c
 +++ b/dlls/win32u/vulkan.c
-@@ -2827,15 +2827,55 @@
+@@ -1783,15 +1783,55 @@
      get_physical_device_properties2( physical_device, properties2, physical_device->instance->p_vkGetPhysicalDeviceProperties2KHR );
  }
  
@@ -71,7 +71,7 @@ diff --git a/dlls/win32u/vulkan.c b/dlls/win32u/vulkan.c
 +    VkResult res;
  
 -    return instance->p_vkGetPhysicalDeviceSurfaceFormatsKHR( physical_device->host.physical_device,
--                                                             surface->obj.host.surface, format_count, formats );
+-                                                                surface->obj.host.surface, format_count, formats );
 +    res = instance->p_vkGetPhysicalDeviceSurfaceFormatsKHR( physical_device->host.physical_device,
 +                                                            surface->obj.host.surface, format_count, formats );
 +    if (res == VK_SUCCESS && formats) sort_surface_formats( formats, *format_count );
@@ -79,7 +79,7 @@ diff --git a/dlls/win32u/vulkan.c b/dlls/win32u/vulkan.c
  }
  
  static VkResult win32u_vkGetPhysicalDeviceSurfaceFormats2KHR( VkPhysicalDevice client_physical_device, const VkPhysicalDeviceSurfaceInfo2KHR *surface_info,
-@@ -2868,8 +2908,10 @@
+@@ -1824,8 +1864,10 @@
  
      surface_info_host.surface = surface->obj.host.surface;
  

@@ -109,9 +109,10 @@ index 3290e36a15a..044d441353d 100644
                                              struct mempool *pool, struct vulkan_device *device )
  {
 @@ -1028,6 +1067,21 @@ static VkResult convert_device_create_info( struct vulkan_physical_device *physi
+     /* win32u uses VkSwapchainPresentScalingCreateInfoEXT if available. */
+     if (device->extensions.has_VK_KHR_swapchain && instance->extensions.has_VK_EXT_surface_maintenance1 &&
          physical_device->extensions.has_VK_EXT_swapchain_maintenance1)
          device->extensions.has_VK_EXT_swapchain_maintenance1 = 1;
- 
 +    if (device->extensions.has_VK_KHR_swapchain && use_hades_present_modes( physical_device ))
 +    {
 +        VkPhysicalDeviceSwapchainMaintenance1FeaturesEXT *maintenance;
@@ -127,9 +128,8 @@ index 3290e36a15a..044d441353d 100644
 +        maintenance->swapchainMaintenance1 = VK_TRUE;
 +    }
 +
-     /* Force-enable the extensions the cross-process producer needs so we can
-      * interpose a managed swapchain even when the app did not request them.
-      * Only meaningful for swapchain devices. */
+ 
+     if (!(extensions = mem_alloc( pool, sizeof(device->extensions) * 8 * sizeof(*extensions) ))) return VK_ERROR_OUT_OF_HOST_MEMORY;
 @@ -1998,17 +2052,43 @@ static void adjust_surface_capabilities( struct vulkan_instance *instance, struc
      capabilities->currentExtent.height = client_rect.bottom - client_rect.top;
  }
@@ -203,10 +203,10 @@ index 3290e36a15a..044d441353d 100644
      struct swapchain *swapchain, *old_swapchain = swapchain_from_handle( create_info->oldSwapchain );
      struct surface *surface = surface_from_handle( create_info->surface );
      struct vulkan_device *device = vulkan_device_from_handle( client_device );
-@@ -4502,6 +4590,34 @@ static VkResult win32u_vkCreateSwapchainKHR( VkDevice client_device, const VkSwa
-                surface->hwnd, device->extensions.has_VK_EXT_external_memory_dma_buf );
+@@ -1919,5 +1919,33 @@ static VkResult win32u_vkCreateSwapchainKHR( VkDevice client_device, const VkSwa
+         scaling.scalingBehavior = VK_PRESENT_SCALING_STRETCH_BIT_EXT;
+         create_info_host.pNext = &scaling;
      }
- 
 +    /* Hades indexes three-entry command-pool arrays with the acquired image.
 +     * Use per-mode limits instead of Wayland's conservative legacy minimum,
 +     * and declare the mode to prevent an implicit MAILBOX image-count bump. */
@@ -235,6 +235,5 @@ index 3290e36a15a..044d441353d 100644
 +        }
 +    }
 +
-     /* Host Wayland WSI needs the replacement wl_surface attached while it
-      * creates the swapchain. It cannot be marked native until creation has
-      * succeeded, so keep this narrow bootstrap state separate from busy_ref;
+ 
+     if (!(swapchain = calloc( 1, sizeof(*swapchain) ))) return VK_ERROR_OUT_OF_HOST_MEMORY;

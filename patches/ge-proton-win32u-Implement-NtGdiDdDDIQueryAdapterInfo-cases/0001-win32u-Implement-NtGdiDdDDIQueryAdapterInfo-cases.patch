@@ -12,10 +12,9 @@ diff --git a/dlls/win32u/d3dkmt.c b/dlls/win32u/d3dkmt.c
 index 375aadc5b1d51e2549cd748046a3c11f2f96f838..92f1164a3ddabde968087f568d5dce232914c417 100644
 --- a/dlls/win32u/d3dkmt.c
 +++ b/dlls/win32u/d3dkmt.c
-@@ -31,6 +31,7 @@
+@@ -29,5 +29,6 @@
  #include "win32u_private.h"
  #include "ntuser_private.h"
- #include "d3dkmdt.h"
 +#include "winternl.h"
  
  #include <d3d9types.h>

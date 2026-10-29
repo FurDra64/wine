@@ -1,7 +1,7 @@
 diff --git a/dlls/crypt32/pfx.c b/dlls/crypt32/pfx.c
 --- a/dlls/crypt32/pfx.c
 +++ b/dlls/crypt32/pfx.c
-@@ -100,6 +100,27 @@
+@@ -101,6 +101,27 @@
      return ret;
  }
  

@@ -44,11 +44,11 @@ diff --git a/dlls/winex11.drv/xim.c b/dlls/winex11.drv/xim.c
 index d0b7c5ec7b7..0cda054f5c5 100644
 --- a/dlls/winex11.drv/xim.c
 +++ b/dlls/winex11.drv/xim.c
-@@ -510,7 +510,12 @@ XIC X11DRV_get_ic( HWND hwnd )
+@@ -549,7 +549,12 @@ XIC X11DRV_get_ic( HWND hwnd )
      XIC ret;
  
      if (!(data = get_win_data( hwnd ))) return 0;
--    x11drv_init_thread_data()->last_xic_hwnd = hwnd;
+-    x11drv_thread_data()->last_xic_hwnd = hwnd;
 +    if (!x11drv_thread_data())
 +    {
 +        release_win_data( data );

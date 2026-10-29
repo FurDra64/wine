@@ -159,8 +159,8 @@ index afecfd664a9ffaf31cf7df090ff9b5307c84d053..b733b11be5ec5c731b3d9f03c0de7339
      return 0;
  }
  
--#define NUM_PROPERTY_PAGES 8
-+#define NUM_PROPERTY_PAGES 9
+-#define NUM_PROPERTY_PAGES 7
++#define NUM_PROPERTY_PAGES 8
  
  static INT_PTR
  doPropertySheet (HINSTANCE hInstance, HWND hOwner)
@@ -185,18 +185,16 @@ diff --git a/programs/winecfg/resource.h b/programs/winecfg/resource.h
 index df46dcd03fe6251b59e02dcdba91bb8a378a1190..8022bf4b30c07b4550b70a022168f5f2fc6e0dc7 100644
 --- a/programs/winecfg/resource.h
 +++ b/programs/winecfg/resource.h
-@@ -46,6 +46,7 @@
+@@ -45,5 +45,6 @@
  #define IDS_LINKS_TO                    17
  #define IDS_WINECFG_TITLE_APP           18   /* App specific title */
- #define IDS_TAB_STAGING                 19
 +#define IDS_TAB_INPUT                   20
  #define IDI_WINECFG                     100
  #define IDI_LOGO                        102
  #define IDD_ABOUTCFG                    107
-@@ -56,6 +57,7 @@
+@@ -55,5 +55,6 @@
  #define IDD_DRIVECFG                    112
  #define IDD_DESKTOP_INTEGRATION         115
- #define IDD_STAGING                     116
 +#define IDD_INPUT_CONFIG                117
  #define IDC_WINVER                      1012
  #define IDC_DESKTOP_WIDTH               1023

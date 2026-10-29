@@ -1,7 +1,7 @@
 diff --git a/dlls/crypt32/pfx.c b/dlls/crypt32/pfx.c
 --- a/dlls/crypt32/pfx.c
 +++ b/dlls/crypt32/pfx.c
-@@ -100,7 +100,7 @@
+@@ -101,7 +101,7 @@
      return ret;
  }
  
@@ -10,7 +10,7 @@ diff --git a/dlls/crypt32/pfx.c b/dlls/crypt32/pfx.c
  {
      CRYPT_KEY_PROV_INFO *prov_info;
      DWORD size, len_container, len_name;
-@@ -131,7 +131,11 @@
+@@ -132,7 +132,11 @@
      size = sizeof(prov_info->dwProvType);
      CryptGetProvParam( prov, PP_PROVTYPE, (BYTE *)&prov_info->dwProvType, &size, 0 );
  
@@ -23,12 +23,12 @@ diff --git a/dlls/crypt32/pfx.c b/dlls/crypt32/pfx.c
      prov_info->cProvParam  = 0;
      prov_info->rgProvParam = NULL;
      size = sizeof(prov_info->dwKeySpec);
-@@ -204,7 +208,7 @@
-                 goto error;
+@@ -211,7 +211,7 @@
+                     goto error;
+                 }
              }
-         }
--        else if (!set_key_prov_info( ctx, prov ))
-+        else if (!set_key_prov_info( ctx, prov, flags ))
-         {
-             WARN( "failed to set provider info property %08lx\n", GetLastError() );
-             CertFreeCertificateContext( ctx );
+-            else if (!set_key_prov_info( ctx, prov ))
++            else if (!set_key_prov_info( ctx, prov, flags ))
+             {
+                 WARN( "failed to set provider info property %08lx\n", GetLastError() );
+                 CertFreeCertificateContext( ctx );

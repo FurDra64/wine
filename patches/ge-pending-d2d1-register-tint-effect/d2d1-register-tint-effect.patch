@@ -31,7 +31,7 @@ diff --git a/dlls/d2d1/effect.c b/dlls/d2d1/effect.c
 index b66fe73..f671538 100644
 --- a/dlls/d2d1/effect.c
 +++ b/dlls/d2d1/effect.c
-@@ -1804,6 +1804,45 @@ static HRESULT __stdcall scale_factory(IUnknown **effect)
+@@ -1918,6 +1918,45 @@
      return d2d_effect_create_impl(effect, &properties, sizeof(properties));
  }
  
@@ -77,11 +77,14 @@ index b66fe73..f671538 100644
  void d2d_effects_init_builtins(struct d2d_factory *factory)
  {
      static const struct builtin_description
-@@ -1835,6 +1874,7 @@ void d2d_effects_init_builtins(struct d2d_factory *factory)
+@@ -1949,9 +1988,10 @@ void d2d_effects_init_builtins(struct d2d_factory *factory)
          { &CLSID_D2D1HueRotation, X2(hue_rotation) },
          { &CLSID_D2D1Saturation, X2(saturation) },
          { &CLSID_D2D1Scale, X2(scale) },
 +        { &CLSID_D2D1Tint, X2(tint) },
+         { &CLSID_D2D1Premultiply, X(premultiply) },
+         { &CLSID_D2D13DTransform, X2(_3d_transform) },
+         { &CLSID_D2D1ColorManagement, X2(color_management) },
  #undef X2
  #undef X
      };

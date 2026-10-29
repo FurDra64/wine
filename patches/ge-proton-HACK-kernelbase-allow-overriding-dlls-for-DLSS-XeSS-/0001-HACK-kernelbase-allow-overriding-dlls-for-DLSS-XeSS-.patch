@@ -22,7 +22,7 @@ diff --git a/dlls/kernelbase/loader.c b/dlls/kernelbase/loader.c
 index e69ceb87d121..fc93eda80386 100644
 --- a/dlls/kernelbase/loader.c
 +++ b/dlls/kernelbase/loader.c
-@@ -550,6 +550,51 @@ HMODULE WINAPI DECLSPEC_HOTPATCH LoadLibraryExA( LPCSTR name, HANDLE file, DWORD
+@@ -556,6 +556,51 @@ HMODULE WINAPI DECLSPEC_HOTPATCH LoadLibraryExA( LPCSTR name, HANDLE file, DWORD
  }
  
  
@@ -74,7 +74,7 @@ index e69ceb87d121..fc93eda80386 100644
  /***********************************************************************
   *	LoadLibraryExW   (kernelbase.@)
   */
-@@ -557,6 +602,7 @@ HMODULE WINAPI DECLSPEC_HOTPATCH LoadLibraryExW( LPCWSTR name, HANDLE file, DWOR
+@@ -563,6 +563,7 @@ HMODULE WINAPI DECLSPEC_HOTPATCH LoadLibraryExW( LPCWSTR name, HANDLE file, DWOR
  {
      UNICODE_STRING str;
      HMODULE module;
@@ -82,10 +82,10 @@ index e69ceb87d121..fc93eda80386 100644
  
      if (!name)
      {
-@@ -571,11 +617,14 @@ HMODULE WINAPI DECLSPEC_HOTPATCH LoadLibraryExW( LPCWSTR name, HANDLE file, DWOR
-         flags = 0;
+@@ -569,11 +569,14 @@ HMODULE WINAPI DECLSPEC_HOTPATCH LoadLibraryExW( LPCWSTR name, HANDLE file, DWOR
+         SetLastError( ERROR_INVALID_PARAMETER );
+         return 0;
      }
- 
 -    RtlInitUnicodeString( &str, name );
 +    if ( loaddll_upscaler_hack(name, overrideW) )
 +        FIXME( "HACK: redirecting %s to %s\n", debugstr_w(name), debugstr_w(overrideW));

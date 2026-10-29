@@ -11,12 +11,11 @@ diff --git a/tools/makedep.c b/tools/makedep.c
 index a4ed58b11b1abc20d37b8e1ecaf0f26fbc97c42a..a4c129a7744e0883b3b7a3da4dd763445d0671e4 100644
 --- a/tools/makedep.c
 +++ b/tools/makedep.c
-@@ -3975,6 +3975,8 @@ static void output_subdirs( struct makefile *make )
+@@ -4285,5 +4285,7 @@ static void output_subdirs( struct makefile *make )
          strarray_addall_path( &all_targets, submakes[i]->obj_dir, submakes[i]->font_files );
          if (!strcmp( submakes[i]->obj_dir, "tools" ) || !strncmp( submakes[i]->obj_dir, "tools/", 6 ))
-             strarray_add( &tooldeps_deps, obj_dir_path( submakes[i], "all" ));
+             strarray_addall_path( &tooldeps_deps, submakes[i]->obj_dir, submakes[i]->all_targets[0] );
 +        if (!strcmp( submakes[i]->obj_dir, "nls" ) || !strncmp( submakes[i]->obj_dir, "nls/", 4 ))
-+            strarray_add( &tooldeps_deps, obj_dir_path( submakes[i], "all" ));
-         if (submakes[i]->testdll)
-             strarray_add( &buildtest_deps, obj_dir_path( submakes[i], "all" ));
++            strarray_addall_path( &tooldeps_deps, submakes[i]->obj_dir, submakes[i]->all_targets[0] );
      }
+     strarray_addall( &dependencies, makefile_deps );

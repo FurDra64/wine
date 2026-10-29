@@ -1,5 +1,0 @@
-Feature: ge-pending-secur32-schannel-fix-incomplete-message-missing-size
-Description: Ported from GE-Proton wine-hotfixes/pending/secur32-schannel-fix-incomplete-message-missing-size.patch. [PATCH] secur32/tests: Test required buffer size in case of
-Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
-Upstream-Status: none
-Depends-On: none

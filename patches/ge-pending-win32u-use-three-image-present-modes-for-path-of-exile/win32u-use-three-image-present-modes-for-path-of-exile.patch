@@ -109,10 +109,9 @@ diff --git a/dlls/win32u/vulkan.c b/dlls/win32u/vulkan.c
          !physical_device->extensions.has_VK_EXT_swapchain_maintenance1 ||
          !instance->p_vkGetPhysicalDeviceFeatures2KHR || !instance->p_vkGetPhysicalDeviceSurfaceCapabilities2KHR)
          return FALSE;
-@@ -1573,7 +1588,7 @@
+@@ -758,6 +758,6 @@
          physical_device->extensions.has_VK_EXT_swapchain_maintenance1)
          device->extensions.has_VK_EXT_swapchain_maintenance1 = 1;
- 
 -    if (device->extensions.has_VK_KHR_swapchain && use_hades_present_modes( physical_device ))
 +    if (device->extensions.has_VK_KHR_swapchain && use_three_image_present_modes( physical_device ))
      {
@@ -176,10 +175,10 @@ diff --git a/dlls/win32u/vulkan.c b/dlls/win32u/vulkan.c
          capabilities->surfaceCapabilities.maxImageCount = 3;
      }
      if (!res) adjust_surface_capabilities( instance, surface, &capabilities->surfaceCapabilities );
-@@ -5120,20 +5135,20 @@
-                surface->hwnd, device->extensions.has_VK_EXT_external_memory_dma_buf );
+@@ -2007,20 +2007,20 @@
+         scaling.scalingBehavior = VK_PRESENT_SCALING_STRETCH_BIT_EXT;
+         create_info_host.pNext = &scaling;
      }
- 
 -    /* Hades indexes three-entry command-pool arrays with the acquired image.
 -     * Use per-mode limits instead of Wayland's conservative legacy minimum,
 +    /* Hades requires three images; Path of Exile also rejects the conservative

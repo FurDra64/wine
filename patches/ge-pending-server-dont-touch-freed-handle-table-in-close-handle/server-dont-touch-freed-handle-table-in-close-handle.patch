@@ -25,17 +25,18 @@ diff --git a/server/handle.c b/server/handle.c
 index a88f94a3395..3169c826fdc 100644
 --- a/server/handle.c
 +++ b/server/handle.c
-@@ -434,13 +434,28 @@ unsigned int close_handle( struct process *process, obj_handle_t handle )
+@@ -409,13 +409,27 @@ unsigned int close_handle( struct process *process, obj_handle_t handle )
      if (!(entry = get_handle( process, handle ))) return STATUS_INVALID_HANDLE;
      if (entry->access & RESERVED_CLOSE_PROTECT) return STATUS_HANDLE_NOT_CLOSABLE;
      obj = entry->ptr;
--    if (!obj->ops->close_handle( obj, process, handle )) return STATUS_HANDLE_NOT_CLOSABLE;
+-    if (obj->ops->close_handle && !obj->ops->close_handle( obj, process, handle ))
+-        return STATUS_HANDLE_NOT_CLOSABLE;
 +
 +    /* the close_handle callback may terminate the process itself (e.g. the last
 +     * handle to a kill-on-close job containing it), which frees its handle table */
 +    grab_object( process );
 +    grab_object( obj );
-+    if (!obj->ops->close_handle( obj, process, handle ))
++    if (obj->ops->close_handle && !obj->ops->close_handle( obj, process, handle ))
 +    {
 +        release_object( obj );
 +        release_object( process );
@@ -58,7 +59,7 @@ index a88f94a3395..3169c826fdc 100644
 +    release_object( process );
      return STATUS_SUCCESS;
  }
- 
+
 -- 
 2.55.0
 

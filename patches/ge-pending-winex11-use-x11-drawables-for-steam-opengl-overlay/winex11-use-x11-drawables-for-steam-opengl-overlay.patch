@@ -59,19 +59,19 @@ index d8e4169842e..d4ffd385c95 100644
  }
  
  static BOOL set_swap_interval( struct gl_drawable *gl, int interval )
-@@ -976,7 +990,12 @@ static BOOL x11drv_surface_create( HWND hwnd, BOOL raw, int format, struct openg
-     client_surface_release( client );
-     if (!gl) return FALSE;
- 
--    if (!(gl->drawable = pglXCreateWindow( gdi_display, fmt->fbconfig, window, NULL )))
+@@ -957,7 +971,12 @@ static BOOL x11drv_surface_create( struct client_surface *client, int format, struct opengl_drawable **drawable )
+     if (!(gl = opengl_drawable_create( &x11drv_surface_funcs, format, client, NULL ))) return FALSE;
+-    if (!(gl->drawable = pglXCreateWindow( gdi_display, fmt->fbconfig, surface->window, NULL )))
 +    if (steam_overlay_uses_x11_drawables() && fmt->visual)
 +    {
-+        gl->drawable = window;
++        gl->drawable = surface->window;
 +        gl->x11_window = TRUE;
 +    }
-+    else if (!(gl->drawable = pglXCreateWindow( gdi_display, fmt->fbconfig, window, NULL )))
++    else if (!(gl->drawable = pglXCreateWindow( gdi_display, fmt->fbconfig, surface->window, NULL )))
      {
          opengl_drawable_release( &gl->base );
          return FALSE;
+     }
+ 
 -- 
 2.51.0

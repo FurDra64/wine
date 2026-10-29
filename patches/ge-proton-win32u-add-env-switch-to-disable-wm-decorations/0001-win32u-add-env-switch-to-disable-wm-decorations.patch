@@ -14,10 +14,10 @@ diff --git a/dlls/win32u/sysparams.c b/dlls/win32u/sysparams.c
 index 1c2d436a7eb24eee6b798f3702653b07645dd9d5..e3e20c7e294d99d3a160ea5e086891f93b42593a 100644
 --- a/dlls/win32u/sysparams.c
 +++ b/dlls/win32u/sysparams.c
-@@ -6621,6 +6621,13 @@ void sysparams_init(void)
+@@ -6084,4 +6084,11 @@ void sysparams_init(void)
      if (!get_config_key( hkey, appkey, "EmulateModeset", buffer, sizeof(buffer) ))
          emulate_modeset = IS_OPTION_TRUE( buffer[0] );
- 
+
 +    {
 +        const char *decorate = NULL;
 +
@@ -25,6 +25,4 @@ index 1c2d436a7eb24eee6b798f3702653b07645dd9d5..e3e20c7e294d99d3a160ea5e086891f9
 +        if (decorate && decorate[0] == '1') decorated_mode = FALSE;
 +    }
 +
-     {
-         const char *s;
- 
+ #undef IS_OPTION_TRUE

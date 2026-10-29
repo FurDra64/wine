@@ -32,7 +32,7 @@ Fixes: https://github.com/GloriousEggroll/proton-ge-custom/issues/881
 ---
 --- a/dlls/win32u/vulkan.c
 +++ b/dlls/win32u/vulkan.c
-@@ -148,6 +148,9 @@
+@@ -107,6 +107,9 @@
  
      struct rb_tree objects;
      pthread_rwlock_t objects_lock;
@@ -42,7 +42,7 @@ Fixes: https://github.com/GloriousEggroll/proton-ge-custom/issues/881
  };
  
  static struct instance *instance_from_handle( VkInstance handle )
-@@ -156,6 +159,104 @@
+@@ -115,6 +118,103 @@
      return CONTAINING_RECORD( object, struct instance, obj );
  }
  
@@ -78,10 +78,8 @@ Fixes: https://github.com/GloriousEggroll/proton-ge-custom/issues/881
 +
 +    if (instance->extensions.has_VK_KHR_get_physical_device_properties2)
 +        get_properties2 = instance->p_vkGetPhysicalDeviceProperties2KHR;
-+    else if (instance->api_version >= VK_API_VERSION_1_1)
-+        get_properties2 = instance->p_vkGetPhysicalDeviceProperties2;
 +    else
-+        get_properties2 = NULL;
++        get_properties2 = instance->p_vkGetPhysicalDeviceProperties2;
 +
 +    for (i = 0; i < instance->physical_device_count; i++)
 +    {
@@ -89,10 +87,11 @@ Fixes: https://github.com/GloriousEggroll/proton-ge-custom/issues/881
 +        VkPhysicalDeviceDriverProperties driver_props = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES};
 +        VkPhysicalDeviceProperties2 props = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2, .pNext = &driver_props};
 +
-+        if (get_properties2 && instance->physical_devices[i].api_version >= VK_API_VERSION_1_2)
++        if (get_properties2)
 +        {
 +            get_properties2( host_physical_device, &props );
-+            if (driver_props.driverID == VK_DRIVER_ID_NVIDIA_PROPRIETARY) return TRUE;
++            if (props.properties.apiVersion >= VK_API_VERSION_1_2 &&
++                driver_props.driverID == VK_DRIVER_ID_NVIDIA_PROPRIETARY) return TRUE;
 +        }
 +        else
 +        {
@@ -147,7 +146,7 @@ Fixes: https://github.com/GloriousEggroll/proton-ge-custom/issues/881
  struct device_memory
  {
      struct vulkan_device_memory obj;
-@@ -1451,6 +1552,8 @@
+@@ -627,6 +728,8 @@
       */
      if ((res = init_physical_devices( &instance->obj, physical_devices ))) goto failed;
  
@@ -156,7 +155,7 @@ Fixes: https://github.com/GloriousEggroll/proton-ge-custom/issues/881
      TRACE( "Created instance %p, host_instance %p.\n", instance, instance->obj.host.instance );
      for (i = 0; i < instance->obj.physical_device_count; i++)
      {
-@@ -1478,7 +1581,7 @@
+@@ -654,7 +757,7 @@
  
      if (!instance) return;
  
@@ -165,7 +164,8 @@ Fixes: https://github.com/GloriousEggroll/proton-ge-custom/issues/881
      for (int i = 0; i < instance->obj.physical_device_count; i++)
          vulkan_instance_remove_object( &instance->obj, &instance->obj.physical_devices[i].obj );
      vulkan_instance_remove_object( &instance->obj, &instance->obj.obj );
-@@ -2532,6 +2635,8 @@
+@@ -1533,7 +1635,9 @@
+ static VkResult win32u_vkCreateWin32SurfaceKHR( VkInstance client_instance, const VkWin32SurfaceCreateInfoKHR *create_info,
                                                  const VkAllocationCallbacks *allocator, VkSurfaceKHR *ret )
  {
      struct vulkan_instance *instance = vulkan_instance_from_handle( client_instance );
@@ -174,31 +174,27 @@ Fixes: https://github.com/GloriousEggroll/proton-ge-custom/issues/881
      VkSurfaceKHR host_surface;
      struct surface *surface;
      HWND dummy = NULL;
-@@ -2553,13 +2658,27 @@
-         surface->hwnd = dummy;
-     }
- 
-+    if (win32u_instance->nvidia_wayland)
-+    {
-+        pthread_mutex_lock( &nvidia_wayland_lock );
-+        if (win32u_instance->nvidia_wayland_surface) pthread_mutex_unlock( &nvidia_wayland_lock );
-+        else nvidia_wayland_locked = TRUE;
-+    }
-+
-     if ((res = driver_funcs->p_vulkan_surface_create( surface->hwnd, fshack_enabled, instance,
-                                                       &host_surface, &surface->client )))
+@@ -1558,7 +1662,23 @@
+     if (!(surface->client = get_unused_client_surface( surface->hwnd, 0, FALSE ))) res = VK_ERROR_OUT_OF_HOST_MEMORY;
+     else
      {
-+        if (nvidia_wayland_locked) pthread_mutex_unlock( &nvidia_wayland_lock );
-         if (dummy) NtUserDestroyWindow( dummy );
-         free( surface );
-         return res;
++        if (win32u_instance->nvidia_wayland)
++        {
++            pthread_mutex_lock( &nvidia_wayland_lock );
++            if (win32u_instance->nvidia_wayland_surface) pthread_mutex_unlock( &nvidia_wayland_lock );
++            else nvidia_wayland_locked = TRUE;
++        }
++
+         res = driver_funcs->p_vulkan_surface_create( surface->client, instance, &host_surface );
++        if (nvidia_wayland_locked)
++        {
++            if (!res)
++            {
++                win32u_instance->nvidia_wayland_surface = TRUE;
++                nvidia_wayland_live++;
++            }
++            pthread_mutex_unlock( &nvidia_wayland_lock );
++        }
+         use_window_client_surface( surface->client, !res );
      }
-+    if (nvidia_wayland_locked)
-+    {
-+        win32u_instance->nvidia_wayland_surface = TRUE;
-+        nvidia_wayland_live++;
-+        pthread_mutex_unlock( &nvidia_wayland_lock );
-+    }
-     add_window_client_surface( surface->hwnd, surface->client );
- 
-     vulkan_object_init( &surface->obj.obj, host_surface );
+     if (res)
