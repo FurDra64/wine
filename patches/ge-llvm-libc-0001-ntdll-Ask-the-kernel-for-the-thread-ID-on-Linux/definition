@@ -1,0 +1,5 @@
+Feature: ge-llvm-libc-0001-ntdll-Ask-the-kernel-for-the-thread-ID-on-Linux
+Description: Ported from GE-Proton wine-hotfixes/llvm-libc/0001-ntdll-Ask-the-kernel-for-the-thread-ID-on-Linux.patch. [PATCH 1/2] ntdll: Ask the kernel for the thread ID on Linux.
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: none

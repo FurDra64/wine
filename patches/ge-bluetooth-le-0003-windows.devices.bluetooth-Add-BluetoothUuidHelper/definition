@@ -1,0 +1,5 @@
+Feature: ge-bluetooth-le-0003-windows.devices.bluetooth-Add-BluetoothUuidHelper
+Description: Ported from GE-Proton wine-hotfixes/bluetooth-le/0003-windows.devices.bluetooth-Add-BluetoothUuidHelper.patch. [PATCH 3/8] windows.devices.bluetooth: Add BluetoothUuidHelper.
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: none

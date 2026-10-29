@@ -1,0 +1,5 @@
+Feature: ge-game-ace-ntoskrnl-service-key-name
+Description: Ported from GE-Proton game-patches/ace-ntoskrnl-service-key-name.patch. [PATCH] ntoskrnl.exe: Pass only the service name in
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: none

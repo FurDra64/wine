@@ -1,0 +1,5 @@
+Feature: ge-pending-ntdll-block-apcs-until-process-exit-state-is-set
+Description: Ported from GE-Proton wine-hotfixes/pending/ntdll-block-apcs-until-process-exit-state-is-set.patch. [PATCH] ntdll: Block signals until process termination state is updated.
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: none

@@ -1,0 +1,5 @@
+Feature: ge-pending-ntdll-keep-nvidia-dlss-address-range-free
+Description: Ported from GE-Proton wine-hotfixes/pending/ntdll-keep-nvidia-dlss-address-range-free.patch. [PATCH] ntdll: Keep the address range the NVIDIA driver reserves for DLSS free.
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: none

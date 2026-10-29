@@ -1,0 +1,5 @@
+Feature: ge-llvm-libc-0002-loader-Do-not-warn-when-the-interpreter-has-no-_r_de
+Description: Ported from GE-Proton wine-hotfixes/llvm-libc/0002-loader-Do-not-warn-when-the-interpreter-has-no-_r_de.patch. [PATCH 2/2] loader: Do not warn when the interpreter has no _r_debug.
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: none

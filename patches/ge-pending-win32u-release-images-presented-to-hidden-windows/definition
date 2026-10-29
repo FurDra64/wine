@@ -1,0 +1,5 @@
+Feature: ge-pending-win32u-release-images-presented-to-hidden-windows
+Description: Ported from GE-Proton wine-hotfixes/pending/win32u-release-images-presented-to-hidden-windows.patch. [PATCH] win32u: Release swapchain images presented to hidden windows.
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: none

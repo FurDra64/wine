@@ -1,0 +1,5 @@
+Feature: ge-pending-server-dont-touch-freed-handle-table-in-close-handle
+Description: Ported from GE-Proton wine-hotfixes/pending/server-dont-touch-freed-handle-table-in-close-handle.patch. [PATCH] server: Don't touch a freed handle table in close_handle().
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: none

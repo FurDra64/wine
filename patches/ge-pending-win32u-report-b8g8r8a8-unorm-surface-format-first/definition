@@ -1,0 +1,5 @@
+Feature: ge-pending-win32u-report-b8g8r8a8-unorm-surface-format-first
+Description: Ported from GE-Proton wine-hotfixes/pending/win32u-report-b8g8r8a8-unorm-surface-format-first.patch. [PATCH] win32u: Report B8G8R8A8_UNORM as the first surface format.
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: none

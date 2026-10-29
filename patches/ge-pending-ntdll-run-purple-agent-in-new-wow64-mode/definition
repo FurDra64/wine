@@ -1,0 +1,5 @@
+Feature: ge-pending-ntdll-run-purple-agent-in-new-wow64-mode
+Description: Ported from GE-Proton wine-hotfixes/pending/ntdll-run-purple-agent-in-new-wow64-mode.patch. [PATCH] ntdll: HACK: Run NCSOFT PURPLE's purple-agent.exe in new WoW64
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: none

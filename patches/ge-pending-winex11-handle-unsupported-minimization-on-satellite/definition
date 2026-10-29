@@ -1,0 +1,5 @@
+Feature: ge-pending-winex11-handle-unsupported-minimization-on-satellite
+Description: Ported from GE-Proton wine-hotfixes/pending/winex11-handle-unsupported-minimization-on-satellite.patch. [PATCH] winex11: Reconcile unsupported minimization on satellite.
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: none

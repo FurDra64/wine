@@ -1,0 +1,5 @@
+Feature: ge-game-ace-wineboot-start-samss-service
+Description: Ported from GE-Proton game-patches/ace-wineboot-start-samss-service.patch. [PATCH] wineboot: Start the SamSs service.
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: none

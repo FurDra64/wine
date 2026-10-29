@@ -1,0 +1,5 @@
+Feature: ge-bluetooth-le-0001-winebth.sys-bluetoothapis-windows.devices.bluetooth-
+Description: Ported from GE-Proton wine-hotfixes/bluetooth-le/0001-winebth.sys-bluetoothapis-windows.devices.bluetooth-.patch. [PATCH 1/8] winebth.sys, bluetoothapis, windows.devices.bluetooth:
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: none

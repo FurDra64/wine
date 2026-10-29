@@ -1,0 +1,5 @@
+Feature: ge-bluetooth-le-0009-winebth.sys-Define-WIN32_NO_STATUS-after-including-n
+Description: Ported from GE-Proton wine-hotfixes/bluetooth-le/0009-winebth.sys-Define-WIN32_NO_STATUS-after-including-n.patch. [PATCH] winebth.sys: Define WIN32_NO_STATUS after including
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: none

@@ -1,0 +1,5 @@
+Feature: ge-game-ace-ntoskrnl-psgetcontextthread-thunk
+Description: Ported from GE-Proton game-patches/ace-ntoskrnl-psgetcontextthread-thunk.patch. [PATCH] HACK: ntoskrnl.exe: Make PsGetContextThread a thunk around a
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: none

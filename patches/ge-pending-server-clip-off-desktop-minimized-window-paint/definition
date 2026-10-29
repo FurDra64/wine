@@ -1,0 +1,5 @@
+Feature: ge-pending-server-clip-off-desktop-minimized-window-paint
+Description: Ported from GE-Proton wine-hotfixes/pending/server-clip-off-desktop-minimized-window-paint.patch. [PATCH] server: Clip painting of off-desktop minimized windows.
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: none

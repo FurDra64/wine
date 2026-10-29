@@ -1,0 +1,5 @@
+Feature: ge-bluetooth-le-0005-windows.devices.bluetooth-Connect-when-GattSession.M
+Description: Ported from GE-Proton wine-hotfixes/bluetooth-le/0005-windows.devices.bluetooth-Connect-when-GattSession.M.patch. [PATCH 5/8] windows.devices.bluetooth: Connect when
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: none

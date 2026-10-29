@@ -1,0 +1,5 @@
+Feature: ge-pending-win32u-defer-nvidia-wayland-host-instance-destroy
+Description: Ported from GE-Proton wine-hotfixes/pending/win32u-defer-nvidia-wayland-host-instance-destroy.patch. [PATCH] win32u: Defer destroying NVIDIA Wayland host instances while
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: none

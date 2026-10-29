@@ -1,0 +1,5 @@
+Feature: ge-bluetooth-le-0008-ntoskrnl.exe-Drop-pending-relation-updates-for-remov
+Description: Ported from GE-Proton wine-hotfixes/bluetooth-le/0008-ntoskrnl.exe-Drop-pending-relation-updates-for-remov.patch. [PATCH 8/8] ntoskrnl.exe: Drop pending relation updates for removed
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: none

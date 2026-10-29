@@ -1,0 +1,5 @@
+Feature: ge-pending-d2d1-render-bitmap-sprites-tint-and-layers
+Description: Ported from GE-Proton wine-hotfixes/pending/d2d1-render-bitmap-sprites-tint-and-layers.patch. [PATCH] d2d1: Render bitmap sprites, Tint output and layers for LMU.
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: none

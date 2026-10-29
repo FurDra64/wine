@@ -1,0 +1,5 @@
+Feature: ge-proton-ntdll-Only-read-the-kernel-clocksource-for-QPC-at-start-up
+Description: Ported from GE-Proton proton/0002-ntdll-Only-read-the-kernel-clocksource-for-QPC-at-start-up.patch. [PATCH] ntdll: Only read the kernel clocksource for QPC at start-up.
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: none

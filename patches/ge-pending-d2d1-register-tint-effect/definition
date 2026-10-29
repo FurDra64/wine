@@ -1,0 +1,5 @@
+Feature: ge-pending-d2d1-register-tint-effect
+Description: Ported from GE-Proton wine-hotfixes/pending/d2d1-register-tint-effect.patch. [PATCH] d2d1: Register the Tint effect and expose its properties.
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: none

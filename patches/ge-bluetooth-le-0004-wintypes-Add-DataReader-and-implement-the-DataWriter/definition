@@ -1,0 +1,5 @@
+Feature: ge-bluetooth-le-0004-wintypes-Add-DataReader-and-implement-the-DataWriter
+Description: Ported from GE-Proton wine-hotfixes/bluetooth-le/0004-wintypes-Add-DataReader-and-implement-the-DataWriter.patch. [PATCH 4/8] wintypes: Add DataReader and implement the DataWriter
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: none

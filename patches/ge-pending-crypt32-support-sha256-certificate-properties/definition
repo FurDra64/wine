@@ -1,0 +1,5 @@
+Feature: ge-pending-crypt32-support-sha256-certificate-properties
+Description: Ported from GE-Proton wine-hotfixes/mta-certificate/0001-crypt32-support-sha256-certificate-properties.patch. [PATCH] crypt32: support SHA-256 certificate hash properties for MTA
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: none

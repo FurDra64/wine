@@ -1,0 +1,5 @@
+Feature: ge-bluetooth-le-0002-windows.devices.radios-Return-Bluetooth-radios-from-
+Description: Ported from GE-Proton wine-hotfixes/bluetooth-le/0002-windows.devices.radios-Return-Bluetooth-radios-from-.patch. [PATCH 2/8] windows.devices.radios: Return Bluetooth radios from
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: none

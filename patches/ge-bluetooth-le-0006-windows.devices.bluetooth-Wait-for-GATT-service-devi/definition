@@ -1,0 +1,5 @@
+Feature: ge-bluetooth-le-0006-windows.devices.bluetooth-Wait-for-GATT-service-devi
+Description: Ported from GE-Proton wine-hotfixes/bluetooth-le/0006-windows.devices.bluetooth-Wait-for-GATT-service-devi.patch. [PATCH 6/8] windows.devices.bluetooth: Wait for GATT service device
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: none

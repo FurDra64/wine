@@ -1,0 +1,5 @@
+Feature: ge-pending-ntdll-srwlock-skip-needless-shared-release-wake
+Description: Ported from GE-Proton wine-hotfixes/pending/ntdll-srwlock-skip-needless-shared-release-wake.patch. [PATCH] ntdll: Don't wake exclusive waiters in
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: none

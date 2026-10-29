@@ -1,0 +1,5 @@
+Feature: ge-game-ace-driverentry-kernel-return-address
+Description: Ported from GE-Proton game-patches/ace-driverentry-kernel-return-address.patch. [PATCH] ntoskrnl.exe: Call DriverInit with bits 48-64 of return address set.
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: none
