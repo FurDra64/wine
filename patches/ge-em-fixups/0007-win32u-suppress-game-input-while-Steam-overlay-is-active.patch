@@ -17,10 +17,9 @@ driver and export a generic replay helper so the bridge can restore custom and
 hidden game cursors when overlay ownership ends. Reapply the current cursor
 clip at the same time so relative-pointer locking does not depend on a real
 compositor focus cycle.
-
 --- a/dlls/win32u/cursoricon.c
 +++ b/dlls/win32u/cursoricon.c
-@@ -60,6 +60,9 @@ struct cursoricon_object
+@@ -62,6 +62,9 @@ struct cursoricon_object
  };
  
  static struct list icon_cache = LIST_INIT( icon_cache );
@@ -28,9 +27,9 @@ compositor focus cycle.
 +static HWND driver_cursor_window;
 +static HCURSOR driver_cursor_handle;
  
- static struct cursoricon_object *get_icon_ptr( HICON handle )
- {
-@@ -74,9 +77,36 @@ static struct cursoricon_object *get_icon_ptr( HICON handle )
+ static LONG has_set_cursor = 0;
+ 
+@@ -76,9 +79,36 @@ static struct cursoricon_object *get_icon_ptr( HICON handle )
      return obj;
  }
  
@@ -67,21 +66,9 @@ compositor focus cycle.
      user_driver->pSetCursor( window, handle );
      return TRUE;
  }
-
---- a/dlls/win32u/win32u_private.h
-+++ b/dlls/win32u/win32u_private.h
-@@ -37,6 +37,7 @@ extern void release_clipboard_owner( HWND hwnd );
- 
- /* cursoricon.c */
- extern BOOL process_wine_setcursor( HWND hwnd, HWND window, HCURSOR handle );
-+extern W32KAPI void __wine_reapply_driver_cursor(void);
- extern HICON alloc_cursoricon_handle( BOOL is_icon );
- extern ULONG_PTR get_icon_param( HICON handle );
- extern ULONG_PTR set_icon_param( HICON handle, const struct free_icon_params *params );
-
 --- a/dlls/win32u/message.c
 +++ b/dlls/win32u/message.c
-@@ -43,6 +43,49 @@ WINE_DECLARE_DEBUG_CHANNEL(relay);
+@@ -45,6 +45,49 @@ WINE_DECLARE_DEBUG_CHANNEL(relay);
  #define QS_HARDWARE     0x40000000
  #define QS_INTERNAL     (QS_DRIVER | QS_HARDWARE)
  
@@ -130,8 +117,8 @@ compositor focus cycle.
 +
  static const struct _KUSER_SHARED_DATA *user_shared_data = (struct _KUSER_SHARED_DATA *)0x7ffe0000;
  
- static LONG atomic_load_long( const volatile LONG *ptr )
-@@ -3948,6 +3991,8 @@ NTSTATUS send_hardware_message( HWND hwnd, UINT flags, const INPUT *input, LPARA
+ static const struct ratio no_dpi;
+@@ -3919,6 +3962,8 @@ NTSTATUS server_send_hardware_message( HWND hwnd, UINT flags, const INPUT *input
      NTSTATUS ret;
      BOOL wait;
  
@@ -140,3 +127,13 @@ compositor focus cycle.
      info.type     = MSG_HARDWARE;
      info.dest_tid = 0;
      info.hwnd     = hwnd;
+--- a/dlls/win32u/win32u_private.h
++++ b/dlls/win32u/win32u_private.h
+@@ -38,6 +38,7 @@ extern void release_clipboard_owner( HWND hwnd );
+ 
+ /* cursoricon.c */
+ extern BOOL process_wine_setcursor( HWND hwnd, HWND window, HCURSOR handle );
++extern W32KAPI void __wine_reapply_driver_cursor(void);
+ extern HICON alloc_cursoricon_handle( BOOL is_icon );
+ extern ULONG_PTR get_icon_param( HICON handle );
+ extern ULONG_PTR set_icon_param( HICON handle, const struct free_icon_params *params );

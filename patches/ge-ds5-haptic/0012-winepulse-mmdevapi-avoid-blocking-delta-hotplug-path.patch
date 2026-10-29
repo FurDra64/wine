@@ -81,8 +81,9 @@ index d52cda6733a..4f64a30a913 100644
      if (pthread_mutex_init(&g_phys_mutex, &attr) != 0)
          pthread_mutex_init(&g_phys_mutex, NULL);
  
-@@ -401,7 +371,6 @@ static NTSTATUS pulse_process_detach(void *args)
-     silence_buf = NULL;
+@@ -326,8 +326,7 @@ static NTSTATUS pulse_process_detach(void *args)
+     if (pulse_ml)
+         pa_mainloop_quit(pulse_ml, 0);
  
      pthread_mutex_destroy(&pulse_mutex);
 -    pthread_mutex_destroy(&pulse_ready_mutex);
@@ -181,8 +182,9 @@ index d52cda6733a..4f64a30a913 100644
  static UINT pulse_channel_map_to_channel_mask(const pa_channel_map *map)
  {
      int i;
-@@ -882,6 +920,64 @@ static void fill_device_info(PhysDevice *dev, pa_proplist *p)
-         dev->container_id = get_container_id(buffer);
+@@ -828,6 +828,64 @@ static void fill_device_info(PhysDevice *dev, pa_proplist *p)
+     if ((buffer = pa_proplist_gets(p, PA_PROP_DEVICE_PRODUCT_ID)))
+         dev->product_id = strtol(buffer, NULL, 16);
  }
  
 +static void pulse_add_device(struct list *list, pa_proplist *proplist, int index, EndpointFormFactor form,

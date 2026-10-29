@@ -352,8 +352,8 @@ index a3a5ec3741f7f078b68416286d8c5ba6c323f2ae..207f2f09422e5e30e9446c9f96ece2e0
      if (This->devices_count)
      {
          This->devices = malloc(This->devices_count * sizeof(IMMDevice *));
--        if (!This->devices_count)
-+        if (!This->devices_count) {
+-        if (!This->devices)
++        if (!This->devices) {
 +            LeaveCriticalSection(&device_list_cs);
              return E_OUTOFMEMORY;
 +        }
@@ -457,24 +457,23 @@ diff --git a/dlls/mmdevapi/main.c b/dlls/mmdevapi/main.c
 index 6d1616e5b5595c690041a90b3d59ab787ac837b5..46b2bfae3b78bd2947c38b9f40f445d36a795ea0 100644
 --- a/dlls/mmdevapi/main.c
 +++ b/dlls/mmdevapi/main.c
-@@ -220,6 +220,7 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved)
-                 }
-             }
-             main_loop_stop();
-+            stop_update_thread();
+@@ -211,6 +211,7 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved)
+             if (lpvReserved) break;
  
-             if (!lpvReserved)
-                 MMDevEnum_Free();
+             wine_unix_call( main_loop_stop, NULL );
++            stop_update_thread();
+             if (drvs.module_unixlib)
+             {
+                 __wine_unload_unix_lib( drvs.module );
 diff --git a/dlls/mmdevapi/mmdevapi_private.h b/dlls/mmdevapi/mmdevapi_private.h
 index 672d901bf6da9c4f80300cc138622f3a9c10ae74..4e80fe1e2f2a432c1e0e203f96d330173bbe48b7 100644
 --- a/dlls/mmdevapi/mmdevapi_private.h
 +++ b/dlls/mmdevapi/mmdevapi_private.h
-@@ -130,6 +130,7 @@ extern HRESULT load_devices_from_reg(void);
+@@ -127,4 +127,6 @@ extern HRESULT load_devices_from_reg(void);
  extern HRESULT load_driver_devices(EDataFlow flow);
  
- extern void main_loop_stop(void);
 +extern void stop_update_thread(void);
- 
++
  extern const WCHAR drv_keyW[];
  
 diff --git a/dlls/mmdevapi/unixlib.h b/dlls/mmdevapi/unixlib.h
@@ -642,7 +641,7 @@ index 617708e9cd527826673c6368cb4ba839cc44f473..438c72c3315411029417025ef3a1857a
  }
  
  /* copied from kernelbase */
-@@ -305,6 +392,12 @@ static NTSTATUS pulse_process_attach(void *args)
+@@ -249,5 +249,11 @@ static NTSTATUS pulse_process_attach(void *args)
      if (pthread_mutex_init(&pulse_mutex, &attr) != 0)
          pthread_mutex_init(&pulse_mutex, NULL);
  
@@ -652,14 +651,12 @@ index 617708e9cd527826673c6368cb4ba839cc44f473..438c72c3315411029417025ef3a1857a
 +    if (pthread_mutex_init(&g_phys_mutex, &attr) != 0)
 +        pthread_mutex_init(&g_phys_mutex, NULL);
 +
- #ifdef _WIN64
-     if (NtCurrentTeb()->WowTebOffset)
-     {
-@@ -331,15 +424,37 @@ static NTSTATUS pulse_process_detach(void *args)
+     return STATUS_SUCCESS;
+ }
+@@ -263,6 +263,10 @@ static NTSTATUS pulse_process_detach(void *args)
+     if (pulse_ml)
+         pa_mainloop_quit(pulse_ml, 0);
  
-     free( silence_buf );
-     silence_buf = NULL;
-+
 +    pthread_mutex_destroy(&pulse_mutex);
 +    pthread_mutex_destroy(&pulse_ready_mutex);
 +    pthread_mutex_destroy(&g_phys_mutex);
@@ -667,11 +664,14 @@ index 617708e9cd527826673c6368cb4ba839cc44f473..438c72c3315411029417025ef3a1857a
      return STATUS_SUCCESS;
  }
  
- static void pulse_main_loop_thread_cleanup(void *context)
+@@ -269,8 +269,27 @@ static void pulse_main_loop_thread_cleanup(void *context)
  {
      TRACE("Main loop thread is being aborted.\n");
 +    pulse_broadcast();
-+}
+ 
+     pulse_ml = NULL;
+-    pulse_broadcast();
+ }
 +
 +static pa_mainloop *pulse_main_loop_new(void)
 +{
@@ -683,30 +683,29 @@ index 617708e9cd527826673c6368cb4ba839cc44f473..438c72c3315411029417025ef3a1857a
 +    pa_mainloop_set_poll_func(pulse_ml, pulse_poll_func, NULL);
 +    return pulse_ml;
 +}
- 
++
 +static void pulse_main_loop_free(void)
 +{
 +    if (!pulse_ml)
 +        return;
 +    pa_mainloop_free(pulse_ml);
-     pulse_ml = NULL;
--    pulse_broadcast();
- }
++    pulse_ml = NULL;
++}
  
- static NTSTATUS pulse_main_loop(void *args)
-@@ -347,78 +462,197 @@ static NTSTATUS pulse_main_loop(void *args)
-     struct main_loop_params *params = args;
+ static void pulse_main_loop(void *args)
+@@ -277,14 +277,21 @@ static void pulse_main_loop(void *args)
+     HANDLE event = args;
      int ret;
      pulse_lock();
 -    pulse_ml = pa_mainloop_new();
 -    pa_mainloop_set_poll_func(pulse_ml, pulse_poll_func, NULL);
 +    if (!pulse_main_loop_new()) {
-+        NtSetEvent(params->event, NULL);
++        NtSetEvent(event, NULL);
 +        pulse_unlock();
 +        ERR("Failed to create main loop\n");
-+        return STATUS_SUCCESS;
++        PsTerminateSystemThread( 0 );
 +    }
-     NtSetEvent(params->event, NULL);
+     NtSetEvent(event, NULL);
      pthread_cleanup_push(pulse_main_loop_thread_cleanup, NULL);
      pa_mainloop_run(pulse_ml, &ret);
      pthread_cleanup_pop(0);
@@ -716,9 +715,10 @@ index 617708e9cd527826673c6368cb4ba839cc44f473..438c72c3315411029417025ef3a1857a
 +
 +    pthread_cond_broadcast(&g_phys_cond);
 +
-     return STATUS_SUCCESS;
+     PsTerminateSystemThread( 0 );
  }
  
+@@ -321,64 +321,176 @@ static NTSTATUS pulse_get_endpoint_ids(void *args)
 -static NTSTATUS pulse_get_endpoint_ids(void *args)
 +static BOOL pulse_get_endpoints_size_needed(struct list *list, size_t *needed, unsigned int size)
  {
@@ -940,7 +940,7 @@ index 617708e9cd527826673c6368cb4ba839cc44f473..438c72c3315411029417025ef3a1857a
  }
  
  static void pulse_stream_state(pa_stream *s, void *user)
-@@ -493,47 +727,6 @@ static BOOL pulse_stream_valid(struct pulse_stream *stream)
+@@ -493,46 +727,6 @@ static BOOL pulse_stream_valid(struct pulse_stream *stream)
      return pa_stream_get_state(stream->stream) == PA_STREAM_READY;
  }
  
@@ -954,7 +954,6 @@ index 617708e9cd527826673c6368cb4ba839cc44f473..438c72c3315411029417025ef3a1857a
 -        pa_context_unref(pulse_ctx);
 -
 -    pulse_ctx = pa_context_new(pa_mainloop_get_api(pulse_ml), name);
--    setenv("PULSE_PROP_application.name", name, 1);
 -    if (!pulse_ctx) {
 -        ERR("Failed to create context\n");
 -        return E_FAIL;
@@ -988,21 +987,9 @@ index 617708e9cd527826673c6368cb4ba839cc44f473..438c72c3315411029417025ef3a1857a
  static UINT pulse_channel_map_to_channel_mask(const pa_channel_map *map)
  {
      int i;
-@@ -698,10 +891,10 @@ static GUID get_container_id(const char *sysfs_path)
-     create_usb_dev_container_id(init_time, vid, pid, bus_num, dev_num, &tmp_guid);
- 
- exit:
--    if (udev)
--        udev_unref(udev);
-     if (audio_dev)
-         udev_device_unref(audio_dev);
-+    if (udev)
-+        udev_unref(udev);
- 
-     TRACE("Returning %s.\n", debugstr_guid(&tmp_guid));
-     return tmp_guid;
-@@ -744,58 +937,6 @@ static void fill_device_info(PhysDevice *dev, pa_proplist *p)
-         dev->container_id = get_container_id(buffer);
+@@ -591,59 +591,7 @@ static void fill_device_info(PhysDevice *dev, pa_proplist *p)
+     if ((buffer = pa_proplist_gets(p, PA_PROP_DEVICE_PRODUCT_ID)))
+         dev->product_id = strtol(buffer, NULL, 16);
  }
  
 -static void pulse_add_device(struct list *list, pa_proplist *proplist, int index, EndpointFormFactor form,
@@ -1122,7 +1109,7 @@ index 617708e9cd527826673c6368cb4ba839cc44f473..438c72c3315411029417025ef3a1857a
                  params->result = S_OK;
                  return STATUS_SUCCESS;
              case 3:   /* PhysicalSpeakers */
-@@ -2916,6 +3068,8 @@ static NTSTATUS pulse_get_prop_value(void *args)
+@@ -2508,16 +2508,20 @@ static NTSTATUS pulse_get_prop_value(void *args)
                      goto fail;
                  params->value->vt = VT_UI4;
                  params->value->ulVal = dev->channel_mask;
@@ -1131,12 +1118,6 @@ index 617708e9cd527826673c6368cb4ba839cc44f473..438c72c3315411029417025ef3a1857a
                  params->result = S_OK;
                  return STATUS_SUCCESS;
              }
-@@ -2930,14 +3084,17 @@ static NTSTATUS pulse_get_prop_value(void *args)
-                 params->result = S_OK;
-             }
- 
-+            g_phys_unlock();
-             return STATUS_SUCCESS;
          }
  
 +        g_phys_unlock();

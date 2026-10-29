@@ -324,13 +324,16 @@ index 12d80671192..00e87515dd5 100644
  struct wayland_text_input
  {
      struct zwp_text_input_v3 *zwp_text_input_v3;
-@@ -246,6 +260,7 @@ struct wayland
+@@ -246,9 +260,10 @@ struct wayland
      struct wayland_seat seat;
      struct wayland_keyboard keyboard;
      struct wayland_pointer pointer;
 +    struct wayland_touch touch;
      struct wayland_text_input text_input;
      struct wayland_data_device data_device;
+ #ifdef WL_FIXES_ACK_GLOBAL_REMOVE
+     struct wl_fixes *wl_fixes;
+ #endif
      struct wl_list output_list;
 @@ -523,6 +538,13 @@ void wayland_pointer_init(struct wl_pointer *wl_pointer);
  void wayland_pointer_deinit(void);

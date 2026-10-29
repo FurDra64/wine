@@ -38,20 +38,15 @@ not treat the haptic stream as a half-created Pulse stream.
  2 files changed, 736 insertions(+), 30 deletions(-)
 
 diff --git a/dlls/winepulse.drv/Makefile.in b/dlls/winepulse.drv/Makefile.in
-index ba26cae987538a4fcd7b560539d4a58d4dfc7cac..f7322d80b702a1f6c8ef8ec55a579db419cbf524 100644
 --- a/dlls/winepulse.drv/Makefile.in
 +++ b/dlls/winepulse.drv/Makefile.in
-@@ -1,8 +1,8 @@
- MODULE    = winepulse.drv
+@@ -1,4 +1,4 @@
  UNIXLIB   = winepulse.so
- IMPORTS   = dxguid uuid winmm user32 advapi32 ole32
--UNIX_LIBS    = $(PULSE_LIBS) $(PTHREAD_LIBS) $(UDEV_LIBS) -lm
--UNIX_CFLAGS  = $(PULSE_CFLAGS) $(UDEV_CFLAGS)
+-UNIX_LIBS    = $(PULSE_LIBS) $(PTHREAD_LIBS) -lm
+-UNIX_CFLAGS  = $(PULSE_CFLAGS)
 +UNIX_LIBS    = $(PULSE_LIBS) $(PTHREAD_LIBS) $(UDEV_LIBS) $(ALSA_LIBS) -lm
 +UNIX_CFLAGS  = $(PULSE_CFLAGS) $(UDEV_CFLAGS) $(ALSA_CFLAGS)
  
- SOURCES = \
- 	pulse.c
 diff --git a/dlls/winepulse.drv/pulse.c b/dlls/winepulse.drv/pulse.c
 index 5a908076f60741303ebaefbe9d413cb24a3def69..d8b26929f856ab21af8b907a80ba92a6c330dcd6 100644
 --- a/dlls/winepulse.drv/pulse.c
@@ -64,9 +59,9 @@ index 5a908076f60741303ebaefbe9d413cb24a3def69..d8b26929f856ab21af8b907a80ba92a6
  #include <pulse/pulseaudio.h>
  
  #include "ntstatus.h"
-@@ -90,6 +91,8 @@ struct pulse_stream
+@@ -57,6 +57,8 @@ struct pulse_stream
+     EDataFlow dataflow;
  
-     char *device;
      pa_stream *stream;
 +    snd_pcm_t *haptic_pcm;
 +    char *haptic_alsa_path;
@@ -75,7 +70,7 @@ index 5a908076f60741303ebaefbe9d413cb24a3def69..d8b26929f856ab21af8b907a80ba92a6
      pa_buffer_attr attr;
 @@ -108,6 +111,11 @@ struct pulse_stream
      SIZE_T peek_ofs, read_offs_bytes, lcl_offs_bytes, pa_offs_bytes;
-     SIZE_T tmp_buffer_bytes, held_bytes, peek_len, peek_buffer_len, pa_held_bytes, max_pa_held_bytes;
+     SIZE_T tmp_buffer_bytes, held_bytes, peek_len, peek_buffer_len, pa_held_bytes;
      BYTE *local_buffer, *tmp_buffer, *peek_buffer;
 +    int16_t *haptic_buffer;
 +    SIZE_T haptic_buffer_frames;
@@ -83,12 +78,11 @@ index 5a908076f60741303ebaefbe9d413cb24a3def69..d8b26929f856ab21af8b907a80ba92a6
 +    pa_usec_t haptic_path_check_time;
 +    unsigned int haptic_hotplug_generation;
      void *locked_ptr;
-     BOOL just_underran, pa_started, update_timing_info_pending, rebase_write_index;
+     BOOL please_quit, just_started, just_underran;
      pa_usec_t mmdev_period_usec;
-@@ -155,6 +163,8 @@ typedef struct _PhysDevice {
+@@ -155,5 +163,7 @@ typedef struct _PhysDevice {
      REFERENCE_TIME min_period, def_period;
      WAVEFORMATEXTENSIBLE fmt;
-     GUID container_id;
 +    char *raw_haptic_target;
 +    char *raw_haptic_alsa_path;
      char pulse_name[0];
@@ -147,8 +141,9 @@ index 5a908076f60741303ebaefbe9d413cb24a3def69..d8b26929f856ab21af8b907a80ba92a6
  static void pulse_contextcallback(pa_context *c, void *userdata)
  {
      switch (pa_context_get_state(c))
-@@ -975,6 +1007,24 @@ static void fill_device_info(PhysDevice *dev, pa_proplist *p)
-         dev->container_id = get_container_id(buffer);
+@@ -975,7 +1007,25 @@ static void fill_device_info(PhysDevice *dev, pa_proplist *p)
+     if ((buffer = pa_proplist_gets(p, PA_PROP_DEVICE_PRODUCT_ID)))
+         dev->product_id = strtol(buffer, NULL, 16);
  }
  
 +static BOOL is_dualsense_audio_device(const PhysDevice *dev)
@@ -246,8 +241,7 @@ index 5a908076f60741303ebaefbe9d413cb24a3def69..d8b26929f856ab21af8b907a80ba92a6
  
      if (!stream->stream) {
          WARN("pa_stream_new returned error %i\n", pa_context_errno(pulse_ctx));
-@@ -1482,8 +1573,10 @@ static HRESULT pulse_stream_connect(struct pulse_stream *stream, const char *pul
-     stream->attr = attr;
+@@ -1482,7 +1573,9 @@ static HRESULT pulse_stream_connect(struct pulse_stream *stream, const char *pul
      dump_attr(&attr);
  
 -    /* If specific device was requested, use it exactly */
@@ -863,11 +857,10 @@ index 5a908076f60741303ebaefbe9d413cb24a3def69..d8b26929f856ab21af8b907a80ba92a6
 +        hr = pulse_stream_connect(stream, connect_device, haptic_target, stream->period_bytes);
      if (SUCCEEDED(hr)) {
          UINT32 unalign;
-         const pa_buffer_attr *attr = pulse_stream_ready(stream) ? pa_stream_get_buffer_attr(stream->stream) : &stream->attr;
-@@ -1646,9 +2300,12 @@ exit:
+         const pa_buffer_attr *attr = pa_stream_get_buffer_attr(stream->stream);
+@@ -1646,8 +2300,11 @@ exit:
              pa_stream_unref(stream->stream);
          }
-         free(stream->device);
 +        free(stream->haptic_alsa_path);
          free(stream);
      }
@@ -894,58 +887,52 @@ index 5a908076f60741303ebaefbe9d413cb24a3def69..d8b26929f856ab21af8b907a80ba92a6
  
      if (stream->just_underran)
      {
-@@ -2171,11 +2836,14 @@ static void pa_streams_timer_cb(pa_mainloop_api *api, pa_time_event *e, const st
-             {
-                 pulse_write(stream);
+@@ -1887,12 +1887,15 @@ static void pulse_timer_loop(void *args)
+                 if (stream->dataflow == eRender)
+                 {
+                     pulse_write(stream);
  
--                /* regardless of what PA does, advance one per`iod */
--                adv_bytes = min(stream->period_bytes, stream->held_bytes);
--                stream->lcl_offs_bytes += adv_bytes;
--                stream->lcl_offs_bytes %= stream->real_bufsize_bytes;
--                stream->held_bytes -= adv_bytes;
-+                if (!pulse_stream_haptic(stream))
-+                {
-+                    /* regardless of what PA does, advance one period */
-+                    adv_bytes = min(stream->period_bytes, stream->held_bytes);
-+                    stream->lcl_offs_bytes += adv_bytes;
-+                    stream->lcl_offs_bytes %= stream->real_bufsize_bytes;
-+                    stream->held_bytes -= adv_bytes;
-+                }
-             }
-             else if (stream->dataflow == eCapture)
-             {
-@@ -2288,12 +2956,20 @@ static NTSTATUS pulse_release_stream(void *args)
+-                    /* regardless of what PA does, advance one period */
+-                    adv_bytes = min(stream->period_bytes, stream->held_bytes);
+-                    stream->lcl_offs_bytes += adv_bytes;
+-                    stream->lcl_offs_bytes %= stream->real_bufsize_bytes;
+-                    stream->held_bytes -= adv_bytes;
++                    if (!pulse_stream_haptic(stream))
++                    {
++                        /* regardless of what PA does, advance one period */
++                        adv_bytes = min(stream->period_bytes, stream->held_bytes);
++                        stream->lcl_offs_bytes += adv_bytes;
++                        stream->lcl_offs_bytes %= stream->real_bufsize_bytes;
++                        stream->held_bytes -= adv_bytes;
++                    }
+                 }
+                 else if(stream->dataflow == eCapture)
+                 {
+@@ -2288,11 +2956,19 @@ static NTSTATUS pulse_release_stream(void *args)
  
      pulse_lock();
-     remove_stream_from_period(stream);
--    if (PA_STREAM_IS_GOOD(pa_stream_get_state(stream->stream))) {
--        pa_stream_disconnect(stream->stream);
--        while (pulse_ml && PA_STREAM_IS_GOOD(pa_stream_get_state(stream->stream)))
--            pulse_cond_wait();
 +    if (stream->stream)
 +    {
-+        if (PA_STREAM_IS_GOOD(pa_stream_get_state(stream->stream))) {
-+            pa_stream_disconnect(stream->stream);
-+            while (pulse_ml && PA_STREAM_IS_GOOD(pa_stream_get_state(stream->stream)))
-+                pulse_cond_wait();
-+        }
-+        pa_stream_unref(stream->stream);
+     if (PA_STREAM_IS_GOOD(pa_stream_get_state(stream->stream))) {
+         pa_stream_disconnect(stream->stream);
+         while (pulse_ml && PA_STREAM_IS_GOOD(pa_stream_get_state(stream->stream)))
+             pulse_cond_wait();
+     }
+     pa_stream_unref(stream->stream);
 +    }
 +    if (stream->haptic_pcm)
 +    {
 +        snd_pcm_drop(stream->haptic_pcm);
 +        snd_pcm_close(stream->haptic_pcm);
-     }
--    pa_stream_unref(stream->stream);
++    }
      pulse_unlock();
  
      if (stream->tmp_buffer) {
-@@ -2307,7 +2983,9 @@ static NTSTATUS pulse_release_stream(void *args)
+@@ -2307,6 +2983,8 @@ static NTSTATUS pulse_release_stream(void *args)
                              &size, MEM_RELEASE);
      }
      free(stream->peek_buffer);
 +    free(stream->haptic_buffer);
-     free(stream->device);
 +    free(stream->haptic_alsa_path);
      free(stream);
      return STATUS_SUCCESS;
@@ -1018,3 +1005,5 @@ index 5a908076f60741303ebaefbe9d413cb24a3def69..d8b26929f856ab21af8b907a80ba92a6
              wait_pa_operation_complete(pa_stream_flush(stream->stream, pulse_op_cb, &success));
  
          if (success || !stream->held_bytes)
+
+
