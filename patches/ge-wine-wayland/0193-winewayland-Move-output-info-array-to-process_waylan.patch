@@ -98,7 +98,14 @@ diff --git a/dlls/winewayland.drv/wayland_output.c b/dlls/winewayland.drv/waylan
 index 6332247ca5..84ef62651e 100644
 --- a/dlls/winewayland.drv/wayland_output.c
 +++ b/dlls/winewayland.drv/wayland_output.c
-@@ -196,6 +196,10 @@
+@@ -230,11 +230,15 @@
+     output->pending_flags = 0;
+ 
+     /* Ensure the logical dimensions have sane values. */
+     if ((!output->current.logical_w || !output->current.logical_h) &&
+         output->current.current_mode)
+     {
+         output->current.logical_w = output->current.current_mode->width;
          output->current.logical_h = output->current.current_mode->height;
      }
  
@@ -107,8 +114,6 @@ index 6332247ca5..84ef62651e 100644
 +    output_info_array_update();
 +
      pthread_mutex_unlock(&process_wayland.output_mutex);
- 
-     TRACE("name=%s logical=%d,%d+%dx%d\n",
 @@ -409,6 +413,7 @@
  {
      pthread_mutex_lock(&process_wayland.output_mutex);
@@ -172,7 +177,7 @@ diff --git a/dlls/winewayland.drv/waylanddrv.h b/dlls/winewayland.drv/waylanddrv
 index 6b60b175c2..9dbfd87f02 100644
 --- a/dlls/winewayland.drv/waylanddrv.h
 +++ b/dlls/winewayland.drv/waylanddrv.h
-@@ -259,7 +259,8 @@
+@@ -263,11 +263,12 @@
      struct wl_fixes *wl_fixes;
  #endif
      struct wl_list output_list;
@@ -181,6 +186,10 @@ index 6b60b175c2..9dbfd87f02 100644
 +    /* Protects the output_list, output_info_array, and the wayland_output.current states. */
      pthread_mutex_t output_mutex;
      LONG input_serial;
+     BOOL supports_pq;
+     BOOL supports_scrgb;
+     BOOL supports_win_pq;
+     BOOL supports_extended_volume;
  };
 @@ -297,6 +298,12 @@
      struct wayland_output_state current;
@@ -195,12 +204,14 @@ index 6b60b175c2..9dbfd87f02 100644
  struct wayland_surface_config
  {
      RECT rect;
-@@ -398,6 +405,8 @@
+@@ -398,8 +405,10 @@
  BOOL wayland_output_create(uint32_t id, uint32_t version);
  void wayland_output_destroy(struct wayland_output *output);
  void wayland_output_use_xdg_extension(struct wayland_output *output);
+ void wayland_output_use_image_description(struct wayland_output *output);
 +struct wayland_output *wayland_output_for_rect(const RECT *rect);
 +void output_info_array_update(void);
+ void wayland_color_manager_init(void);
  
  /**********************************************************************
   *          Wayland surface

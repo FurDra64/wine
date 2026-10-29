@@ -18,15 +18,13 @@ diff --git a/configure.ac b/configure.ac
 index 40ab42f5c37..76657b72087 100644
 --- a/configure.ac
 +++ b/configure.ac
-@@ -1428,7 +1428,8 @@ then
-                             [`test -n "$PKG_CONFIG" && $PKG_CONFIG --variable=wayland_scanner wayland-scanner 2>/dev/null`])],
-               [WAYLAND_CLIENT_LIBS=""],[$WAYLAND_CLIENT_LIBS])])])
+@@ -1445,5 +1445,6 @@ then
+     AC_PATH_PROG(WAYLAND_SCANNER,wayland-scanner,
+                  [`test -n "$PKG_CONFIG" && $PKG_CONFIG --variable=wayland_scanner wayland-scanner 2>/dev/null`])
      WINE_PACKAGE_FLAGS(XKBCOMMON,[xkbcommon],,,,
--        [AC_CHECK_LIB(xkbcommon,xkb_context_new,[:],[XKBCOMMON_LIBS=""],[$XKBCOMMON_LIBS])])
-+        [AC_CHECK_HEADERS([xkbcommon/xkbcommon.h, xkbcommon/xkbcommon-compose.h])
-+         AC_CHECK_LIB(xkbcommon,xkb_context_new,[:],[XKBCOMMON_LIBS=""],[$XKBCOMMON_LIBS])])
-     WINE_PACKAGE_FLAGS(XKBREGISTRY,[xkbregistry],,,,
-         [AC_CHECK_LIB(xkbregistry,rxkb_context_new,[:],[XKBREGISTRY_LIBS=""],[$XKBREGISTRY_LIBS])])
+-        [AC_CHECK_FUNC(xkb_context_new,[:],[XKBCOMMON_LIBS=""])])
++        [AC_CHECK_HEADERS([xkbcommon/xkbcommon-compose.h])
++         AC_CHECK_FUNC(xkb_context_new,[:],[XKBCOMMON_LIBS=""])])
      if test "x$with_opengl" != "xno"
 diff --git a/dlls/winewayland.drv/wayland_keyboard.c b/dlls/winewayland.drv/wayland_keyboard.c
 index c3b3368fb3f..f56052e50a3 100644

@@ -98,19 +98,25 @@ diff --git a/dlls/winewayland.drv/window.c b/dlls/winewayland.drv/window.c
 index 77f507234d2..08ef642290f 100644
 --- a/dlls/winewayland.drv/window.c
 +++ b/dlls/winewayland.drv/window.c
-@@ -532,7 +532,7 @@ static void wayland_configure_window(HWND hwnd)
+@@ -532,8 +532,8 @@ static void wayland_configure_window(HWND hwnd)
      BOOL needs_enter_size_move = FALSE;
      BOOL needs_exit_size_move = FALSE;
+     BOOL restoring_from_minimize = FALSE;
      struct wayland_win_data *data;
 -    RECT rect, surface_rect;
 +    RECT rect;
  
      if (!(data = wayland_win_data_get(hwnd))) return;
      if (!(surface = data->wayland_surface))
-@@ -602,21 +602,18 @@ static void wayland_configure_window(HWND hwnd)
+@@ -602,25 +602,22 @@ static void wayland_configure_window(HWND hwnd)
          flags |= SWP_FRAMECHANGED;
      }
- 
+     /* Transitions between decoration modes may entail a frame change. */
+     else if (surface->processing.decor != surface->current.decor)
+     {
+         flags |= SWP_FRAMECHANGED;
+     }
+
 -    surface_rect = map_rect_to_surface(surface, surface->window.rect);
 -
      /* If the window is already fullscreen and its size is compatible with what
