@@ -182,7 +182,7 @@ index 614450e72d6..8cb0f0d2b52 100644
  }
  
  static void x11drv_client_surface_detach( struct client_surface *client )
-@@ -465,6 +563,265 @@ static void x11drv_client_surface_update( struct client_surface *client )
+@@ -465,6 +563,269 @@ static void x11drv_client_surface_update( struct client_surface *client )
      client_surface_update_offscreen( hwnd, surface );
  }
  
@@ -292,8 +292,12 @@ index 614450e72d6..8cb0f0d2b52 100644
 +
 +    if (!layered_overlay_shape_enabled() && !alpha_mode) return TRUE;
 +
-+    width = surface->rect.right - surface->rect.left;
-+    height = surface->rect.bottom - surface->rect.top;
++    /* client->rect split into raw/virtual upstream; raw matches the composited pixels */
++    {
++        RECT r = surface->client.raw ? surface->client.monitor_rect : surface->client.virtual_rect;
++        width = r.right - r.left;
++        height = r.bottom - r.top;
++    }
 +    if (!width || !height || !(window = X11DRV_get_whole_window( toplevel ))) return TRUE;
 +
 +    /* The input region follows UI layout, not frame rate, so sample it on a clock instead of
