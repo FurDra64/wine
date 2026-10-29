@@ -6,15 +6,68 @@ Subject: [PATCH 180/285] fixup! winewayland: Do not recursively lock with
  NtUserExposeWindowSurface.
 
 ---
- dlls/winewayland.drv/wayland_surface.c | 15 ++++++++++++---
- dlls/winewayland.drv/waylanddrv.h       | 1 -
- 2 files changed, 12 insertions(+), 4 deletions(-)
+ dlls/winewayland.drv/wayland_surface.c | 18 ++++++++++--------
+ 1 file changed, 10 insertions(+), 8 deletions(-)
 
 diff --git a/dlls/winewayland.drv/wayland_surface.c b/dlls/winewayland.drv/wayland_surface.c
-index 4fd5b24d..8506ee5f 100644
+index cc0e2162..6e25aaef 100644
 --- a/dlls/winewayland.drv/wayland_surface.c
 +++ b/dlls/winewayland.drv/wayland_surface.c
-@@ -1299,12 +1299,13 @@ static void wayland_client_surface_present(struct client_surface *client, HDC hd
+@@ -1354,7 +1354,7 @@ static const struct wl_buffer_listener dummy_buffer_listener =
+  * Ensure that the wayland surface has up-to-date contents, by committing
+  * a dummy buffer if necessary.
+  */
+-static void wayland_surface_ensure_contents(struct wayland_surface *surface, BOOL fullscreen)
++static BOOL wayland_surface_ensure_contents(struct wayland_surface *surface, BOOL fullscreen)
+ {
+     enum wl_shm_format format = fullscreen ? WL_SHM_FORMAT_XRGB8888 : WL_SHM_FORMAT_ARGB8888;
+     enum wayland_surface_ensure_type needs_contents = WAYLAND_SURFACE_NOT_ENSURED;
+@@ -1382,10 +1382,9 @@ static void wayland_surface_ensure_contents(struct wayland_surface *surface, BOO
+     switch (needs_contents)
+     {
+     case WAYLAND_SURFACE_ENSURED_FLUSH:
+-    NtUserExposeWindowSurface(hwnd, 0, NULL);
+-        /* fallthrough */
++        return TRUE;
+     case WAYLAND_SURFACE_NOT_ENSURED:
+-        return;
++        return FALSE;
+     case WAYLAND_SURFACE_ENSURED_DUMMY_BUFFER:
+         break;
+     }
+@@ -1393,13 +1392,13 @@ static void wayland_surface_ensure_contents(struct wayland_surface *surface, BOO
+     if (!wayland_surface_reconfigure(surface))
+     {
+         WARN("Failed to reconfigure surface %p\n", surface);
+-        return;
++        return FALSE;
+     }
+ 
+     if (!(dummy_shm_buffer = wayland_shm_buffer_create(width, height, format)))
+     {
+         ERR("Failed to create dummy buffer\n");
+-        return;
++        return FALSE;
+     }
+ 
+     wl_buffer_add_listener(dummy_shm_buffer->wl_buffer, &dummy_buffer_listener,
+@@ -1407,13 +1406,14 @@ static void wayland_surface_ensure_contents(struct wayland_surface *surface, BOO
+     if (!(damage = NtGdiCreateRectRgn(0, 0, width, height)))
+     {
+         wayland_shm_buffer_unref(dummy_shm_buffer);
+-        return;
++        return FALSE;
+     }
+ 
+     wayland_surface_attach_shm(surface, dummy_shm_buffer, damage);
+     wl_surface_commit(surface->wl_surface);
+     surface->ensured_contents = WAYLAND_SURFACE_ENSURED_DUMMY_BUFFER;
+     NtGdiDeleteObjectApp(damage);
++    return FALSE;
+ }
+ 
+ 
+@@ -1423,12 +1423,13 @@ static void wayland_client_surface_present(struct client_surface *client, HDC hd
      HWND hwnd = client->hwnd, toplevel = client->toplevel;
      struct wayland_surface *wayland_surface;
      struct wayland_win_data *data;
@@ -24,12 +77,12 @@ index 4fd5b24d..8506ee5f 100644
  
      if ((wayland_surface = data->wayland_surface))
      {
--        wayland_surface_ensure_contents(wayland_surface);
-+        expose = wayland_surface_ensure_contents(wayland_surface);
+-        wayland_surface_ensure_contents(wayland_surface, data->is_fullscreen);
++        expose = wayland_surface_ensure_contents(wayland_surface, data->is_fullscreen);
  
          /* Handle any processed configure request, to ensure the related
           * surface state is applied by the compositor. */
-@@ -1318,6 +1319,7 @@ static void wayland_client_surface_present(struct client_surface *client, HDC hd
+@@ -1442,6 +1443,7 @@ static void wayland_client_surface_present(struct client_surface *client, HDC hd
  
      wayland_win_data_release(data);
  
@@ -37,52 +90,5 @@ index 4fd5b24d..8506ee5f 100644
      set_client_surface(hwnd, surface);
  }
  
-@@ -1483,7 +1485,7 @@ static const struct wl_buffer_listener dummy_buffer_listener =
-  * Ensure that the wayland surface has up-to-date contents, by committing
-  * a dummy buffer if necessary.
-  */
--void wayland_surface_ensure_contents(struct wayland_surface *surface)
-+static BOOL wayland_surface_ensure_contents(struct wayland_surface *surface)
- {
-     struct wayland_shm_buffer *dummy_shm_buffer;
-     HRGN damage;
-@@ -1499,14 +1501,14 @@ void wayland_surface_ensure_contents(struct wayland_surface *surface)
-     TRACE("surface=%p hwnd=%p needs_contents=%d\n",
-           surface, surface->hwnd, needs_contents);
- 
--    if (!needs_contents) return;
-+    if (!needs_contents) return FALSE;
- 
-     /* Create a transparent dummy buffer. */
-     dummy_shm_buffer = wayland_shm_buffer_create(width, height, WL_SHM_FORMAT_ARGB8888);
-     if (!dummy_shm_buffer)
-     {
-         ERR("Failed to create dummy buffer\n");
--        return;
-+        return FALSE;
-     }
-     wl_buffer_add_listener(dummy_shm_buffer->wl_buffer, &dummy_buffer_listener,
-                            dummy_shm_buffer);
-@@ -1522,6 +1524,8 @@ void wayland_surface_ensure_contents(struct wayland_surface *surface)
- 
-     wayland_shm_buffer_unref(dummy_shm_buffer);
-     if (damage) NtGdiDeleteObjectApp(damage);
-+
-+    return FALSE;
- }
- 
- /**********************************************************************
-diff --git a/dlls/winewayland.drv/waylanddrv.h b/dlls/winewayland.drv/waylanddrv.h
-index 82a0d7a8..7a7d1a3e 100644
---- a/dlls/winewayland.drv/waylanddrv.h
-+++ b/dlls/winewayland.drv/waylanddrv.h
-@@ -348,7 +348,6 @@ POINT map_point_to_surface(struct wayland_surface *surface, POINT point);
- RECT map_rect_from_surface(struct wayland_surface *surface, RECT rect);
- POINT map_point_from_surface(struct wayland_surface *surface, POINT point);
- void wayland_client_surface_attach(struct wayland_client_surface *client, HWND toplevel, const RECT *rect);
--void wayland_surface_ensure_contents(struct wayland_surface *surface);
- void wayland_surface_set_title(struct wayland_surface *surface, LPCWSTR title);
- void wayland_surface_assign_icon(struct wayland_surface *surface);
- void wayland_surface_set_icon_buffer(struct wayland_surface *surface, UINT type, const ICONINFO *ii);
 -- 
 2.55.0

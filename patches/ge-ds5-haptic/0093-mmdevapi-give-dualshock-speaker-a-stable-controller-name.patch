@@ -18,10 +18,9 @@ and the normal DualSense / DualSense Edge naming stays untouched.
  1 file changed, 4 insertions(+)
 
 diff --git a/dlls/mmdevapi/devenum.c b/dlls/mmdevapi/devenum.c
-index 0825a706ad2..123456789ab 100644
 --- a/dlls/mmdevapi/devenum.c
 +++ b/dlls/mmdevapi/devenum.c
-@@ -1412,6 +1412,10 @@ static MMDevice *MMDevice_Create(const WCHAR *name, GUID *id, EDataFlow flow, DW
+@@ -958,6 +958,10 @@
      free(cur->drv_id);
      cur->drv_id = wcsdup(name);
      device_iname = cur->drv_id;
@@ -31,6 +30,4 @@ index 0825a706ad2..123456789ab 100644
 +
      swprintf(friendly_name, FRIENDLY_NAME_MAX, friendly_name_fmt, device_desc, device_iname);
      cur->removed = FALSE;
-     cur->hide_from_collection = FALSE;
--- 
-2.54.0
+ 

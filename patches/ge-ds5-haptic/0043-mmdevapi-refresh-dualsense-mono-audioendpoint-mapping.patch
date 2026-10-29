@@ -19,10 +19,9 @@ discovery path intact while avoiding stale duplicate controller endpoints.
  1 file changed, 51 insertions(+)
 
 diff --git a/dlls/mmdevapi/devenum.c b/dlls/mmdevapi/devenum.c
-index 022da0644e9..30ce4d60847 100644
 --- a/dlls/mmdevapi/devenum.c
 +++ b/dlls/mmdevapi/devenum.c
-@@ -770,6 +770,51 @@
+@@ -620,6 +620,51 @@
      SetupDiDestroyDeviceInfoList(device_set);
  }
  
@@ -74,7 +73,7 @@ index 022da0644e9..30ce4d60847 100644
  static void MMDevice_Register(const WCHAR *instguid, const WCHAR *friendly_name, const WCHAR *device_iname, const WCHAR *device_path,
          const GUID *container_id, BOOL skip_audioendpoint, EDataFlow flow)
  {
-@@ -821,6 +866,12 @@
+@@ -671,6 +716,12 @@
      {
          WCHAR device_name[DEVICE_ID_LEN];
  
@@ -86,6 +85,4 @@ index 022da0644e9..30ce4d60847 100644
 +
          if (skip_audioendpoint)
          {
-             TRACE("Skipping fake PnP AudioEndpoint registration for %s.\n", debugstr_w(friendly_name));
--- 
-2.54.0
+             TRACE("Refreshing DualSense PnP AudioEndpoint registration for %s.\n", debugstr_w(friendly_name));

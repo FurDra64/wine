@@ -1,5 +1,0 @@
-Feature: ge-pending-secur32-fallback-without-no-shuffle-extensions
-Description: Ported from GE-Proton wine-hotfixes/pending/secur32-fallback-without-no-shuffle-extensions.patch. secur32: Fall back when GnuTLS lacks
-Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
-Upstream-Status: none
-Depends-On: none

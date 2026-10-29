@@ -49,9 +49,14 @@ diff --git a/dlls/winewayland.drv/window.c b/dlls/winewayland.drv/window.c
 index 35ee0a21..f2a015e2 100644
 --- a/dlls/winewayland.drv/window.c
 +++ b/dlls/winewayland.drv/window.c
-@@ -284,11 +284,13 @@ static void wayland_surface_update_state_toplevel(struct wayland_surface *surfac
+@@ -304,13 +304,15 @@ static void wayland_surface_update_state_toplevel(struct wayland_surface *surfac
          {
              xdg_toplevel_set_fullscreen(surface->xdg_toplevel, NULL);
+         }
+-        if (surface->window.minimized)
++        if (surface->window.minimized && !surface->comitted.minimized)
+         {
+             xdg_toplevel_set_minimized(surface->xdg_toplevel);
          }
 -        if (surface->window.minimized)
 +        if (surface->window.minimized && !surface->comitted.minimized)
@@ -62,7 +67,5 @@ index 35ee0a21..f2a015e2 100644
 +        surface->comitted.minimized = surface->window.minimized;
 +
          /* reset the size hint since we don't want to poison the next configure event with it */
-         xdg_toplevel_set_min_size(surface->xdg_toplevel, 0, 0);
-         xdg_toplevel_set_max_size(surface->xdg_toplevel, 0, 0);
 -- 
 2.55.0

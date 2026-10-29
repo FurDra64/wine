@@ -6,21 +6,19 @@ Subject: [PATCH 086/285] winewayland: Implement support for server side
  decorations.
 
 ---
- dlls/winewayland.drv/Makefile.in              |   1 +
- dlls/winewayland.drv/wayland.c                |  21 +++
- dlls/winewayland.drv/wayland_surface.c        |  88 ++++++++-
- dlls/winewayland.drv/waylanddrv.h             |  19 +-
- dlls/winewayland.drv/waylanddrv_main.c        |   1 +
- dlls/winewayland.drv/window.c                 |  63 ++++++-
- .../xdg-decoration-unstable-v1.xml            | 176 ++++++++++++++++++
- 7 files changed, 357 insertions(+), 12 deletions(-)
- create mode 100644 dlls/winewayland.drv/xdg-decoration-unstable-v1.xml
-
+ dlls/winewayland.drv/Makefile.in                   |   1 +
+ dlls/winewayland.drv/wayland.c                     |  21 +++
+ dlls/winewayland.drv/wayland_surface.c             |  88 ++++++++++-
+ dlls/winewayland.drv/waylanddrv.h                  |  19 ++-
+ dlls/winewayland.drv/waylanddrv_main.c             |   1 +
+ dlls/winewayland.drv/window.c                      |  61 ++++++-
+ .../winewayland.drv/xdg-decoration-unstable-v1.xml | 176 +++++++++++++++++++++
+ 7 files changed, 356 insertions(+), 11 deletions(-)
 diff --git a/dlls/winewayland.drv/Makefile.in b/dlls/winewayland.drv/Makefile.in
-index c8f27813406..3e37425832f 100644
+index b01d9e64..18a18670 100644
 --- a/dlls/winewayland.drv/Makefile.in
 +++ b/dlls/winewayland.drv/Makefile.in
-@@ -31,6 +31,7 @@ SOURCES = \
+@@ -33,6 +33,7 @@ SOURCES = \
  	window.c \
  	window_surface.c \
  	wlr-data-control-unstable-v1.xml \
@@ -29,7 +27,7 @@ index c8f27813406..3e37425832f 100644
  	xdg-shell.xml \
  	xdg-toplevel-icon-v1.xml \
 diff --git a/dlls/winewayland.drv/wayland.c b/dlls/winewayland.drv/wayland.c
-index 1fdfeaf1fbb..92e072a9f1a 100644
+index 25616c01..342dc0f8 100644
 --- a/dlls/winewayland.drv/wayland.c
 +++ b/dlls/winewayland.drv/wayland.c
 @@ -86,6 +86,17 @@ static const struct wl_seat_listener seat_listener =
@@ -50,7 +48,7 @@ index 1fdfeaf1fbb..92e072a9f1a 100644
  /**********************************************************************
   *          Registry handling
   */
-@@ -229,6 +240,13 @@ static void registry_handle_global(void *data, struct wl_registry *registry,
+@@ -284,6 +295,13 @@ static void registry_handle_global_remove(void *data, struct wl_registry *regist
          process_wayland.wp_content_type_manager_v1 =
              wl_registry_bind(registry, id, &wp_content_type_manager_v1_interface, 1);
      }
@@ -63,8 +61,8 @@ index 1fdfeaf1fbb..92e072a9f1a 100644
 +    }
  }
  
- static void registry_handle_global_remove(void *data, struct wl_registry *registry,
-@@ -379,6 +397,9 @@ BOOL wayland_process_init(void)
+ static const struct wl_registry_listener registry_listener = {
+@@ -404,6 +422,9 @@ BOOL wayland_process_init(void)
      if (!process_wayland.wp_content_type_manager_v1)
          WARN("Wayland compositor doesn't support optional wp_content_type_manager_v1!\n");
  
@@ -75,10 +73,10 @@ index 1fdfeaf1fbb..92e072a9f1a 100644
  
      return TRUE;
 diff --git a/dlls/winewayland.drv/wayland_surface.c b/dlls/winewayland.drv/wayland_surface.c
-index aa14e45f3fc..7783c9513c8 100644
+index cd5b6f96..a313f6b6 100644
 --- a/dlls/winewayland.drv/wayland_surface.c
 +++ b/dlls/winewayland.drv/wayland_surface.c
-@@ -52,7 +52,7 @@ static void xdg_surface_handle_configure(void *private, struct xdg_surface *xdg_
+@@ -141,7 +141,7 @@ static void xdg_surface_handle_configure(void *private, struct xdg_surface *xdg_
      struct wayland_win_data *data;
      HWND hwnd = private;
  
@@ -87,7 +85,7 @@ index aa14e45f3fc..7783c9513c8 100644
  
      if (!(data = wayland_win_data_get(hwnd))) return;
  
-@@ -142,6 +142,8 @@ static void xdg_toplevel_handle_configure(void *private,
+@@ -231,6 +231,8 @@ static void xdg_toplevel_handle_configure(void *private,
      {
          SetRect(&surface->pending.rect, 0, 0, width, height);
          surface->pending.state = config_state;
@@ -96,7 +94,7 @@ index aa14e45f3fc..7783c9513c8 100644
      }
  
      wayland_win_data_release(data);
-@@ -250,6 +252,30 @@ static const struct wp_fractional_scale_v1_listener wp_fractional_scale_listener
+@@ -338,6 +340,30 @@ static const struct wp_fractional_scale_v1_listener wp_fractional_scale_listener
      wp_fractional_scale_handle_scale
  };
  
@@ -127,7 +125,7 @@ index aa14e45f3fc..7783c9513c8 100644
  /**********************************************************************
   *          wayland_surface_create
   *
-@@ -394,19 +420,63 @@ static void wayland_surface_init_fractional_scale(struct wayland_surface *surfac
+@@ -484,19 +510,63 @@ static void wayland_surface_init_fractional_scale(struct wayland_surface *surfac
          surface->hwnd);
  }
  
@@ -193,7 +191,7 @@ index aa14e45f3fc..7783c9513c8 100644
  
      wayland_surface_clear_role(surface);
      surface->role = WAYLAND_SURFACE_ROLE_TOPLEVEL;
-@@ -443,6 +513,8 @@ void wayland_surface_make_toplevel(struct wayland_surface *surface)
+@@ -533,6 +603,8 @@ void wayland_surface_make_toplevel(struct wayland_surface *surface)
  
      wayland_surface_init_fractional_scale(surface, 1.0);
  
@@ -202,7 +200,7 @@ index aa14e45f3fc..7783c9513c8 100644
      wl_surface_commit(surface->wl_surface);
      wl_display_flush(process_wayland.wl_display);
  
-@@ -594,6 +666,12 @@ void wayland_surface_clear_role(struct wayland_surface *surface)
+@@ -684,6 +756,12 @@ void wayland_surface_clear_role(struct wayland_surface *surface)
              surface->xdg_toplevel_icon = NULL;
          }
  
@@ -213,9 +211,9 @@ index aa14e45f3fc..7783c9513c8 100644
 +        }
 +
          if (surface->xdg_toplevel)
-         {
-             xdg_toplevel_destroy(surface->xdg_toplevel);
-@@ -876,8 +954,10 @@ static BOOL wayland_surface_reconfigure_xdg(struct wayland_surface *surface, REC
+     if (process_wayland.wp_content_type_manager_v1)
+     {
+@@ -978,8 +1056,10 @@ static BOOL wayland_surface_reconfigure_xdg(struct wayland_surface *surface, REC
      }
      /* If this is the initial configure, and we have a compatible requested
       * config, use that, in order to draw windows that don't go through the
@@ -228,7 +226,7 @@ index aa14e45f3fc..7783c9513c8 100644
                                                    window->state))
      {
 diff --git a/dlls/winewayland.drv/waylanddrv.h b/dlls/winewayland.drv/waylanddrv.h
-index f0d99046ebe..aa659fd8e57 100644
+index dbab35fb..da546c09 100644
 --- a/dlls/winewayland.drv/waylanddrv.h
 +++ b/dlls/winewayland.drv/waylanddrv.h
 @@ -44,6 +44,7 @@
@@ -236,18 +234,18 @@ index f0d99046ebe..aa659fd8e57 100644
  #include "xdg-toplevel-tag-v1-client-protocol.h"
  #include "content-type-v1-client-protocol.h"
 +#include "xdg-decoration-unstable-v1-client-protocol.h"
+ #include "color-management-v1-client-protocol.h"
  
  #include "windef.h"
- #include "winbase.h"
-@@ -204,6 +205,7 @@ struct wayland
-     struct wp_alpha_modifier_v1 *wp_alpha_modifier_v1;
+@@ -211,6 +212,7 @@ struct wayland
+     struct wayland_text_input text_input;
      struct xdg_toplevel_tag_manager_v1 *xdg_toplevel_tag_manager_v1;
      struct wp_content_type_manager_v1 *wp_content_type_manager_v1;
 +    struct zxdg_decoration_manager_v1 *zxdg_decoration_manager_v1;
-     struct wayland_seat seat;
-     struct wayland_keyboard keyboard;
-     struct wayland_pointer pointer;
-@@ -249,6 +251,7 @@ struct wayland_surface_config
+     struct wayland_data_device data_device;
+ #ifdef WL_FIXES_ACK_GLOBAL_REMOVE
+     struct wl_fixes *wl_fixes;
+@@ -255,6 +257,7 @@ struct wayland_surface_config
  {
      RECT rect;
      enum wayland_surface_config_state state;
@@ -255,23 +253,23 @@ index f0d99046ebe..aa659fd8e57 100644
      uint32_t serial;
      BOOL processed;
  };
-@@ -256,6 +259,7 @@ struct wayland_surface_config
+@@ -262,6 +265,7 @@ struct wayland_surface_config
  struct wayland_window_config
  {
      RECT rect;
 +    RECT window_rect;
-     RECT client_rect;
      enum wayland_surface_config_state state;
      /* The scale (i.e., normalized dpi) the window is rendering at. */
-@@ -308,6 +312,7 @@ struct wayland_surface
+     double scale;
+@@ -318,6 +322,7 @@ struct wayland_surface
          {
              struct xdg_toplevel *xdg_toplevel;
              struct xdg_toplevel_icon_v1 *xdg_toplevel_icon;
 +            struct zxdg_toplevel_decoration_v1 *zxdg_toplevel_decoration_v1;
-             struct wl_output *requested_output;
          };
          struct
-@@ -347,7 +352,7 @@ struct wayland_output *wayland_output_for_rect(const RECT *rect);
+         {
+@@ -358,7 +363,7 @@ void color_management_init(void);
  
  struct wayland_surface *wayland_surface_create(HWND hwnd);
  void wayland_surface_destroy(struct wayland_surface *surface);
@@ -280,7 +278,7 @@ index f0d99046ebe..aa659fd8e57 100644
  void wayland_surface_make_subsurface(struct wayland_surface *surface,
                                       struct wayland_surface *parent);
  void wayland_surface_make_popup(struct wayland_surface *surface,
-@@ -472,6 +477,17 @@ static inline LRESULT send_message(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
+@@ -483,6 +488,17 @@ static inline LRESULT send_message(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
      return NtUserMessageCall(hwnd, msg, wparam, lparam, NULL, NtUserSendMessage, FALSE);
  }
  
@@ -298,40 +296,38 @@ index f0d99046ebe..aa659fd8e57 100644
  RGNDATA *get_region_data(HRGN region);
  
  /**********************************************************************
-@@ -497,6 +513,7 @@ void WAYLAND_WindowPosChanged(HWND hwnd, HWND insert_after, HWND owner_hint, UIN
-                               const struct window_rects *new_rects, struct window_surface *surface);
+@@ -509,6 +525,7 @@ void WAYLAND_WindowPosChanged(HWND hwnd, HWND insert_after, HWND owner_hint, UIN
  BOOL WAYLAND_WindowPosChanging(HWND hwnd, UINT swp_flags, BOOL shaped, const struct window_rects *rects);
+ struct client_surface *WAYLAND_CreateClientSurface(HWND hwnd, int pixel_format, BOOL raw);
  BOOL WAYLAND_CreateWindowSurface(HWND hwnd, BOOL layered, const RECT *surface_rect, struct window_surface **surface);
 +BOOL WAYLAND_GetWindowStyleMasks(HWND hwnd,  UINT style, UINT ex_style, UINT *style_mask, UINT *ex_style_mask);
  BOOL WAYLAND_HasWindowManager(const char *name);
  UINT WAYLAND_VulkanInit(UINT version, void *vulkan_handle, const struct vulkan_driver_funcs **driver_funcs);
  UINT WAYLAND_OpenGLInit(UINT version, const struct opengl_funcs *opengl_funcs, const struct opengl_driver_funcs **driver_funcs);
 diff --git a/dlls/winewayland.drv/waylanddrv_main.c b/dlls/winewayland.drv/waylanddrv_main.c
-index 117073c95d0..baecc8783b3 100644
+index f9d0ac5b..1b420e4c 100644
 --- a/dlls/winewayland.drv/waylanddrv_main.c
 +++ b/dlls/winewayland.drv/waylanddrv_main.c
 @@ -55,6 +55,7 @@ static const struct user_driver_funcs waylanddrv_funcs =
-     .pWindowPosChanged = WAYLAND_WindowPosChanged,
      .pWindowPosChanging = WAYLAND_WindowPosChanging,
+     .pCreateClientSurface = WAYLAND_CreateClientSurface,
      .pCreateWindowSurface = WAYLAND_CreateWindowSurface,
 +    .pGetWindowStyleMasks = WAYLAND_GetWindowStyleMasks,
      .pHasWindowManager = WAYLAND_HasWindowManager,
      .pVulkanInit = WAYLAND_VulkanInit,
      .pOpenGLInit = WAYLAND_OpenGLInit,
 diff --git a/dlls/winewayland.drv/window.c b/dlls/winewayland.drv/window.c
-index fcaa7d43553..90ff1dd27bf 100644
+index 61aac3ee..8954b2f3 100644
 --- a/dlls/winewayland.drv/window.c
 +++ b/dlls/winewayland.drv/window.c
-@@ -139,7 +139,8 @@ static void wayland_win_data_get_config(struct wayland_win_data *data,
-     enum wayland_surface_config_state window_state = 0;
+@@ -139,6 +139,7 @@ static void wayland_win_data_get_config(struct wayland_win_data *data,
      DWORD style;
  
--    conf->rect = data->rects.window;
-+    conf->rect = data->rects.visible;
+     conf->rect = data->rects.visible;
 +    conf->window_rect = data->rects.window;
-     conf->client_rect = data->rects.client;
      style = NtUserGetWindowLongW(data->hwnd, GWL_STYLE);
  
+     TRACE("window=%s style=%#x\n", wine_dbgstr_rect(&conf->rect), style);
 @@ -176,13 +177,14 @@ static BOOL wayland_win_data_create_wayland_surface(struct wayland_win_data *dat
  {
      struct wayland_surface *surface;
@@ -371,7 +367,7 @@ index fcaa7d43553..90ff1dd27bf 100644
          break;
      }
  
-@@ -514,7 +522,7 @@ static void wayland_configure_window(HWND hwnd)
+@@ -501,7 +509,7 @@ static void wayland_configure_window(HWND hwnd)
  
      if (!surface->requested.serial)
      {
@@ -380,7 +376,7 @@ index fcaa7d43553..90ff1dd27bf 100644
          wayland_win_data_release(data);
          return;
      }
-@@ -560,6 +568,11 @@ static void wayland_configure_window(HWND hwnd)
+@@ -547,6 +555,11 @@ static void wayland_configure_window(HWND hwnd)
      {
          flags |= SWP_FRAMECHANGED;
      }
@@ -392,7 +388,7 @@ index fcaa7d43553..90ff1dd27bf 100644
  
      surface_rect = map_rect_to_surface(surface, surface->window.rect);
  
-@@ -577,16 +590,17 @@ static void wayland_configure_window(HWND hwnd)
+@@ -586,16 +599,17 @@ static void wayland_configure_window(HWND hwnd)
      SetRect(&rect, 0, 0, width, height);
      rect = map_rect_from_surface(surface, rect);
      OffsetRect(&rect, data->rects.window.left, data->rects.window.top);
@@ -412,7 +408,7 @@ index fcaa7d43553..90ff1dd27bf 100644
  
      style = NtUserGetWindowLongW(hwnd, GWL_STYLE);
      if (!(state & WAYLAND_SURFACE_CONFIG_STATE_MAXIMIZED) != !(style & WS_MAXIMIZE)
-@@ -819,6 +833,41 @@ BOOL WAYLAND_HasWindowManager(const char *name)
+@@ -829,6 +843,41 @@ BOOL WAYLAND_HasWindowManager(const char *name)
      return FALSE;
  }
  
@@ -453,10 +449,10 @@ index fcaa7d43553..90ff1dd27bf 100644
 +
  void set_client_surface(HWND hwnd, struct wayland_client_surface *new_client)
  {
-     HWND toplevel = NtUserGetAncestor(hwnd, GA_ROOT);
+     HWND toplevel = new_client->client.toplevel;
 diff --git a/dlls/winewayland.drv/xdg-decoration-unstable-v1.xml b/dlls/winewayland.drv/xdg-decoration-unstable-v1.xml
 new file mode 100644
-index 00000000000..4426f6cd8e4
+index 00000000..4426f6cd
 --- /dev/null
 +++ b/dlls/winewayland.drv/xdg-decoration-unstable-v1.xml
 @@ -0,0 +1,176 @@
@@ -636,6 +632,3 @@ index 00000000000..4426f6cd8e4
 +    </event>
 +  </interface>
 +</protocol>
--- 
-2.55.0
-

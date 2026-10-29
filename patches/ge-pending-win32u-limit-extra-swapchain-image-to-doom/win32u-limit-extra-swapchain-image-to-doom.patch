@@ -50,7 +50,7 @@ diff --git a/dlls/win32u/vulkan.c b/dlls/win32u/vulkan.c
  static VkResult win32u_vkCreateSwapchainKHR( VkDevice client_device, const VkSwapchainCreateInfoKHR *create_info,
                                               const VkAllocationCallbacks *allocator, VkSwapchainKHR *ret )
  {
-@@ -1936,7 +1950,7 @@ static VkResult win32u_vkCreateSwapchainKHR( VkDevice client_device, const VkSwa
+@@ -1909,7 +1923,7 @@ static VkResult win32u_vkCreateSwapchainKHR( VkDevice client_device, const VkSwa
      /* DOOM Eternal and DOOM: The Dark Ages rely on an extra image to continue
 -     * acquiring while an earlier image is still pending presentation. Request
 -     * one when the application asks for exactly the surface minimum. */

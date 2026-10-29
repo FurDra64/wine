@@ -21,11 +21,10 @@ controller-effects mode.
  1 file changed, 85 insertions(+)
 
 diff --git a/dlls/winepulse.drv/pulse.c b/dlls/winepulse.drv/pulse.c
-index 4f8f9aff..a4ee44dd 100644
 --- a/dlls/winepulse.drv/pulse.c
 +++ b/dlls/winepulse.drv/pulse.c
-@@ -149,6 +149,8 @@ static struct list g_phys_sources_removed = LIST_INIT(g_phys_sources_removed);
- static unsigned int g_haptic_hotplug_generation;
+@@ -148,6 +148,8 @@
+ static struct list g_phys_sources_removed = LIST_INIT(g_phys_sources_removed);
  /* separate list for holding removed devices that were just added */
  /* to avoid race-condition/deadlock. */
 +    BOOL death_stranding_speaker_source;
@@ -33,7 +32,7 @@ index 4f8f9aff..a4ee44dd 100644
  static struct list g_phys_added_removed = LIST_INIT(g_phys_added_removed);
  
  static pthread_mutex_t pulse_mutex;
-@@ -3343,6 +3345,86 @@ static NTSTATUS pulse_wow64_get_render_buffer(void *args)
+@@ -4003,6 +4005,86 @@
      params32->result = params.result;
      *(unsigned int *)ULongToPtr(params32->data) = PtrToUlong(data);
      return STATUS_SUCCESS;
@@ -120,7 +119,7 @@ index 4f8f9aff..a4ee44dd 100644
  }
  
  static NTSTATUS pulse_wow64_get_capture_buffer(void *args)
-@@ -3698,6 +3780,9 @@ static NTSTATUS pulse_wow64_set_volumes(void *args)
+@@ -4244,6 +4326,9 @@
          PTR32 session_volumes;
      } *params32 = args;
      struct set_volumes_params params =

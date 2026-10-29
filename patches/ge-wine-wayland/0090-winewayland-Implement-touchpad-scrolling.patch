@@ -5,15 +5,14 @@ Date: Sun, 19 Apr 2026 04:01:36 -0500
 Subject: [PATCH 090/285] winewayland: Implement touchpad scrolling.
 
 ---
- dlls/winewayland.drv/wayland_pointer.c | 78 ++++++++++++++++++++++++--
+ dlls/winewayland.drv/wayland_pointer.c | 78 +++++++++++++++++++++++++++++++---
  dlls/winewayland.drv/waylanddrv.h      |  7 ++-
  2 files changed, 79 insertions(+), 6 deletions(-)
-
 diff --git a/dlls/winewayland.drv/wayland_pointer.c b/dlls/winewayland.drv/wayland_pointer.c
-index 0fa7e225c7c..2bd6a4cc5f5 100644
+index 1ce829d7..3f9ca89f 100644
 --- a/dlls/winewayland.drv/wayland_pointer.c
 +++ b/dlls/winewayland.drv/wayland_pointer.c
-@@ -125,10 +125,10 @@ static void wayland_pointer_reset_frame(void)
+@@ -126,10 +126,10 @@ static void wayland_pointer_reset_frame(void)
  {
      struct wayland_pointer_frame *frame = &process_wayland.pointer.frame;
  
@@ -28,8 +27,8 @@ index 0fa7e225c7c..2bd6a4cc5f5 100644
      frame->flags = 0;
  }
  
-@@ -285,9 +285,33 @@ static void pointer_handle_button(void *data, struct wl_pointer *wl_pointer,
-     NtUserSendHardwareInput(hwnd, 0, &input, 0);
+@@ -286,9 +286,33 @@ static void pointer_handle_button(void *data, struct wl_pointer *wl_pointer,
+     NtUserSendHardwareInput(hwnd, SEND_HWMSG_RAWINPUT, &input, 0);
  }
  
 -static void pointer_handle_axis(void *data, struct wl_pointer *wl_pointer,
@@ -63,7 +62,7 @@ index 0fa7e225c7c..2bd6a4cc5f5 100644
  }
  
  static void pointer_handle_frame(void *data, struct wl_pointer *wl_pointer)
-@@ -299,6 +323,8 @@ static void pointer_handle_frame(void *data, struct wl_pointer *wl_pointer)
+@@ -300,6 +324,8 @@ static void pointer_handle_frame(void *data, struct wl_pointer *wl_pointer)
  
      if (!(hwnd = wayland_pointer_get_focused_hwnd())) return;
  
@@ -136,10 +135,10 @@ index 0fa7e225c7c..2bd6a4cc5f5 100644
  
  static void pointer_handle_axis_value120(void *data, struct wl_pointer *wl_pointer,
 diff --git a/dlls/winewayland.drv/waylanddrv.h b/dlls/winewayland.drv/waylanddrv.h
-index 0a32d15f02c..23170a7bb23 100644
+index 688f87d2..af3982d1 100644
 --- a/dlls/winewayland.drv/waylanddrv.h
 +++ b/dlls/winewayland.drv/waylanddrv.h
-@@ -120,7 +120,11 @@ enum wayland_pointer_frame_flags
+@@ -121,7 +121,11 @@ enum wayland_pointer_frame_flags
      WAYLAND_POINTER_FRAME_RELATIVE = (1 << 0),
      WAYLAND_POINTER_FRAME_ABSOLUTE = (1 << 1),
      WAYLAND_POINTER_FRAME_DISCRETE_WHEEL = (1 << 2),
@@ -152,7 +151,7 @@ index 0a32d15f02c..23170a7bb23 100644
  };
  
  struct wayland_pointer_frame
-@@ -128,6 +132,7 @@ struct wayland_pointer_frame
+@@ -129,6 +133,7 @@ struct wayland_pointer_frame
      LONG x, y;
      double dx, dy;
      double dx_raw, dy_raw;
@@ -160,6 +159,3 @@ index 0a32d15f02c..23170a7bb23 100644
      LONG scroll, horz_scroll;
  
      enum wayland_pointer_frame_flags flags;
--- 
-2.55.0
-

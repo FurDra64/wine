@@ -23,7 +23,7 @@ cannot disappear inside a single driver call after a controller swap.
 diff --git a/dlls/winepulse.drv/pulse.c b/dlls/winepulse.drv/pulse.c
 --- a/dlls/winepulse.drv/pulse.c
 +++ b/dlls/winepulse.drv/pulse.c
-@@ -179,6 +179,8 @@ static pthread_mutex_t g_phys_mutex;
+@@ -138,6 +138,8 @@
  static pthread_cond_t g_phys_cond = PTHREAD_COND_INITIALIZER;
  static unsigned int g_haptic_hotplug_generation;
  static unsigned int g_phys_event_mask;
@@ -32,9 +32,7 @@ diff --git a/dlls/winepulse.drv/pulse.c b/dlls/winepulse.drv/pulse.c
  static struct list g_phys_speakers = LIST_INIT(g_phys_speakers);
  static struct list g_phys_sources = LIST_INIT(g_phys_sources);
  static struct list g_phys_speakers_added = LIST_INIT(g_phys_speakers_added);
-@@ -195,8 +195,24 @@ static int pulse_cond_wait(void)
- static int pulse_cond_wait(void)
- {
+@@ -197,6 +199,22 @@
      return pthread_cond_wait(&pulse_cond, &pulse_mutex);
  }
  
@@ -57,7 +55,7 @@ diff --git a/dlls/winepulse.drv/pulse.c b/dlls/winepulse.drv/pulse.c
  static void pulse_broadcast(void)
  {
      pthread_cond_broadcast(&pulse_cond);
-@@ -550,6 +568,7 @@ static NTSTATUS pulse_get_endpoint_ids(void *args)
+@@ -507,6 +525,7 @@
      unsigned int retry;
      unsigned int event_mask;
      unsigned int other_event_mask;
@@ -65,7 +63,7 @@ diff --git a/dlls/winepulse.drv/pulse.c b/dlls/winepulse.drv/pulse.c
      BOOL refreshed;
      BOOL unavailable = FALSE;
      PhysDevice *dev, *dev_next;
-@@ -566,6 +585,7 @@ static NTSTATUS pulse_get_endpoint_ids(void *args)
+@@ -521,6 +540,7 @@
          list_removed = &g_phys_speakers_removed;
          event_mask = PHYS_EVENT_RENDER;
          other_event_mask = PHYS_EVENT_CAPTURE;
@@ -73,7 +71,7 @@ diff --git a/dlls/winepulse.drv/pulse.c b/dlls/winepulse.drv/pulse.c
  
          other_list_added = &g_phys_sources_added;
          other_list_removed = &g_phys_sources_removed;
-@@ -578,6 +598,7 @@ static NTSTATUS pulse_get_endpoint_ids(void *args)
+@@ -532,6 +552,7 @@
          list_removed = &g_phys_sources_removed;
          event_mask = PHYS_EVENT_CAPTURE;
          other_event_mask = PHYS_EVENT_RENDER;
@@ -81,7 +79,7 @@ diff --git a/dlls/winepulse.drv/pulse.c b/dlls/winepulse.drv/pulse.c
  
          other_list_added = &g_phys_speakers_added;
          other_list_removed = &g_phys_speakers_removed;
-@@ -614,21 +635,32 @@ static NTSTATUS pulse_get_endpoint_ids(void *args)
+@@ -573,21 +594,32 @@
                      params->more_data = TRUE;
                      goto done;
                  }
@@ -118,7 +116,7 @@ diff --git a/dlls/winepulse.drv/pulse.c b/dlls/winepulse.drv/pulse.c
          }
  
          params->default_idx = -1;
-@@ -682,6 +717,9 @@ done:
+@@ -653,6 +685,9 @@
          params->delta = TRUE;
          params->result = S_OK;
      }
@@ -128,8 +126,7 @@ diff --git a/dlls/winepulse.drv/pulse.c b/dlls/winepulse.drv/pulse.c
      return STATUS_SUCCESS;
  }
  
-@@ -839,9 +877,14 @@ static void pulse_subscribe_callback(pa_context *c, pa_subscription_event_type_t
-     TRACE("PulseAudio endpoint event facility %#x event %#x index %u.\n", facility, event, index);
+@@ -762,7 +797,12 @@
  
      g_phys_lock();
      if (event_mask & PHYS_EVENT_RENDER)
@@ -142,6 +139,3 @@ diff --git a/dlls/winepulse.drv/pulse.c b/dlls/winepulse.drv/pulse.c
      g_phys_event_mask |= event_mask;
      pthread_cond_broadcast(&g_phys_cond);
      g_phys_unlock();
- }
--- 
-2.54.0

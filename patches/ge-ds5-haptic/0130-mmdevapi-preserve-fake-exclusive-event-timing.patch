@@ -22,9 +22,10 @@ application observes the exclusive event and buffer cadence it requested.
  dlls/mmdevapi/client.c | 25 +++++++++++--------------
  1 file changed, 13 insertions(+), 12 deletions(-)
 
+diff --git a/dlls/mmdevapi/client.c b/dlls/mmdevapi/client.c
 --- a/dlls/mmdevapi/client.c
 +++ b/dlls/mmdevapi/client.c
-@@ -142,7 +142,7 @@
+@@ -113,7 +113,7 @@
  static HRESULT adjust_timing(struct audio_client *client, const BOOLEAN force_def_period,
                               REFERENCE_TIME *duration, REFERENCE_TIME *period,
                               const AUDCLNT_SHAREMODE mode, const DWORD flags,
@@ -33,7 +34,7 @@ application observes the exclusive event and buffer cadence it requested.
  {
      REFERENCE_TIME def_period, min_period;
      HRESULT hr;
-@@ -163,7 +163,7 @@
+@@ -134,7 +134,7 @@
              *duration = 3 * *period;
      } else {
          const WAVEFORMATEXTENSIBLE *fmtex = (WAVEFORMATEXTENSIBLE *)fmt;
@@ -42,7 +43,7 @@ application observes the exclusive event and buffer cadence it requested.
             (fmtex->dwChannelMask == 0 || fmtex->dwChannelMask & SPEAKER_RESERVED))
              return AUDCLNT_E_UNSUPPORTED_FORMAT;
          else {
-@@ -177,9 +177,10 @@
+@@ -148,9 +148,10 @@
                  if (*duration != *period)
                      return AUDCLNT_E_BUFDURATION_PERIOD_NOT_EQUAL;
  
@@ -56,7 +57,7 @@ application observes the exclusive event and buffer cadence it requested.
              } else if (*duration < 8 * *period)
                  *duration = 8 * *period; /* May grow above 2s. */
          }
-@@ -377,7 +377,8 @@ static HRESULT stream_init(struct audio_client *client, const BOOLEAN force_def_period,
+@@ -383,6 +384,7 @@
                             const WAVEFORMATEX *fmt, const GUID *sessionguid)
  {
      struct create_stream_params params;
@@ -64,10 +65,7 @@ application observes the exclusive event and buffer cadence it requested.
      UINT32 i, channel_count;
      stream_handle stream;
      BOOL compatible;
-     WCHAR *name;
-@@ -392,8 +392,10 @@
-     dump_fmt(fmt);
- 
+@@ -397,6 +399,8 @@
      if (mode != AUDCLNT_SHAREMODE_SHARED && mode != AUDCLNT_SHAREMODE_EXCLUSIVE)
          return E_INVALIDARG;
  
@@ -76,7 +74,7 @@ application observes the exclusive event and buffer cadence it requested.
      if (flags & ~(AUDCLNT_STREAMFLAGS_CROSSPROCESS |
                    AUDCLNT_STREAMFLAGS_LOOPBACK |
                    AUDCLNT_STREAMFLAGS_EVENTCALLBACK |
-@@ -413,7 +413,7 @@
+@@ -416,7 +420,7 @@
      if (mode != AUDCLNT_SHAREMODE_SHARED && mode != AUDCLNT_SHAREMODE_EXCLUSIVE)
          return E_INVALIDARG;
  
@@ -84,8 +82,8 @@ application observes the exclusive event and buffer cadence it requested.
 +    if (mode == AUDCLNT_SHAREMODE_EXCLUSIVE && !fake_exclusive) {
          if (flags & AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM)
              return E_INVALIDARG;
-
-@@ -483,7 +483,8 @@
+ 
+@@ -483,7 +487,8 @@
          client->dataflow = eCapture;
      }
  
@@ -95,7 +93,7 @@ application observes the exclusive event and buffer cadence it requested.
          sessions_unlock();
          return params.result;
      }
-@@ -488,7 +488,7 @@
+@@ -491,7 +496,7 @@
      params.name = name   = get_application_name();
      params.device        = client->device_name;
      params.flow          = client->dataflow;
@@ -104,7 +102,7 @@ application observes the exclusive event and buffer cadence it requested.
      params.flags         = flags;
      params.duration      = duration;
      params.period        = period;
-@@ -827,9 +832,6 @@
+@@ -741,9 +746,6 @@
                                                 wine_dbgstr_longlong(period), fmt,
                                                 debugstr_guid(sessionguid));
  
@@ -114,5 +112,3 @@ application observes the exclusive event and buffer cadence it requested.
      return stream_init(This, TRUE, mode, flags, duration, period, fmt, sessionguid);
  }
  
--- 
-2.55.0

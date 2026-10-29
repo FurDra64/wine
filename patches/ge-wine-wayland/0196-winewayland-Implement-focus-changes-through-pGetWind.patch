@@ -30,9 +30,9 @@ index 518bd3cfbb6..6a07c192271 100644
  
          if (!user_driver->pGetWindowStateUpdates( hwnd, &state_cmd, &swp_flags, &window_rect, &foreground )) goto unlock;
          window_rect = map_rect_raw_to_virt( window_rect, get_thread_dpi() );
-@@ -2256,8 +2256,8 @@ static LRESULT handle_internal_message( HWND hwnd, UINT msg, WPARAM wparam, LPAR
+@@ -2244,8 +2244,8 @@ static LRESULT handle_internal_message( HWND hwnd, UINT msg, WPARAM wparam, LPAR
          case SC_RESTORE:
-             if (HIWORD(state_cmd) && !foreground) set_foreground_window( hwnd, FALSE, TRUE );
+             if (HIWORD(state_cmd)) NtUserSetActiveWindow( hwnd );
  
 -            /* make the win32 window restore to the current host window config */
 -            set_window_normal_placement( hwnd, window_rect );
@@ -128,8 +128,9 @@ index 92c18f51a34..0e2fb5577f8 100644
  };
  
  enum wayland_surface_config_state
-@@ -624,6 +623,7 @@ void WAYLAND_WindowPosChanged(HWND hwnd, HWND insert_after, HWND owner_hint, UIN
+@@ -588,7 +588,8 @@ void WAYLAND_WindowPosChanged(HWND hwnd, HWND insert_after, HWND owner_hint, UIN
  BOOL WAYLAND_WindowPosChanging(HWND hwnd, UINT swp_flags, BOOL shaped, const struct window_rects *rects);
+ struct client_surface *WAYLAND_CreateClientSurface(HWND hwnd, int pixel_format, BOOL raw);
  BOOL WAYLAND_CreateWindowSurface(HWND hwnd, BOOL layered, const RECT *surface_rect, struct window_surface **surface);
  BOOL WAYLAND_GetWindowStyleMasks(HWND hwnd,  UINT style, UINT ex_style, UINT *style_mask, UINT *ex_style_mask);
 +BOOL WAYLAND_GetWindowStateUpdates(HWND hwnd, UINT *state_cmd, UINT *swp_flags, RECT *rect, HWND *foreground);
@@ -140,8 +141,9 @@ diff --git a/dlls/winewayland.drv/waylanddrv_main.c b/dlls/winewayland.drv/wayla
 index 0c97d5ee007..4b379fdb340 100644
 --- a/dlls/winewayland.drv/waylanddrv_main.c
 +++ b/dlls/winewayland.drv/waylanddrv_main.c
-@@ -60,6 +60,7 @@ static const struct user_driver_funcs waylanddrv_funcs =
+@@ -59,7 +59,8 @@ static const struct user_driver_funcs waylanddrv_funcs =
      .pWindowPosChanging = WAYLAND_WindowPosChanging,
+     .pCreateClientSurface = WAYLAND_CreateClientSurface,
      .pCreateWindowSurface = WAYLAND_CreateWindowSurface,
      .pGetWindowStyleMasks = WAYLAND_GetWindowStyleMasks,
 +    .pGetWindowStateUpdates = WAYLAND_GetWindowStateUpdates,
@@ -152,7 +154,7 @@ diff --git a/dlls/winewayland.drv/window.c b/dlls/winewayland.drv/window.c
 index 3a7125c9e28..238091087ec 100644
 --- a/dlls/winewayland.drv/window.c
 +++ b/dlls/winewayland.drv/window.c
-@@ -662,23 +662,6 @@ LRESULT WAYLAND_WindowMessage(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
+@@ -669,23 +669,6 @@ LRESULT WAYLAND_WindowMessage(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
      case WM_WAYLAND_CONFIGURE:
          wayland_configure_window(hwnd);
          return 0;
@@ -176,7 +178,7 @@ index 3a7125c9e28..238091087ec 100644
      default:
          FIXME("got window msg %x hwnd %p wp %lx lp %lx\n", msg, hwnd, (long)wp, lp);
          return 0;
-@@ -927,6 +910,42 @@ BOOL WAYLAND_GetWindowStyleMasks(HWND hwnd, UINT style, UINT ex_style, UINT *sty
+@@ -921,6 +904,42 @@ BOOL WAYLAND_GetWindowStyleMasks(HWND hwnd, UINT style, UINT ex_style, UINT *sty
      return ret;
  }
  
@@ -216,6 +218,6 @@ index 3a7125c9e28..238091087ec 100644
 +    return TRUE;
 +}
 +
- BOOL set_window_surface_contents(HWND hwnd, struct wayland_shm_buffer *shm_buffer, HRGN damage_region)
+ void set_client_surface(HWND hwnd, struct wayland_client_surface *new_client)
  {
-     struct wayland_surface *wayland_surface;
+     HWND toplevel = new_client->client.toplevel;

@@ -15,15 +15,14 @@ diff --git a/dlls/winewayland.drv/wayland_surface.c b/dlls/winewayland.drv/wayla
 index fa7e4d44..206002f7 100644
 --- a/dlls/winewayland.drv/wayland_surface.c
 +++ b/dlls/winewayland.drv/wayland_surface.c
-@@ -421,6 +421,8 @@ void wayland_surface_make_toplevel(struct wayland_surface *surface)
+@@ -549,5 +549,7 @@ void wayland_surface_make_toplevel(struct wayland_surface *surface, BOOL server_decor)
      TRACE("surface=%p\n", surface);
  
      assert(!surface->role || surface->role == WAYLAND_SURFACE_ROLE_TOPLEVEL);
 +    surface->owner_hwnd = NtUserGetWindowRelative(surface->hwnd, GW_OWNER);
 +
-     if (surface->xdg_surface && surface->xdg_toplevel) return;
- 
-     wayland_surface_clear_role(surface);
+     if (surface->xdg_surface && surface->xdg_toplevel)
+     {
 @@ -692,6 +694,27 @@ static void wayland_surface_get_rect_in_monitor(struct wayland_surface *surface,
      OffsetRect(rect, -surface->window.rect.left, -surface->window.rect.top);
  }

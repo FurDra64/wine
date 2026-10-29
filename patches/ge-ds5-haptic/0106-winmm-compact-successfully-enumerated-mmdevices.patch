@@ -19,45 +19,40 @@ dereferencing it.
  1 file changed, 49 insertions(+), 15 deletions(-)
 
 diff --git a/dlls/winmm/waveform.c b/dlls/winmm/waveform.c
-index 31b4e6c9d5b260aaff79708d1020845a20ab25b6..74de6795603186ee09c9bbe8d713ee780c93ea6d 100644
 --- a/dlls/winmm/waveform.c
 +++ b/dlls/winmm/waveform.c
-@@ -515,19 +515,20 @@ static HRESULT WINMM_EnumDevices(WINMM_MMDevice **devices,
-     }
-
+@@ -517,17 +517,18 @@
      *voicecom_id = -1;
-
+ 
      if(*devcount > 0){
 -        UINT n, idx, count = 1;
 +        UINT n, count = 0, default_index = ~0u, voicecom_index = ~0u;
 +        UINT capacity = *devcount;
          IMMDevice *def_dev = NULL;
          IMMDevice *voicecom_dev = NULL;
-
+ 
 -        *devices = calloc(*devcount, sizeof(WINMM_MMDevice));
 +        *devices = calloc(capacity, sizeof(WINMM_MMDevice));
          if(!*devices){
              IMMDeviceCollection_Release(devcoll);
              return E_OUTOFMEMORY;
          }
-
+ 
 -        *map = calloc(*devcount, sizeof(WINMM_MMDevice *));
 +        *map = calloc(capacity, sizeof(WINMM_MMDevice *));
          if(!*map){
              IMMDeviceCollection_Release(devcoll);
              free(*devices);
-@@ -537,27 +537,54 @@ static HRESULT WINMM_EnumDevices(WINMM_MMDevice **devices,
-         /* make sure that device 0 is the default device */
-         IMMDeviceEnumerator_GetDefaultAudioEndpoint(devenum,
+@@ -539,26 +540,48 @@
                  flow, eConsole, &def_dev);
          IMMDeviceEnumerator_GetDefaultAudioEndpoint(devenum,
                  flow, eCommunications, &voicecom_dev);
-
+-
 -        for(n = 0; n < *devcount; ++n){
 +        for(n = 0; n < capacity; ++n){
              IMMDevice *device;
+-
 +            WINMM_MMDevice *mmdevice;
-
              hr = IMMDeviceCollection_Item(devcoll, n, &device);
 -            if(SUCCEEDED(hr)){
 -                WINMM_InitMMDevice(flow, device, &(*devices)[n], n);
@@ -66,12 +61,11 @@ index 31b4e6c9d5b260aaff79708d1020845a20ab25b6..74de6795603186ee09c9bbe8d713ee78
 -                (*map)[idx] = &(*devices)[n];
 -                if(device == voicecom_dev)
 -                    *voicecom_id = idx;
-
 +            if(FAILED(hr)){
 +                WARN("Failed to get endpoint %u: %08lx\n", n, hr);
 +                continue;
 +            }
-+
+ 
 +            mmdevice = &(*devices)[count];
 +            hr = WINMM_InitMMDevice(flow, device, mmdevice, count);
 +            if(FAILED(hr)){
@@ -79,19 +73,19 @@ index 31b4e6c9d5b260aaff79708d1020845a20ab25b6..74de6795603186ee09c9bbe8d713ee78
                  IMMDevice_Release(device);
 +                continue;
              }
-+
+-        }
+ 
+-        IMMDevice_Release(voicecom_dev);
+-        IMMDevice_Release(def_dev);
 +            (*map)[count] = mmdevice;
 +            if(device == def_dev)
 +                default_index = count;
 +            if(device == voicecom_dev)
 +                voicecom_index = count;
 +            ++count;
-+
+ 
 +            IMMDevice_Release(device);
-         }
-
--        IMMDevice_Release(voicecom_dev);
--        IMMDevice_Release(def_dev);
++        }
 +        if(def_dev)
 +            IMMDevice_Release(def_dev);
 +        if(voicecom_dev)
@@ -108,10 +102,10 @@ index 31b4e6c9d5b260aaff79708d1020845a20ab25b6..74de6795603186ee09c9bbe8d713ee78
 +        }
 +        if(voicecom_index != ~0u)
 +            *voicecom_id = voicecom_index;
-
          *devcount = count;
      }
-@@ -2456,7 +2456,8 @@ UINT WINAPI waveOutGetDevCapsA(UINT_PTR uDeviceID, LPWAVEOUTCAPSA lpCaps,
+ 
+@@ -2456,6 +2479,7 @@
  UINT WINAPI waveOutGetDevCapsW(UINT_PTR uDeviceID, LPWAVEOUTCAPSW lpCaps,
  			       UINT uSize)
  {
@@ -119,8 +113,7 @@ index 31b4e6c9d5b260aaff79708d1020845a20ab25b6..74de6795603186ee09c9bbe8d713ee78
      WAVEOUTCAPSW mapper_caps, *caps;
  
      TRACE("(%Iu, %p, %u)\n", uDeviceID, lpCaps, uSize);
- 
-@@ -2488,7 +2488,9 @@ UINT WINAPI waveOutGetDevCapsW(UINT_PTR uDeviceID, LPWAVEOUTCAPSW lpCaps,
+@@ -2488,7 +2512,9 @@
  
              LeaveCriticalSection(&device->lock);
          }else{
@@ -131,7 +124,7 @@ index 31b4e6c9d5b260aaff79708d1020845a20ab25b6..74de6795603186ee09c9bbe8d713ee78
          }
      }
  
-@@ -3159,7 +3159,8 @@ UINT WINAPI waveInGetNumDevs(void)
+@@ -3159,6 +3185,7 @@
   */
  UINT WINAPI waveInGetDevCapsW(UINT_PTR uDeviceID, LPWAVEINCAPSW lpCaps, UINT uSize)
  {
@@ -139,8 +132,7 @@ index 31b4e6c9d5b260aaff79708d1020845a20ab25b6..74de6795603186ee09c9bbe8d713ee78
      WAVEINCAPSW mapper_caps, *caps;
  
      TRACE("(%Iu, %p, %u)\n", uDeviceID, lpCaps, uSize);
- 
-@@ -3190,7 +3190,9 @@ UINT WINAPI waveInGetDevCapsW(UINT_PTR uDeviceID, LPWAVEINCAPSW lpCaps, UINT uSi
+@@ -3190,7 +3217,9 @@
  
              LeaveCriticalSection(&device->lock);
          }else{

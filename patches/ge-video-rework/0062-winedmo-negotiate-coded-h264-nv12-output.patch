@@ -28,27 +28,11 @@ https://github.com/GloriousEggroll/proton-ge-custom/issues/771
 https://learn.microsoft.com/en-us/windows/win32/medfound/h-264-video-decoder
 
 ---
-diff --git a/dlls/winedmo/unix_transform.c b/dlls/winedmo/unix_transform.c
---- a/dlls/winedmo/unix_transform.c
-+++ b/dlls/winedmo/unix_transform.c
-@@ -311,6 +311,12 @@
-             && t->avctx->coded_height > height)
-         return false;
- 
-+    /* H.264 NV12 output must announce the coded size even when the caller
-+     * selected a smaller placeholder before decoding the first frame. Both
-+     * the format change and the copied planes must use the same padded size. */
-+    if (t->avctx->codec_id == AV_CODEC_ID_H264 && t->out_pix_fmt == AV_PIX_FMT_NV12)
-+        return true;
-+
-     if (t->out_width > 0 && t->out_height > 0
-             && (t->out_width < t->avctx->coded_width || t->out_height < t->avctx->coded_height))
-         return false;
 diff --git a/dlls/mf/tests/transform.c b/dlls/mf/tests/transform.c
-index d9e2c92df94..3fabef84ea2 100644
+index 08aba899..84f6d99f 100644
 --- a/dlls/mf/tests/transform.c
 +++ b/dlls/mf/tests/transform.c
-@@ -5734,7 +5734,7 @@ failed:
+@@ -5925,7 +5925,7 @@ failed:
      CoUninitialize();
  }
  
@@ -57,7 +41,7 @@ index d9e2c92df94..3fabef84ea2 100644
  {
      static const DWORD actual_width = 82, actual_height = 84;
      static const DWORD aligned_width = 96, aligned_height = 96;
-@@ -5750,16 +5750,17 @@ static void test_h264_decoder_alignment(void)
+@@ -5941,16 +5941,17 @@ static void test_h264_decoder_alignment(void)
      IMFSample *input_sample, *output_sample;
      const BYTE *h264_encoded_data;
      ULONG h264_encoded_data_len;
@@ -78,7 +62,7 @@ index d9e2c92df94..3fabef84ea2 100644
  
      if (FAILED(hr = CoCreateInstance(&CLSID_MSH264DecoderMFT, NULL, CLSCTX_INPROC_SERVER,
              &IID_IMFTransform, (void **)&transform)))
-@@ -5767,12 +5768,18 @@ static void test_h264_decoder_alignment(void)
+@@ -5958,12 +5959,18 @@ static void test_h264_decoder_alignment(void)
  
      load_resource(L"h264data.bin", &h264_encoded_data, &h264_encoded_data_len);
  
@@ -93,13 +77,13 @@ index d9e2c92df94..3fabef84ea2 100644
      output_type = transform_find_available_output_type(transform, &MFVideoFormat_NV12);
      hr = IMFMediaType_GetUINT64(output_type, &MF_MT_FRAME_SIZE, &frame_size);
      ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
--    ok(frame_size == (((UINT64)actual_width << 32) | actual_height), "Unexpected frame size %#llx\n", frame_size);
+-    ok(frame_size == (((UINT64)actual_width << 32) | actual_height), "Unexpected frame size %#I64x\n", frame_size);
 +    ok(frame_size == (input_frame_size ? (((UINT64)actual_width << 32) | actual_height)
-+            : (((UINT64)1920 << 32) | 1080)), "Unexpected frame size %#llx\n", frame_size);
++            : (((UINT64)1920 << 32) | 1080)), "Unexpected frame size %#I64x\n", frame_size);
  
      hr = IMFTransform_SetOutputType(transform, 0, output_type, 0);
      ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
-@@ -5794,6 +5801,10 @@ static void test_h264_decoder_alignment(void)
+@@ -5985,6 +5992,10 @@ static void test_h264_decoder_alignment(void)
          if (hr == S_OK)
          {
              ok(!!output_type, "Stream change not received.\n");
@@ -110,9 +94,9 @@ index d9e2c92df94..3fabef84ea2 100644
              IMFSample_Release(output_sample);
              output_sample = create_sample(NULL, aligned_width * aligned_height * 3 / 2);
          }
-@@ -5812,12 +5823,20 @@ static void test_h264_decoder_alignment(void)
+@@ -6003,12 +6014,20 @@ static void test_h264_decoder_alignment(void)
              ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
-             ok(frame_size == (((UINT64)aligned_width << 32) | aligned_height), "Unexpected frame size %#llx\n", frame_size);
+             ok(frame_size == (((UINT64)aligned_width << 32) | aligned_height), "Unexpected frame size %#I64x\n", frame_size);
  
 +            hr = IMFMediaType_GetBlob(output_type, &MF_MT_MINIMUM_DISPLAY_APERTURE,
 +                    (BYTE *)&aperture, sizeof(aperture), NULL);
@@ -131,7 +115,7 @@ index d9e2c92df94..3fabef84ea2 100644
      IMFSample_Release(output_sample);
      IMFTransform_Release(transform);
  
-@@ -11589,7 +11608,8 @@ START_TEST(transform)
+@@ -12803,7 +12822,8 @@ START_TEST(transform)
      test_h264_decoder(FALSE);
      test_h264_decoder(TRUE);
      test_h264_decoder_timestamps();
@@ -141,3 +125,20 @@ index d9e2c92df94..3fabef84ea2 100644
      test_wmv_encoder();
      test_wmv_decoder(FALSE);
      test_wmv_decoder(TRUE);
+diff --git a/dlls/winedmo/unix_transform.c b/dlls/winedmo/unix_transform.c
+index d7f5d625..89c70df2 100644
+--- a/dlls/winedmo/unix_transform.c
++++ b/dlls/winedmo/unix_transform.c
+@@ -304,6 +304,12 @@ static bool should_use_coded_video_output_size( const struct unix_transform *t,
+             && t->avctx->coded_height > height)
+         return false;
+ 
++    /* H.264 NV12 output must announce the coded size even when the caller
++     * selected a smaller placeholder before decoding the first frame. Both
++     * the format change and the copied planes must use the same padded size. */
++    if (t->avctx->codec_id == AV_CODEC_ID_H264 && t->out_pix_fmt == AV_PIX_FMT_NV12)
++        return true;
++
+     if (t->out_width > 0 && t->out_height > 0
+             && (t->out_width < t->avctx->coded_width || t->out_height < t->avctx->coded_height))
+         return false;

@@ -14,10 +14,9 @@ query opt out of blocking delta updates. This preserves the device metadata and
 endpoint snapshot support needed by the DS5 haptic patches without starting the
 fragile background hotplug updater.
 diff --git a/dlls/mmdevapi/devenum.c b/dlls/mmdevapi/devenum.c
-index 91a84b115f2..42b9aa2f548 100644
 --- a/dlls/mmdevapi/devenum.c
 +++ b/dlls/mmdevapi/devenum.c
-@@ -1279,7 +1279,7 @@ void create_update_thread(void)
+@@ -1224,7 +1224,7 @@
          ERR("CreateThread failed: %lu\n", GetLastError());
          g_update_thread_running = FALSE;
      } else
@@ -26,11 +25,11 @@ index 91a84b115f2..42b9aa2f548 100644
  
      LeaveCriticalSection(&device_list_cs);
  }
+
 diff --git a/dlls/winepulse.drv/pulse.c b/dlls/winepulse.drv/pulse.c
-index d52cda6733a..4f64a30a913 100644
 --- a/dlls/winepulse.drv/pulse.c
 +++ b/dlls/winepulse.drv/pulse.c
-@@ -164,12 +164,6 @@ static struct list g_phys_sources_removed = LIST_INIT(g_phys_sources_removed);
+@@ -136,12 +136,6 @@
  /* to avoid race-condition/deadlock. */
  static struct list g_phys_added_removed = LIST_INIT(g_phys_added_removed);
  
@@ -43,7 +42,7 @@ index d52cda6733a..4f64a30a913 100644
  static pthread_mutex_t pulse_mutex;
  static pthread_cond_t pulse_cond = PTHREAD_COND_INITIALIZER;
  
-@@ -231,27 +225,6 @@ static void pulse_dev_wait_ready(PhysDevice *dev)
+@@ -200,27 +194,6 @@
      pthread_mutex_unlock(&dev->ready_mutex);
  }
  
@@ -71,7 +70,7 @@ index d52cda6733a..4f64a30a913 100644
  static struct pulse_stream *handle_get_stream(stream_handle h)
  {
      return (struct pulse_stream *)(UINT_PTR)h;
-@@ -367,9 +340,6 @@ static NTSTATUS pulse_process_attach(void *args)
+@@ -336,9 +309,6 @@
      if (pthread_mutex_init(&pulse_mutex, &attr) != 0)
          pthread_mutex_init(&pulse_mutex, NULL);
  
@@ -81,8 +80,7 @@ index d52cda6733a..4f64a30a913 100644
      if (pthread_mutex_init(&g_phys_mutex, &attr) != 0)
          pthread_mutex_init(&g_phys_mutex, NULL);
  
-@@ -326,8 +326,7 @@ static NTSTATUS pulse_process_detach(void *args)
-     if (pulse_ml)
+@@ -357,7 +327,6 @@
          pa_mainloop_quit(pulse_ml, 0);
  
      pthread_mutex_destroy(&pulse_mutex);
@@ -90,7 +88,7 @@ index d52cda6733a..4f64a30a913 100644
      pthread_mutex_destroy(&g_phys_mutex);
  
      return STATUS_SUCCESS;
-@@ -524,6 +493,10 @@ static NTSTATUS pulse_get_endpoint_ids(void *args)
+@@ -510,6 +479,10 @@
  
      TRACE("flow %d, delta %d\n", (int)params->flow, (int)params->delta);
  
@@ -101,7 +99,7 @@ index d52cda6733a..4f64a30a913 100644
      if (params->flow == eRender)
      {
          list = &g_phys_speakers;
-@@ -624,7 +597,7 @@ done:
+@@ -610,7 +583,7 @@
          params->size = needed;
          params->result = HRESULT_FROM_WIN32(ERROR_INSUFFICIENT_BUFFER);
      } else {
@@ -110,7 +108,7 @@ index d52cda6733a..4f64a30a913 100644
          params->result = S_OK;
      }
      return STATUS_SUCCESS;
-@@ -672,6 +645,71 @@ static BOOL pulse_stream_valid(struct pulse_stream *stream)
+@@ -658,6 +631,71 @@
      return pa_stream_get_state(stream->stream) == PA_STREAM_READY;
  }
  
@@ -182,8 +180,7 @@ index d52cda6733a..4f64a30a913 100644
  static UINT pulse_channel_map_to_channel_mask(const pa_channel_map *map)
  {
      int i;
-@@ -828,6 +828,64 @@ static void fill_device_info(PhysDevice *dev, pa_proplist *p)
-     if ((buffer = pa_proplist_gets(p, PA_PROP_DEVICE_PRODUCT_ID)))
+@@ -791,6 +829,64 @@
          dev->product_id = strtol(buffer, NULL, 16);
  }
  
@@ -248,5 +245,3 @@ index d52cda6733a..4f64a30a913 100644
  /* For most hardware on Windows, users must choose a configuration with an even
   * number of channels (stereo, quad, 5.1, 7.1). Users can then disable
   * channels, but those channels are still reported to applications from
--- 
-2.54.0

@@ -8,9 +8,10 @@ clients during live playback. Keep high-frequency output bounded so the
 diagnostics do not materially alter VRChat playback timing.
 
 diff --git a/dlls/mfmediaengine/main.c b/dlls/mfmediaengine/main.c
+index 8bf86794..abccb4d0 100644
 --- a/dlls/mfmediaengine/main.c
 +++ b/dlls/mfmediaengine/main.c
-@@ -2149,10 +2149,19 @@
+@@ -2069,10 +2069,19 @@ static HRESULT WINAPI media_engine_CanPlayType(IMFMediaEngineEx *iface, BSTR mim
  static USHORT WINAPI media_engine_GetReadyState(IMFMediaEngineEx *iface)
  {
      struct media_engine *engine = impl_from_IMFMediaEngineEx(iface);
@@ -30,27 +31,30 @@ diff --git a/dlls/mfmediaengine/main.c b/dlls/mfmediaengine/main.c
      TRACE("%p returning %u flags %#x.\n", iface, state, engine->flags);
      LeaveCriticalSection(&engine->cs);
  
-@@ -2162,10 +2171,19 @@
+@@ -2081,8 +2090,22 @@ static USHORT WINAPI media_engine_GetReadyState(IMFMediaEngineEx *iface)
+ 
  static BOOL WINAPI media_engine_IsSeeking(IMFMediaEngineEx *iface)
  {
-     struct media_engine *engine = impl_from_IMFMediaEngineEx(iface);
++    struct media_engine *engine = impl_from_IMFMediaEngineEx(iface);
 +    static LONG live_seeking_count;
-     BOOL value;
++
+     FIXME("(%p): stub.\n", iface);
  
-     EnterCriticalSection(&engine->cs);
-     value = !!(engine->flags & (FLAGS_ENGINE_SEEKING | FLAGS_ENGINE_DEFERRED_SEEK));
++    EnterCriticalSection(&engine->cs);
 +    if (isinf(engine->duration))
 +    {
 +        LONG count = InterlockedIncrement(&live_seeking_count);
 +
-+        if (count <= 16 || !(count % 120) || value)
-+            WARN("Live seeking call %ld: %u, flags %#x, ready %u, network %u.\n",
-+                    count, value, engine->flags, engine->ready_state, engine->network_state);
++        if (count <= 16 || !(count % 120))
++            WARN("Live seeking call %ld: flags %#x, ready %u, network %u.\n",
++                    count, engine->flags, engine->ready_state, engine->network_state);
 +    }
-     TRACE("%p returning %d flags %#x.\n", iface, value, engine->flags);
-     LeaveCriticalSection(&engine->cs);
++    LeaveCriticalSection(&engine->cs);
++
+     return FALSE;
+ }
  
-@@ -2789,12 +2807,20 @@
+@@ -2617,12 +2640,20 @@ static HRESULT WINAPI media_engine_SetVolume(IMFMediaEngineEx *iface, double vol
  static BOOL WINAPI media_engine_HasVideo(IMFMediaEngineEx *iface)
  {
      struct media_engine *engine = impl_from_IMFMediaEngineEx(iface);
@@ -71,7 +75,7 @@ diff --git a/dlls/mfmediaengine/main.c b/dlls/mfmediaengine/main.c
      LeaveCriticalSection(&engine->cs);
  
      return value;
-@@ -2803,12 +2829,20 @@
+@@ -2631,12 +2662,20 @@ static BOOL WINAPI media_engine_HasVideo(IMFMediaEngineEx *iface)
  static BOOL WINAPI media_engine_HasAudio(IMFMediaEngineEx *iface)
  {
      struct media_engine *engine = impl_from_IMFMediaEngineEx(iface);
@@ -92,7 +96,7 @@ diff --git a/dlls/mfmediaengine/main.c b/dlls/mfmediaengine/main.c
      LeaveCriticalSection(&engine->cs);
  
      return value;
-@@ -3459,6 +3501,7 @@
+@@ -3591,6 +3630,7 @@ static HRESULT WINAPI media_engine_TransferVideoFrame(IMFMediaEngineEx *iface, I
          const MFVideoNormalizedRect *src_rect, const RECT *dst_rect, const MFARGB *color)
  {
      struct media_engine *engine = impl_from_IMFMediaEngineEx(iface);
@@ -100,7 +104,7 @@ diff --git a/dlls/mfmediaengine/main.c b/dlls/mfmediaengine/main.c
      ID3D11Texture2D *texture;
      HRESULT hr = E_NOINTERFACE;
      IWICBitmap *bitmap;
-@@ -3495,6 +3538,15 @@
+@@ -3618,6 +3658,15 @@ static HRESULT WINAPI media_engine_TransferVideoFrame(IMFMediaEngineEx *iface, I
          FIXME("Unsupported destination type.\n");
      }
  
@@ -116,7 +120,7 @@ diff --git a/dlls/mfmediaengine/main.c b/dlls/mfmediaengine/main.c
      LeaveCriticalSection(&engine->cs);
  
      return hr;
-@@ -3503,6 +3555,8 @@
+@@ -3626,6 +3675,8 @@ static HRESULT WINAPI media_engine_TransferVideoFrame(IMFMediaEngineEx *iface, I
  static HRESULT WINAPI media_engine_OnVideoStreamTick(IMFMediaEngineEx *iface, LONGLONG *pts)
  {
      struct media_engine *engine = impl_from_IMFMediaEngineEx(iface);
@@ -125,15 +129,15 @@ diff --git a/dlls/mfmediaengine/main.c b/dlls/mfmediaengine/main.c
      HRESULT hr;
  
      TRACE("%p, %p.\n", iface, pts);
-@@ -3515,7 +3569,6 @@
+@@ -3638,7 +3689,6 @@ static HRESULT WINAPI media_engine_OnVideoStreamTick(IMFMediaEngineEx *iface, LO
          hr = E_POINTER;
      else
      {
 -        MFTIME clocktime;
          *pts = MINLONGLONG;
          if (SUCCEEDED(IMFPresentationClock_GetTime(engine->clock, &clocktime)))
-         {
-@@ -3568,6 +3621,16 @@
+             hr = video_frame_sink_get_pts(engine->presentation.frame_sink, clocktime, pts);
+@@ -3646,6 +3696,16 @@ static HRESULT WINAPI media_engine_OnVideoStreamTick(IMFMediaEngineEx *iface, LO
              hr = S_FALSE;
      }
  
@@ -150,7 +154,7 @@ diff --git a/dlls/mfmediaengine/main.c b/dlls/mfmediaengine/main.c
      LeaveCriticalSection(&engine->cs);
  
      return hr;
-@@ -3719,6 +3782,9 @@
+@@ -3859,6 +3919,9 @@ static HRESULT WINAPI media_engine_GetStreamAttribute(IMFMediaEngineEx *iface, D
              IMFStreamDescriptor_Release(sd);
          }
      }
@@ -160,5 +164,3 @@ diff --git a/dlls/mfmediaengine/main.c b/dlls/mfmediaengine/main.c
      LeaveCriticalSection(&engine->cs);
  
      return hr;
--- 
-2.52.0

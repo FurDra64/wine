@@ -125,11 +125,11 @@ index bff19431..ae598977 100644
      test_video_window();
      test_basic_video();
 diff --git a/dlls/quartz/vmr7.c b/dlls/quartz/vmr7.c
-index a313eb60..db63d75c 100644
+index e8630d9d..8b517cd7 100644
 --- a/dlls/quartz/vmr7.c
 +++ b/dlls/quartz/vmr7.c
-@@ -163,6 +163,22 @@ static void copy_plane(BYTE **dstp, unsigned int dst_pitch, unsigned int dst_hei
-     *dstp += dst_pitch * dst_height;
+@@ -236,6 +236,22 @@ static void convert_yv12_to_rgb32(BYTE *dst, unsigned int dst_pitch,
+     }
  }
  
 +/* A positive height means a bottom-up source; the surface is top-down. */
@@ -151,9 +151,9 @@ index a313eb60..db63d75c 100644
  static HRESULT vmr_render(struct strmbase_renderer *iface, IMediaSample *sample)
  {
      struct vmr7 *filter = impl_from_IBaseFilter(&iface->filter.IBaseFilter_iface);
-@@ -263,6 +279,12 @@ static HRESULT vmr_render(struct strmbase_renderer *iface, IMediaSample *sample)
-         copy_plane(&dst, surface_desc.lPitch / 2, surface_desc.dwHeight / 2, &src, src_pitch / 2, height / 2);
-         copy_plane(&dst, surface_desc.lPitch / 2, surface_desc.dwHeight / 2, &src, src_pitch / 2, height / 2);
+@@ -350,6 +366,12 @@ static HRESULT vmr_render(struct strmbase_renderer *iface, IMediaSample *sample)
+             copy_plane(&dst, surface_desc.lPitch / 2, surface_desc.dwHeight / 2, &src, src_pitch / 2, height / 2);
+         }
      }
 +    else if (bitmap_header->biCompression == BI_RGB && depth == 24
 +            && (surface_desc.ddpfPixelFormat.dwFlags & DDPF_RGB)
@@ -164,7 +164,7 @@ index a313eb60..db63d75c 100644
      else if (height > 0 && (bitmap_header->biCompression == BI_RGB || bitmap_header->biCompression == BI_BITFIELDS))
      {
          BYTE *dst = surface_desc.lpSurface;
-@@ -422,6 +444,7 @@ static HRESULT allocate_surfaces(struct vmr7 *filter, const AM_MEDIA_TYPE *mt)
+@@ -478,6 +500,7 @@ static HRESULT allocate_surfaces(struct vmr7 *filter, const AM_MEDIA_TYPE *mt)
  {
      BITMAPINFOHEADER bitmap_header = *get_bitmap_header(mt);
      VMRALLOCATIONINFO info = {0};
@@ -172,7 +172,7 @@ index a313eb60..db63d75c 100644
      DWORD count = 1;
  
      TRACE("Initializing in mode %u, our window %p, clipping window %p.\n",
-@@ -436,7 +459,17 @@ static HRESULT allocate_surfaces(struct vmr7 *filter, const AM_MEDIA_TYPE *mt)
+@@ -492,7 +515,17 @@ static HRESULT allocate_surfaces(struct vmr7 *filter, const AM_MEDIA_TYPE *mt)
      info.szAspectRatio.cx = info.szNativeSize.cx = bitmap_header.biWidth;
      info.szAspectRatio.cy = info.szNativeSize.cy = bitmap_header.biHeight;
  

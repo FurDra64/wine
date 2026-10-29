@@ -19,13 +19,9 @@ add/change events for devnodes that are already present.
  1 file changed, 13 insertions(+), 10 deletions(-)
 
 diff --git a/dlls/winebus.sys/bus_udev.c b/dlls/winebus.sys/bus_udev.c
-index d3e3a441f0f..11b9e099cfa 100644
 --- a/dlls/winebus.sys/bus_udev.c
 +++ b/dlls/winebus.sys/bus_udev.c
-@@ -1406,7 +1406,14 @@ static void udev_add_device(struct udev_device *dev, int fd)
-     if (fd < 0 && (fd = open(devnode, O_RDWR)) == -1)
-     {
-         WARN("Unable to open udev device %s: %s\n", debugstr_a(devnode), strerror(errno));
+@@ -1409,6 +1409,13 @@
          return;
      }
  
@@ -37,7 +33,12 @@ index d3e3a441f0f..11b9e099cfa 100644
 +    }
 +
      TRACE("udev %s syspath %s\n", debugstr_a(devnode), udev_device_get_syspath(dev));
-@@ -1962,19 +1969,15 @@
+ 
+     if (!(subsystem = udev_device_get_subsystem(dev))) goto failed;
+@@ -1585,22 +1592,18 @@
+     else WARN("failed to find device for path %s\n", devnode);
+ }
+ 
 -static void process_attrib_change(const char *base, const char *dir, const char *subsystem)
 +static void maybe_refresh_devnode(const char *base, const char *dir, const char *subsystem)
  {
@@ -61,7 +62,7 @@ index d3e3a441f0f..11b9e099cfa 100644
  }
  
  static void process_inotify_event(int fd)
-@@ -1995,7 +1998,7 @@ static void process_inotify_event(int fd)
+@@ -1629,7 +1632,7 @@
                  else if (buf.event.mask & (IN_CREATE | IN_MOVED_TO))
                      maybe_add_devnode(buf.event.name, "/dev", "hidraw");
                  else if (buf.event.mask & IN_ATTRIB)
@@ -70,7 +71,7 @@ index d3e3a441f0f..11b9e099cfa 100644
              }
  #ifdef HAS_PROPER_INPUT_HEADER
              else if (buf.event.wd == devinput_watch)
-@@ -2007,7 +2010,7 @@ static void process_inotify_event(int fd)
+@@ -1641,7 +1644,7 @@
                  else if (buf.event.mask & (IN_CREATE | IN_MOVED_TO))
                      maybe_add_devnode(buf.event.name, "/dev/input", "input");
                  else if (buf.event.mask & IN_ATTRIB)
@@ -79,5 +80,3 @@ index d3e3a441f0f..11b9e099cfa 100644
              }
  #endif
          }
--- 
-2.50.0

@@ -95,10 +95,10 @@ index 3b8cc34f..46c70c0c 100644
      test_mpeg_audio_connection(L"test.mpg");
      test_mpeg_audio_connection(L"test2.mpg");
 diff --git a/dlls/winedmo/unix_demuxer.c b/dlls/winedmo/unix_demuxer.c
-index de7caad7..2863be14 100644
+index 79b1164d..d5b60b35 100644
 --- a/dlls/winedmo/unix_demuxer.c
 +++ b/dlls/winedmo/unix_demuxer.c
-@@ -382,6 +382,13 @@ static INT64 get_context_duration( const AVFormatContext *ctx )
+@@ -501,6 +501,13 @@ static INT64 get_context_duration( const AVFormatContext *ctx )
  
      if (ctx->duration_estimation_method == AVFMT_DURATION_FROM_BITRATE)
      {
@@ -110,5 +110,5 @@ index de7caad7..2863be14 100644
 +            return get_user_time( ctx->duration, AV_TIME_BASE_Q );
 +
          duration = get_asf_header_duration( (AVFormatContext *)ctx );
-         return duration != AV_NOPTS_VALUE ? duration : AV_NOPTS_VALUE;
-     }
+         if (duration != AV_NOPTS_VALUE)
+             return duration;

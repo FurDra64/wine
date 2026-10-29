@@ -20,11 +20,11 @@ Remember that the filter has streamed and seek to position 0 too after
 that.
 ---
 diff --git a/dlls/winedmo/winedmo_quartz_parser.c b/dlls/winedmo/winedmo_quartz_parser.c
-index 10895feb..0a311fd6 100644
+index 1714e79d..db77d2bf 100644
 --- a/dlls/winedmo/winedmo_quartz_parser.c
 +++ b/dlls/winedmo/winedmo_quartz_parser.c
-@@ -234,6 +234,8 @@ struct dmo_parser
-     REFERENCE_TIME stream_start;
+@@ -226,6 +226,8 @@ struct dmo_parser
+     bool downstream_flushing;
  
      HANDLE demux_thread;
 +    /* The filter has streamed once: its demuxer has read ahead, it is not at the start. */
@@ -32,7 +32,7 @@ index 10895feb..0a311fd6 100644
  
      BOOL (*init_streams)(struct dmo_parser *filter, UINT stream_count, INT64 duration);
      BOOL (*check_mime_type)(const WCHAR *mime_type);
-@@ -1577,7 +1579,9 @@ static HRESULT dmo_parser_init_stream(struct strmbase_filter *iface)
+@@ -1429,7 +1431,9 @@ static HRESULT dmo_parser_init_stream(struct strmbase_filter *iface)
      /* Seek to the current position (retain seek state across Stop/Pause/Run). */
      {
          LONGLONG seek_time = filter->source_count ? filter->sources[0]->seek.llCurrent : 0;
@@ -41,9 +41,9 @@ index 10895feb..0a311fd6 100644
 +         * position 0 needs a seek too. */
 +        if (seek_time || filter->demuxer_moved)
          {
-             NTSTATUS status;
-             WARN("DirectShow parser init seek to %s.\n", debugstr_time(seek_time));
-@@ -1590,6 +1594,7 @@ static HRESULT dmo_parser_init_stream(struct strmbase_filter *iface)
+             NTSTATUS status = winedmo_demuxer_seek(filter->winedmo_demuxer, seek_time);
+             if (status)
+@@ -1440,6 +1444,7 @@ static HRESULT dmo_parser_init_stream(struct strmbase_filter *iface)
      filter->streaming = true;
      filter->flushing = false;
      filter->read_flushing = FALSE;

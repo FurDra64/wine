@@ -38,20 +38,23 @@ not treat the haptic stream as a half-created Pulse stream.
  2 files changed, 736 insertions(+), 30 deletions(-)
 
 diff --git a/dlls/winepulse.drv/Makefile.in b/dlls/winepulse.drv/Makefile.in
+index bfde8637..0c808987 100644
 --- a/dlls/winepulse.drv/Makefile.in
 +++ b/dlls/winepulse.drv/Makefile.in
-@@ -1,4 +1,4 @@
+@@ -1,6 +1,6 @@
  UNIXLIB   = winepulse.so
 -UNIX_LIBS    = $(PULSE_LIBS) $(PTHREAD_LIBS) -lm
 -UNIX_CFLAGS  = $(PULSE_CFLAGS)
 +UNIX_LIBS    = $(PULSE_LIBS) $(PTHREAD_LIBS) $(UDEV_LIBS) $(ALSA_LIBS) -lm
 +UNIX_CFLAGS  = $(PULSE_CFLAGS) $(UDEV_CFLAGS) $(ALSA_CFLAGS)
  
+ SOURCES = \
+ 	pulse.c
 diff --git a/dlls/winepulse.drv/pulse.c b/dlls/winepulse.drv/pulse.c
-index 5a908076f60741303ebaefbe9d413cb24a3def69..d8b26929f856ab21af8b907a80ba92a6c330dcd6 100644
+index 9a97f705..41bfe548 100644
 --- a/dlls/winepulse.drv/pulse.c
 +++ b/dlls/winepulse.drv/pulse.c
-@@ -34,6 +34,7 @@
+@@ -28,6 +28,7 @@
  #include <math.h>
  #include <poll.h>
  
@@ -59,7 +62,7 @@ index 5a908076f60741303ebaefbe9d413cb24a3def69..d8b26929f856ab21af8b907a80ba92a6
  #include <pulse/pulseaudio.h>
  
  #include "ntstatus.h"
-@@ -57,6 +57,8 @@ struct pulse_stream
+@@ -58,6 +59,8 @@ struct pulse_stream
      EDataFlow dataflow;
  
      pa_stream *stream;
@@ -68,7 +71,7 @@ index 5a908076f60741303ebaefbe9d413cb24a3def69..d8b26929f856ab21af8b907a80ba92a6
      pa_sample_spec ss;
      pa_channel_map map;
      pa_buffer_attr attr;
-@@ -108,6 +111,11 @@ struct pulse_stream
+@@ -77,6 +80,11 @@ struct pulse_stream
      SIZE_T peek_ofs, read_offs_bytes, lcl_offs_bytes, pa_offs_bytes;
      SIZE_T tmp_buffer_bytes, held_bytes, peek_len, peek_buffer_len, pa_held_bytes;
      BYTE *local_buffer, *tmp_buffer, *peek_buffer;
@@ -80,7 +83,8 @@ index 5a908076f60741303ebaefbe9d413cb24a3def69..d8b26929f856ab21af8b907a80ba92a6
      void *locked_ptr;
      BOOL please_quit, just_started, just_underran;
      pa_usec_t mmdev_period_usec;
-@@ -155,5 +163,7 @@ typedef struct _PhysDevice {
+@@ -118,6 +126,8 @@ typedef struct _PhysDevice {
+     UINT index;
      REFERENCE_TIME min_period, def_period;
      WAVEFORMATEXTENSIBLE fmt;
 +    char *raw_haptic_target;
@@ -88,7 +92,7 @@ index 5a908076f60741303ebaefbe9d413cb24a3def69..d8b26929f856ab21af8b907a80ba92a6
      char pulse_name[0];
  } PhysDevice;
  
-@@ -163,6 +173,7 @@ static pa_mainloop *pulse_ml;
+@@ -126,6 +136,7 @@ static pa_mainloop *pulse_ml;
  
  static pthread_mutex_t g_phys_mutex;
  static pthread_cond_t g_phys_cond = PTHREAD_COND_INITIALIZER;
@@ -96,7 +100,7 @@ index 5a908076f60741303ebaefbe9d413cb24a3def69..d8b26929f856ab21af8b907a80ba92a6
  static struct list g_phys_speakers = LIST_INIT(g_phys_speakers);
  static struct list g_phys_sources = LIST_INIT(g_phys_sources);
  static struct list g_phys_speakers_added = LIST_INIT(g_phys_speakers_added);
-@@ -186,6 +197,17 @@ static NTSTATUS pulse_not_implemented(void *args)
+@@ -146,6 +157,17 @@ static NTSTATUS pulse_not_implemented(void *args)
      return STATUS_SUCCESS;
  }
  
@@ -114,7 +118,7 @@ index 5a908076f60741303ebaefbe9d413cb24a3def69..d8b26929f856ab21af8b907a80ba92a6
  static void g_phys_lock(void)
  {
      pthread_mutex_lock(&g_phys_mutex);
-@@ -237,6 +259,8 @@ static void pulse_dev_free(PhysDevice *dev)
+@@ -181,6 +203,8 @@ static void pulse_dev_free(PhysDevice *dev)
      pthread_mutex_destroy(&dev->ready_mutex);
      pthread_cond_destroy(&dev->ready_cond);
      free(dev->name);
@@ -123,7 +127,7 @@ index 5a908076f60741303ebaefbe9d413cb24a3def69..d8b26929f856ab21af8b907a80ba92a6
      free(dev);
  }
  
-@@ -697,9 +721,17 @@ static void silence_buffer(pa_sample_format_t format, BYTE *buffer, UINT32 bytes
+@@ -628,9 +652,17 @@ static void silence_buffer(pa_sample_format_t format, BYTE *buffer, UINT32 bytes
  
  static BOOL pulse_stream_valid(struct pulse_stream *stream)
  {
@@ -141,8 +145,7 @@ index 5a908076f60741303ebaefbe9d413cb24a3def69..d8b26929f856ab21af8b907a80ba92a6
  static void pulse_contextcallback(pa_context *c, void *userdata)
  {
      switch (pa_context_get_state(c))
-@@ -975,7 +1007,25 @@ static void fill_device_info(PhysDevice *dev, pa_proplist *p)
-     if ((buffer = pa_proplist_gets(p, PA_PROP_DEVICE_PRODUCT_ID)))
+@@ -829,6 +861,24 @@ static void fill_device_info(PhysDevice *dev, pa_proplist *p)
          dev->product_id = strtol(buffer, NULL, 16);
  }
  
@@ -167,7 +170,7 @@ index 5a908076f60741303ebaefbe9d413cb24a3def69..d8b26929f856ab21af8b907a80ba92a6
  static void pulse_add_device(struct list *list, pa_proplist *proplist, int index, EndpointFormFactor form,
                               UINT channel_mask, const char *pulse_name, const char *desc)
  {
-@@ -994,12 +1044,34 @@ static void pulse_add_device(struct list *list, pa_proplist *proplist, int index
+@@ -848,12 +898,34 @@ static void pulse_add_device(struct list *list, pa_proplist *proplist, int index
      dev->channel_mask = channel_mask;
      dev->def_period = 0;
      dev->min_period = 0;
@@ -202,7 +205,7 @@ index 5a908076f60741303ebaefbe9d413cb24a3def69..d8b26929f856ab21af8b907a80ba92a6
      memcpy(dev->pulse_name, pulse_name, len + 1);
  
      list_add_tail(list, &dev->entry);
-@@ -1453,9 +1525,11 @@ static HRESULT pulse_spec_from_waveformat(struct pulse_stream *stream, const WAV
+@@ -1296,9 +1368,11 @@ static HRESULT pulse_spec_from_waveformat(struct pulse_stream *stream, const WAV
      return S_OK;
  }
  
@@ -215,7 +218,7 @@ index 5a908076f60741303ebaefbe9d413cb24a3def69..d8b26929f856ab21af8b907a80ba92a6
      int ret;
      char buffer[64];
      static LONG number;
-@@ -1463,7 +1537,24 @@ static HRESULT pulse_stream_connect(struct pulse_stream *stream, const char *pul
+@@ -1306,7 +1380,24 @@ static HRESULT pulse_stream_connect(struct pulse_stream *stream, const char *pul
  
      ret = InterlockedIncrement(&number);
      sprintf(buffer, "audio stream #%i", ret);
@@ -241,7 +244,8 @@ index 5a908076f60741303ebaefbe9d413cb24a3def69..d8b26929f856ab21af8b907a80ba92a6
  
      if (!stream->stream) {
          WARN("pa_stream_new returned error %i\n", pa_context_errno(pulse_ctx));
-@@ -1482,7 +1573,9 @@ static HRESULT pulse_stream_connect(struct pulse_stream *stream, const char *pul
+@@ -1324,8 +1415,10 @@ static HRESULT pulse_stream_connect(struct pulse_stream *stream, const char *pul
+     attr.prebuf = pa_frame_size(&stream->ss);
      dump_attr(&attr);
  
 -    /* If specific device was requested, use it exactly */
@@ -253,7 +257,7 @@ index 5a908076f60741303ebaefbe9d413cb24a3def69..d8b26929f856ab21af8b907a80ba92a6
          flags |= PA_STREAM_DONT_MOVE;
      else
          pulse_name = NULL;  /* use default */
-@@ -1496,10 +1589,27 @@ static HRESULT pulse_stream_connect(struct pulse_stream *stream, const char *pul
+@@ -1338,10 +1431,27 @@ static HRESULT pulse_stream_connect(struct pulse_stream *stream, const char *pul
          WARN("Returns %i\n", ret);
          return AUDCLNT_E_ENDPOINT_CREATE_FAILED;
      }
@@ -283,7 +287,7 @@ index 5a908076f60741303ebaefbe9d413cb24a3def69..d8b26929f856ab21af8b907a80ba92a6
  
      if (stream->dataflow == eRender) {
          pa_stream_set_underflow_callback(stream->stream, pulse_underflow_callback, stream);
-@@ -1535,13 +1645,513 @@ static HRESULT get_device_period_helper(EDataFlow flow, const char *pulse_name,
+@@ -1377,13 +1487,513 @@ static HRESULT get_device_period_helper(EDataFlow flow, const char *pulse_name,
      return E_FAIL;
  }
  
@@ -798,7 +802,7 @@ index 5a908076f60741303ebaefbe9d413cb24a3def69..d8b26929f856ab21af8b907a80ba92a6
  
      if (params->share == AUDCLNT_SHAREMODE_EXCLUSIVE) {
          params->result = AUDCLNT_E_EXCLUSIVE_MODE_NOT_ALLOWED;
-@@ -1577,6 +2187,23 @@ static NTSTATUS pulse_create_stream(void *args)
+@@ -1419,6 +2029,23 @@ static NTSTATUS pulse_create_stream(void *args)
      if (FAILED(hr))
          goto exit;
  
@@ -822,7 +826,7 @@ index 5a908076f60741303ebaefbe9d413cb24a3def69..d8b26929f856ab21af8b907a80ba92a6
      stream->def_period = params->period;
      stream->duration = params->duration;
  
-@@ -1590,7 +2217,34 @@ static NTSTATUS pulse_create_stream(void *args)
+@@ -1438,7 +2065,34 @@ static NTSTATUS pulse_create_stream(void *args)
  
      stream->share = params->share;
      stream->flags = params->flags;
@@ -858,7 +862,8 @@ index 5a908076f60741303ebaefbe9d413cb24a3def69..d8b26929f856ab21af8b907a80ba92a6
      if (SUCCEEDED(hr)) {
          UINT32 unalign;
          const pa_buffer_attr *attr = pa_stream_get_buffer_attr(stream->stream);
-@@ -1646,8 +2300,11 @@ exit:
+@@ -1492,9 +2146,12 @@ exit:
+             pa_stream_disconnect(stream->stream);
              pa_stream_unref(stream->stream);
          }
 +        free(stream->haptic_alsa_path);
@@ -870,45 +875,8 @@ index 5a908076f60741303ebaefbe9d413cb24a3def69..d8b26929f856ab21af8b907a80ba92a6
      pulse_unlock();
      return STATUS_SUCCESS;
  }
-@@ -1898,7 +2555,15 @@ static void pulse_write(struct pulse_stream *stream)
-     /* write as much data to PA as we can */
-     UINT32 to_write;
-     BYTE *buf = stream->local_buffer + stream->pa_offs_bytes;
--    UINT32 bytes = pa_stream_writable_size(stream->stream);
-+    UINT32 bytes;
-+
-+    if (pulse_stream_haptic(stream))
-+    {
-+        pulse_haptic_write(stream);
-+        return;
-+    }
-+
-+    bytes = pa_stream_writable_size(stream->stream);
- 
-     if (stream->just_underran)
-     {
-@@ -1887,12 +1887,15 @@ static void pulse_timer_loop(void *args)
-                 if (stream->dataflow == eRender)
-                 {
-                     pulse_write(stream);
- 
--                    /* regardless of what PA does, advance one period */
--                    adv_bytes = min(stream->period_bytes, stream->held_bytes);
--                    stream->lcl_offs_bytes += adv_bytes;
--                    stream->lcl_offs_bytes %= stream->real_bufsize_bytes;
--                    stream->held_bytes -= adv_bytes;
-+                    if (!pulse_stream_haptic(stream))
-+                    {
-+                        /* regardless of what PA does, advance one period */
-+                        adv_bytes = min(stream->period_bytes, stream->held_bytes);
-+                        stream->lcl_offs_bytes += adv_bytes;
-+                        stream->lcl_offs_bytes %= stream->real_bufsize_bytes;
-+                        stream->held_bytes -= adv_bytes;
-+                    }
-                 }
-                 else if(stream->dataflow == eCapture)
-                 {
-@@ -2288,11 +2956,19 @@ static NTSTATUS pulse_release_stream(void *args)
+@@ -1512,12 +2169,20 @@ static NTSTATUS pulse_release_stream(void *args)
+     }
  
      pulse_lock();
 +    if (stream->stream)
@@ -928,7 +896,7 @@ index 5a908076f60741303ebaefbe9d413cb24a3def69..d8b26929f856ab21af8b907a80ba92a6
      pulse_unlock();
  
      if (stream->tmp_buffer) {
-@@ -2307,6 +2983,8 @@ static NTSTATUS pulse_release_stream(void *args)
+@@ -1531,6 +2196,8 @@ static NTSTATUS pulse_release_stream(void *args)
                              &size, MEM_RELEASE);
      }
      free(stream->peek_buffer);
@@ -937,7 +905,44 @@ index 5a908076f60741303ebaefbe9d413cb24a3def69..d8b26929f856ab21af8b907a80ba92a6
      free(stream);
      return STATUS_SUCCESS;
  }
-@@ -2341,14 +3019,25 @@ static NTSTATUS pulse_start(void *args)
+@@ -1679,7 +2346,15 @@ static void pulse_write(struct pulse_stream *stream)
+     /* write as much data to PA as we can */
+     UINT32 to_write;
+     BYTE *buf = stream->local_buffer + stream->pa_offs_bytes;
+-    UINT32 bytes = pa_stream_writable_size(stream->stream);
++    UINT32 bytes;
++
++    if (pulse_stream_haptic(stream))
++    {
++        pulse_haptic_write(stream);
++        return;
++    }
++
++    bytes = pa_stream_writable_size(stream->stream);
+ 
+     if (stream->just_underran)
+     {
+@@ -1888,11 +2563,14 @@ static void pulse_timer_loop(void *args)
+                 {
+                     pulse_write(stream);
+ 
+-                    /* regardless of what PA does, advance one period */
+-                    adv_bytes = min(stream->period_bytes, stream->held_bytes);
+-                    stream->lcl_offs_bytes += adv_bytes;
+-                    stream->lcl_offs_bytes %= stream->real_bufsize_bytes;
+-                    stream->held_bytes -= adv_bytes;
++                    if (!pulse_stream_haptic(stream))
++                    {
++                        /* regardless of what PA does, advance one period */
++                        adv_bytes = min(stream->period_bytes, stream->held_bytes);
++                        stream->lcl_offs_bytes += adv_bytes;
++                        stream->lcl_offs_bytes %= stream->real_bufsize_bytes;
++                        stream->held_bytes -= adv_bytes;
++                    }
+                 }
+                 else if(stream->dataflow == eCapture)
+                 {
+@@ -1948,14 +2626,25 @@ static NTSTATUS pulse_start(void *args)
          return STATUS_SUCCESS;
      }
  
@@ -970,7 +975,7 @@ index 5a908076f60741303ebaefbe9d413cb24a3def69..d8b26929f856ab21af8b907a80ba92a6
      }
  
      if (SUCCEEDED(params->result))
-@@ -2382,7 +3071,15 @@ static NTSTATUS pulse_stop(void *args)
+@@ -1990,7 +2679,15 @@ static NTSTATUS pulse_stop(void *args)
      }
  
      params->result = S_OK;
@@ -987,7 +992,7 @@ index 5a908076f60741303ebaefbe9d413cb24a3def69..d8b26929f856ab21af8b907a80ba92a6
      {
          if (!wait_pa_operation_complete(pa_stream_cork(stream->stream, 1, pulse_op_cb, &success)))
              success = 0;
-@@ -2431,7 +3128,16 @@ static NTSTATUS pulse_reset(void *args)
+@@ -2034,7 +2731,16 @@ static NTSTATUS pulse_reset(void *args)
      {
          /* If there is still data in the render buffer it needs to be removed from the server */
          int success = 0;
@@ -1005,5 +1010,3 @@ index 5a908076f60741303ebaefbe9d413cb24a3def69..d8b26929f856ab21af8b907a80ba92a6
              wait_pa_operation_complete(pa_stream_flush(stream->stream, pulse_op_cb, &success));
  
          if (success || !stream->held_bytes)
-
-
