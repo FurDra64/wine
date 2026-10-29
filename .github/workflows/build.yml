@@ -67,7 +67,6 @@ jobs:
             libxrender-dev libxrender-dev:i386 \
             libxcomposite-dev libxcomposite-dev:i386 \
             libgl-dev libgl-dev:i386 \
-            libosmesa6-dev libosmesa6-dev:i386 \
             libdbus-1-dev libdbus-1-dev:i386 \
             libgnutls28-dev libgnutls28-dev:i386 \
             libncurses-dev libncurses-dev:i386 \
@@ -84,7 +83,7 @@ jobs:
             libtiff-dev libtiff-dev:i386 \
             libjpeg-dev libjpeg-dev:i386 \
             libpng-dev libpng-dev:i386 \
-            libfaudio-dev libfaudio-dev:i386 \
+            libfaudio-dev \
             liblcms2-dev liblcms2-dev:i386 \
             libmpg123-dev libmpg123-dev:i386 \
             libopenal-dev libopenal-dev:i386 \
