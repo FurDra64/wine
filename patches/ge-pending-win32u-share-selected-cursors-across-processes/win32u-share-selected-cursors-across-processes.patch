@@ -33,8 +33,8 @@ diff --git a/dlls/win32u/cursoricon.c b/dlls/win32u/cursoricon.c
      UINT                    delay;      /* delay between this frame and the next (in jiffies) */
      union
      {
-@@ -64,7 +64,64 @@
- static struct list icon_cache = LIST_INIT( icon_cache );
+@@ -70,7 +70,64 @@
+ static HCURSOR driver_cursor_handle;
  
  static LONG has_set_cursor = 0;
  
