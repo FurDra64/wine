@@ -975,6 +975,7 @@ enum d3dkmt_type
     D3DKMT_SYNC         = 5,
     D3DKMT_RESOURCE     = 6,
     D3DKMT_ALLOCATION   = 7,
+    D3DKMT_SWAPCHAIN    = 8,
 };
 
 
@@ -4825,20 +4826,20 @@ struct remove_clipboard_listener_reply
 struct create_token_request
 {
     struct request_header __header;
-    struct luid    token_id;
+    struct luid    auth_id;
     unsigned int   access;
     int            primary;
     int            impersonation_level;
     abstime_t      expire;
     int            group_count;
-    int            primary_group;
     int            priv_count;
 
 
 
 
 
-    char __pad_52[4];
+
+
 };
 struct create_token_reply
 {
@@ -7201,6 +7202,6 @@ union generic_reply
     struct alpc_create_port_reply alpc_create_port_reply;
 };
 
-#define SERVER_PROTOCOL_VERSION 964
+#define SERVER_PROTOCOL_VERSION 968
 
 #endif /* __WINE_WINE_SERVER_PROTOCOL_H */

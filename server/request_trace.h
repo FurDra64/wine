@@ -2586,13 +2586,12 @@ static void dump_remove_clipboard_listener_request( const struct remove_clipboar
 
 static void dump_create_token_request( const struct create_token_request *req )
 {
-    dump_luid( " token_id=", &req->token_id );
+    dump_luid( " auth_id=", &req->auth_id );
     fprintf( stderr, ", access=%08x", req->access );
     fprintf( stderr, ", primary=%d", req->primary );
     fprintf( stderr, ", impersonation_level=%d", req->impersonation_level );
     dump_abstime( ", expire=", &req->expire );
     fprintf( stderr, ", group_count=%d", req->group_count );
-    fprintf( stderr, ", primary_group=%d", req->primary_group );
     fprintf( stderr, ", priv_count=%d", req->priv_count );
 }
 
