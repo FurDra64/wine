@@ -36,3 +36,7 @@ Fail list (118): 0020,0027,0028,0035,0038,0039,0043,0047,0049,0052,0058,
 0097-0101,0103,0109-0118,0120-0126,0128,0129,0134,0135,0137-0139,0142,
 0144-0148,0150,0151,0152-0159,0162,0164-0175,0182,0183,0185-0192,0194,
 0195,0197,0200-0203,0205,0206,0208,0209.
+
+2026-10-30: 0160, 0161, 0199, 0204 moved here — they reference struct members
+(native_input_event, hid.sony_product_id) defined only by disabled MONO-stack
+patches (e.g. 0197). Re-enable together with that infra, or not at all.
