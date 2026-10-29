@@ -19,77 +19,11 @@ existing NV12/YV12 to RGB32 paths.
 Rebased over 0067's late-clipping-window allocation fix: keep failure
 cleanup in initialize_device(), and retry RGB24 allocation from the common
 allocate_surfaces() path so both immediate and deferred allocation use it.
----
-diff --git a/dlls/quartz/vmr7.c b/dlls/quartz/vmr7.c
---- a/dlls/quartz/vmr7.c
-+++ b/dlls/quartz/vmr7.c
-@@ -236,6 +236,22 @@
-     }
- }
- 
-+/* A positive height means a bottom-up source; the surface is top-down. */
-+static void convert_rgb24_to_rgb32(BYTE *dst, unsigned int dst_pitch,
-+        const BYTE *src, unsigned int src_pitch, unsigned int width, int height)
-+{
-+    unsigned int x, y, rows = abs(height);
-+
-+    for (y = 0; y < rows; ++y)
-+    {
-+        const BYTE *src_row = src + src_pitch * (height > 0 ? rows - 1 - y : y);
-+        DWORD *dst_row = (DWORD *)(dst + dst_pitch * y);
-+
-+        for (x = 0; x < width; ++x)
-+            dst_row[x] = src_row[3 * x] | (src_row[3 * x + 1] << 8) | (src_row[3 * x + 2] << 16);
-+    }
-+}
-+
- static HRESULT vmr_render(struct strmbase_renderer *iface, IMediaSample *sample)
- {
-     struct vmr7 *filter = impl_from_IBaseFilter(&iface->filter.IBaseFilter_iface);
-@@ -350,6 +366,12 @@
-             copy_plane(&dst, surface_desc.lPitch / 2, surface_desc.dwHeight / 2, &src, src_pitch / 2, height / 2);
-         }
-     }
-+    else if (bitmap_header->biCompression == BI_RGB && depth == 24
-+            && (surface_desc.ddpfPixelFormat.dwFlags & DDPF_RGB)
-+            && surface_desc.ddpfPixelFormat.dwRGBBitCount == 32)
-+    {
-+        convert_rgb24_to_rgb32(surface_desc.lpSurface, surface_desc.lPitch, data, src_pitch, width, height);
-+    }
-     else if (height > 0 && (bitmap_header->biCompression == BI_RGB || bitmap_header->biCompression == BI_BITFIELDS))
-     {
-         BYTE *dst = surface_desc.lpSurface;
-@@ -478,6 +500,7 @@ static HRESULT allocate_surfaces(struct vmr7 *filter, const AM_MEDIA_TYPE *mt)
- {
-     BITMAPINFOHEADER bitmap_header = *get_bitmap_header(mt);
-     VMRALLOCATIONINFO info = {0};
-+    HRESULT hr;
-     DWORD count = 1;
-
-     TRACE("Initializing in mode %u, our window %p, clipping window %p.\n",
-@@ -491,7 +514,17 @@ static HRESULT allocate_surfaces(struct vmr7 *filter, const AM_MEDIA_TYPE *mt)
-     info.szAspectRatio.cx = info.szNativeSize.cx = bitmap_header.biWidth;
-     info.szAspectRatio.cy = info.szNativeSize.cy = bitmap_header.biHeight;
- 
--    return initialize_device(filter, &info, count);
-+    hr = initialize_device(filter, &info, count);
-+    if (FAILED(hr) && bitmap_header.biCompression == BI_RGB && bitmap_header.biBitCount == 24)
-+    {
-+        /* The default presenter does not take RGB24 surfaces, but the VMR
-+         * accepts RGB24 input: expand it to RGB32 in vmr_render(). */
-+        TRACE("Failed to allocate an RGB24 surface, hr %#lx; trying RGB32.\n", hr);
-+        bitmap_header.biBitCount = 32;
-+        bitmap_header.biSizeImage = bitmap_header.biWidth * abs(bitmap_header.biHeight) * 4;
-+        hr = initialize_device(filter, &info, count);
-+    }
-+    return hr;
- }
-
- static void vmr_init_stream(struct strmbase_renderer *iface)
 diff --git a/dlls/quartz/tests/vmr7.c b/dlls/quartz/tests/vmr7.c
+index bff19431..ae598977 100644
 --- a/dlls/quartz/tests/vmr7.c
 +++ b/dlls/quartz/tests/vmr7.c
-@@ -1623,6 +1623,92 @@
+@@ -1623,6 +1623,92 @@ static void test_connect_pin(void)
      ok(!ref, "Got outstanding refcount %ld.\n", ref);
  }
  
@@ -182,7 +116,7 @@ diff --git a/dlls/quartz/tests/vmr7.c b/dlls/quartz/tests/vmr7.c
  static void test_overlay(void)
  {
      IBaseFilter *filter = create_vmr7(0);
-@@ -4148,6 +4234,7 @@
+@@ -4148,6 +4234,7 @@ START_TEST(vmr7)
      test_enum_media_types();
      test_unconnected_filter_state();
      test_connect_pin();
@@ -190,6 +124,70 @@ diff --git a/dlls/quartz/tests/vmr7.c b/dlls/quartz/tests/vmr7.c
      test_overlay();
      test_video_window();
      test_basic_video();
--- 
-2.55.0
-
+diff --git a/dlls/quartz/vmr7.c b/dlls/quartz/vmr7.c
+index a313eb60..db63d75c 100644
+--- a/dlls/quartz/vmr7.c
++++ b/dlls/quartz/vmr7.c
+@@ -163,6 +163,22 @@ static void copy_plane(BYTE **dstp, unsigned int dst_pitch, unsigned int dst_hei
+     *dstp += dst_pitch * dst_height;
+ }
+ 
++/* A positive height means a bottom-up source; the surface is top-down. */
++static void convert_rgb24_to_rgb32(BYTE *dst, unsigned int dst_pitch,
++        const BYTE *src, unsigned int src_pitch, unsigned int width, int height)
++{
++    unsigned int x, y, rows = abs(height);
++
++    for (y = 0; y < rows; ++y)
++    {
++        const BYTE *src_row = src + src_pitch * (height > 0 ? rows - 1 - y : y);
++        DWORD *dst_row = (DWORD *)(dst + dst_pitch * y);
++
++        for (x = 0; x < width; ++x)
++            dst_row[x] = src_row[3 * x] | (src_row[3 * x + 1] << 8) | (src_row[3 * x + 2] << 16);
++    }
++}
++
+ static HRESULT vmr_render(struct strmbase_renderer *iface, IMediaSample *sample)
+ {
+     struct vmr7 *filter = impl_from_IBaseFilter(&iface->filter.IBaseFilter_iface);
+@@ -263,6 +279,12 @@ static HRESULT vmr_render(struct strmbase_renderer *iface, IMediaSample *sample)
+         copy_plane(&dst, surface_desc.lPitch / 2, surface_desc.dwHeight / 2, &src, src_pitch / 2, height / 2);
+         copy_plane(&dst, surface_desc.lPitch / 2, surface_desc.dwHeight / 2, &src, src_pitch / 2, height / 2);
+     }
++    else if (bitmap_header->biCompression == BI_RGB && depth == 24
++            && (surface_desc.ddpfPixelFormat.dwFlags & DDPF_RGB)
++            && surface_desc.ddpfPixelFormat.dwRGBBitCount == 32)
++    {
++        convert_rgb24_to_rgb32(surface_desc.lpSurface, surface_desc.lPitch, data, src_pitch, width, height);
++    }
+     else if (height > 0 && (bitmap_header->biCompression == BI_RGB || bitmap_header->biCompression == BI_BITFIELDS))
+     {
+         BYTE *dst = surface_desc.lpSurface;
+@@ -422,6 +444,7 @@ static HRESULT allocate_surfaces(struct vmr7 *filter, const AM_MEDIA_TYPE *mt)
+ {
+     BITMAPINFOHEADER bitmap_header = *get_bitmap_header(mt);
+     VMRALLOCATIONINFO info = {0};
++    HRESULT hr;
+     DWORD count = 1;
+ 
+     TRACE("Initializing in mode %u, our window %p, clipping window %p.\n",
+@@ -436,7 +459,17 @@ static HRESULT allocate_surfaces(struct vmr7 *filter, const AM_MEDIA_TYPE *mt)
+     info.szAspectRatio.cx = info.szNativeSize.cx = bitmap_header.biWidth;
+     info.szAspectRatio.cy = info.szNativeSize.cy = bitmap_header.biHeight;
+ 
+-    return initialize_device(filter, &info, count);
++    hr = initialize_device(filter, &info, count);
++    if (FAILED(hr) && bitmap_header.biCompression == BI_RGB && bitmap_header.biBitCount == 24)
++    {
++        /* The default presenter does not take RGB24 surfaces, but the VMR
++         * accepts RGB24 input: expand it to RGB32 in vmr_render(). */
++        TRACE("Failed to allocate an RGB24 surface, hr %#lx; trying RGB32.\n", hr);
++        bitmap_header.biBitCount = 32;
++        bitmap_header.biSizeImage = bitmap_header.biWidth * abs(bitmap_header.biHeight) * 4;
++        hr = initialize_device(filter, &info, count);
++    }
++    return hr;
+ }
+ 
+ static void vmr_init_stream(struct strmbase_renderer *iface)

@@ -22,7 +22,10 @@ diff --git a/dlls/winebus.sys/bus_udev.c b/dlls/winebus.sys/bus_udev.c
 index d3e3a441f0f..11b9e099cfa 100644
 --- a/dlls/winebus.sys/bus_udev.c
 +++ b/dlls/winebus.sys/bus_udev.c
-@@ -1723,6 +1723,13 @@ static void udev_add_device(struct udev_device *dev, int fd)
+@@ -1406,7 +1406,14 @@ static void udev_add_device(struct udev_device *dev, int fd)
+     if (fd < 0 && (fd = open(devnode, O_RDWR)) == -1)
+     {
+         WARN("Unable to open udev device %s: %s\n", debugstr_a(devnode), strerror(errno));
          return;
      }
  
@@ -34,8 +37,6 @@ index d3e3a441f0f..11b9e099cfa 100644
 +    }
 +
      TRACE("udev %s syspath %s\n", debugstr_a(devnode), udev_device_get_syspath(dev));
- 
-     get_device_subsystem_info(dev, "hid", NULL, &desc, &bus);
 @@ -1962,19 +1969,15 @@
 -static void process_attrib_change(const char *base, const char *dir, const char *subsystem)
 +static void maybe_refresh_devnode(const char *base, const char *dir, const char *subsystem)

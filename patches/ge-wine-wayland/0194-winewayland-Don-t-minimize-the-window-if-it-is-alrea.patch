@@ -15,11 +15,10 @@ diff --git a/dlls/winewayland.drv/wayland_surface.c b/dlls/winewayland.drv/wayla
 index 206002f7..bfe04826 100644
 --- a/dlls/winewayland.drv/wayland_surface.c
 +++ b/dlls/winewayland.drv/wayland_surface.c
-@@ -315,6 +315,7 @@ struct wayland_surface *wayland_surface_create(HWND hwnd)
-     }
- 
+@@ -317,5 +317,6 @@ struct wayland_surface *wayland_surface_create(HWND hwnd)
      surface->window.scale = 1.0;
 +    surface->comitted.scale = 0.0;
+     surface->ensured_contents = WAYLAND_SURFACE_NOT_ENSURED;
  
      return surface;
  
@@ -37,12 +36,12 @@ diff --git a/dlls/winewayland.drv/waylanddrv.h b/dlls/winewayland.drv/waylanddrv
 index 55741525..dd081539 100644
 --- a/dlls/winewayland.drv/waylanddrv.h
 +++ b/dlls/winewayland.drv/waylanddrv.h
-@@ -327,7 +327,7 @@ struct wayland_surface
- 
+@@ -345,6 +345,6 @@ struct wayland_surface
      struct wayland_surface_config pending, requested, processing, current;
      BOOL resizing;
 -    struct wayland_window_config window;
 +    struct wayland_window_config window, comitted;
+     enum wayland_surface_ensure_type ensured_contents;
      int content_width, content_height;
      HCURSOR hcursor;
  };

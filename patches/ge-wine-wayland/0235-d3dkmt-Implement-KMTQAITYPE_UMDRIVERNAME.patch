@@ -4,10 +4,10 @@ Date: Sat, 25 Jul 2026 02:39:08 -0400
 Subject: [PATCH 235/285] d3dkmt: Implement KMTQAITYPE_UMDRIVERNAME
 
 ---
- dlls/win32u/d3dkmt.c | 44 ++++++++++++++++++++++++++++++++++++++++++++
+ dlls/win32u/d3dkmt.c |   44 ++++++++++++++++++++++++++++++++++++++++++++
  1 file changed, 44 insertions(+)
+
 diff --git a/dlls/win32u/d3dkmt.c b/dlls/win32u/d3dkmt.c
-index 11a2997d..acf91bd4 100644
 --- a/dlls/win32u/d3dkmt.c
 +++ b/dlls/win32u/d3dkmt.c
 @@ -707,6 +707,21 @@ NTSTATUS WINAPI NtGdiDdDDIEscape( const D3DKMT_ESCAPE *desc )
@@ -32,9 +32,9 @@ index 11a2997d..acf91bd4 100644
  /******************************************************************************
   *           NtGdiDdDDICloseAdapter    (win32u.@)
   */
-@@ -838,6 +853,35 @@ NTSTATUS WINAPI NtGdiDdDDIQueryAdapterInfo( D3DKMT_QUERYADAPTERINFO *desc )
-         *value = KMT_DRIVERVERSION_WDDM_3_1;
-         return STATUS_SUCCESS;
+@@ -941,6 +956,35 @@ NTSTATUS WINAPI NtGdiDdDDIQueryAdapterInfo( D3DKMT_QUERYADAPTERINFO *desc )
+         FIXME("Unsupported KMTQAITYPE_UMDRIVERPRIVATE!\n");
+         return STATUS_NOT_IMPLEMENTED;
      }
 +    case KMTQAITYPE_UMDRIVERNAME:
 +    {

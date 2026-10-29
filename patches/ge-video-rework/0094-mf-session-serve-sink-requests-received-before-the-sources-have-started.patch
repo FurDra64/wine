@@ -21,12 +21,11 @@ serve them then, once the sources have started, which is when Windows
 reads the sinks' event queues. Subscribing a sink that is still
 subscribed from an earlier presentation fails with MF_E_MULTIPLE_BEGIN;
 its events already come to the session, so don't fail the start for it.
----
 diff --git a/dlls/mf/session.c b/dlls/mf/session.c
-index 3ceb8d18..a1e285cc 100644
+index 07954ab0..f0860d2f 100644
 --- a/dlls/mf/session.c
 +++ b/dlls/mf/session.c
-@@ -216,6 +216,7 @@ struct topo_node
+@@ -213,6 +213,7 @@ struct topo_node
          struct
          {
              unsigned int requests;
@@ -34,16 +33,14 @@ index 3ceb8d18..a1e285cc 100644
              IMFVideoSampleAllocatorNotify notify_cb;
              IMFVideoSampleAllocator *allocator;
              IMFVideoSampleAllocatorCallback *allocator_cb;
-@@ -1049,6 +1050,8 @@ static HRESULT session_subscribe_sources(struct media_session *session)
-     return hr;
- }
+@@ -1046,13 +1047,16 @@ static void session_subscribe_sinks(struct media_session *session)
+     if (session->presentation.flags & SESSION_FLAG_SINKS_SUBSCRIBED)
+         return;
  
 +static void session_request_sample(struct media_session *session, IMFStreamSink *sink_stream);
 +
- static HRESULT session_subscribe_sinks(struct media_session *session)
- {
-     struct topo_node *node;
-@@ -1062,8 +1065,9 @@ static HRESULT session_subscribe_sinks(struct media_session *session)
+     LIST_FOR_EACH_ENTRY(node, &session->presentation.nodes, struct topo_node, entry)
+     {
          if (node->type != MF_TOPOLOGY_OUTPUT_NODE)
              continue;
  
@@ -52,13 +49,12 @@ index 3ceb8d18..a1e285cc 100644
 -                        node->object.object)))
 +                        node->object.object)) && hr != MF_E_MULTIPLE_BEGIN)
          {
-             WARN("Failed to subscribe to stream sink %p events, hr %#lx.\n", node->object.sink_stream, hr);
-             return hr;
-@@ -1071,6 +1075,17 @@ static HRESULT session_subscribe_sinks(struct media_session *session)
-     }
- 
+             WARN("Failed to subscribe to stream sink events, hr %#lx.\n", hr);
+         }
+@@ -1061,6 +1065,17 @@ static void session_subscribe_sinks(struct media_session *session)
      session->presentation.flags |= SESSION_FLAG_SINKS_SUBSCRIBED;
-+
+ }
+ 
 +    /* Requests received through a subscription left from a previous presentation of the same sink. */
 +    LIST_FOR_EACH_ENTRY(node, &session->presentation.nodes, struct topo_node, entry)
 +    {
@@ -69,18 +65,19 @@ index 3ceb8d18..a1e285cc 100644
 +            session_request_sample(session, node->object.sink_stream);
 +    }
 +
-     return S_OK;
- }
- 
-@@ -1108,7 +1123,6 @@ static void session_flush_transforms(struct media_session *session)
++
+ static void session_flush_transform_node(struct topo_node *node)
+ {
+     struct transform_stream *stream;
+@@ -1094,7 +1109,6 @@ static void session_flush_transforms(struct media_session *session)
      }
  }
  
 -static void session_request_sample(struct media_session *session, IMFStreamSink *sink_stream);
- static HRESULT session_get_stream_sink_type(IMFStreamSink *sink, IMFMediaType **media_type);
- static HRESULT session_start_clock(struct media_session *session);
  
-@@ -4289,6 +4303,13 @@ static void session_request_sample(struct media_session *session, IMFStreamSink
+ static void session_flush_sinks(struct media_session *session)
+ {
+@@ -4238,6 +4252,13 @@ static void session_request_sample(struct media_session *session, IMFStreamSink
      if (!sink_node)
          return;
  

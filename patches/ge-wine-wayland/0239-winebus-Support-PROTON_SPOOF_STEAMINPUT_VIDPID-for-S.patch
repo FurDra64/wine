@@ -6,14 +6,14 @@ Subject: [PATCH 239/285] winebus: Support PROTON_SPOOF_STEAMINPUT_VIDPID for
  SDL.
 
 ---
- dlls/winebus.sys/bus_sdl.c | 18 ++++++++++++++++++
+ dlls/winebus.sys/bus_sdl.c |   18 ++++++++++++++++++
  1 file changed, 18 insertions(+)
+
 diff --git a/dlls/winebus.sys/bus_sdl.c b/dlls/winebus.sys/bus_sdl.c
-index 9225efbc..7e6ad02a 100644
 --- a/dlls/winebus.sys/bus_sdl.c
 +++ b/dlls/winebus.sys/bus_sdl.c
-@@ -926,6 +926,22 @@ static BOOL set_report_from_controller_event(struct sdl_device *impl, SDL_Event
-     return FALSE;
+@@ -932,6 +932,22 @@ static BOOL is_emulating_steaminput(void)
+     return env && atoi(env);
  }
  
 +static void fixup_steaminput_vidpid( struct device_desc *desc )
@@ -35,7 +35,7 @@ index 9225efbc..7e6ad02a 100644
  static void sdl_add_device(unsigned int index)
  {
      struct device_desc desc =
-@@ -973,6 +989,8 @@ static void sdl_add_device(unsigned int index)
+@@ -979,6 +995,8 @@ static void sdl_add_device(unsigned int index)
          desc.vid = 0x01;
          desc.pid = pSDL_JoystickInstanceID(joystick) + 1;
          desc.version = 0;
@@ -43,4 +43,4 @@ index 9225efbc..7e6ad02a 100644
 +        fixup_steaminput_vidpid(&desc);
      }
  
-     if (pSDL_JoystickGetSerial && (sdl_serial = pSDL_JoystickGetSerial(joystick)))
+     if (is_emulating_steaminput())

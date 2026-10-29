@@ -10,16 +10,16 @@ compositor to decide when it is safe to actually destroy the
 corresponding global. If a global is destroyed too soon, some clients may
 get disconnected.
 ---
- dlls/winewayland.drv/wayland.c    | 12 ++++++++++++
- dlls/winewayland.drv/waylanddrv.h |  1 +
+ dlls/winewayland.drv/wayland.c    |   12 ++++++++++++
+ dlls/winewayland.drv/waylanddrv.h |    1 +
  2 files changed, 13 insertions(+)
+
 diff --git a/dlls/winewayland.drv/wayland.c b/dlls/winewayland.drv/wayland.c
-index 118ee2d6..60a29025 100644
 --- a/dlls/winewayland.drv/wayland.c
 +++ b/dlls/winewayland.drv/wayland.c
-@@ -270,6 +270,13 @@ static void registry_handle_global_remove(void *data, struct wl_registry *regist
-         seat->global_id = 0;
-         pthread_mutex_unlock(&seat->mutex);
+@@ -297,6 +297,13 @@ static void registry_handle_global_remove(void *data, struct wl_registry *regist
+         process_wayland.zwp_keyboard_shortcuts_inhibit_manager_v1 =
+             wl_registry_bind(registry, id, &zwp_keyboard_shortcuts_inhibit_manager_v1_interface, 1);
      }
 +#ifdef WL_FIXES_INTERFACE
 +    else if (strcmp(interface, "wl_fixes") == 0)
@@ -31,7 +31,7 @@ index 118ee2d6..60a29025 100644
  }
  
  static const struct wl_registry_listener registry_listener = {
-@@ -280,6 +287,11 @@ static const struct wl_registry_listener registry_listener = {
+@@ -307,6 +314,11 @@ static const struct wl_registry_listener registry_listener = {
  /**********************************************************************
   *          wayland_process_init
   *
@@ -44,10 +44,9 @@ index 118ee2d6..60a29025 100644
   *
   */
 diff --git a/dlls/winewayland.drv/waylanddrv.h b/dlls/winewayland.drv/waylanddrv.h
-index 1cb525b2..c6c9f1d7 100644
 --- a/dlls/winewayland.drv/waylanddrv.h
 +++ b/dlls/winewayland.drv/waylanddrv.h
-@@ -176,6 +176,7 @@ struct wayland
+@@ -200,6 +200,7 @@ struct wayland
      struct wl_shm *wl_shm;
      struct wp_viewporter *wp_viewporter;
      struct wl_subcompositor *wl_subcompositor;

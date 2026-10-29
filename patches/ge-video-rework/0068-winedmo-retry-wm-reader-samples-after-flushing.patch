@@ -21,25 +21,22 @@ wmvcore, which would leave invalid samples reaching its callbacks.
 Reported by DropboxKenshiro.
 Bug: https://github.com/GloriousEggroll/proton-ge-custom/issues/633
 Log: https://github.com/GloriousEggroll/proton-ge-custom/issues/633#issuecomment-5978191702
----
- dlls/winedmo/wm_reader.c | 14 ++++++++++++++
- 1 file changed, 14 insertions(+)
-
 diff --git a/dlls/winedmo/wm_reader.c b/dlls/winedmo/wm_reader.c
+index 464ba93f..ba9e539c 100644
 --- a/dlls/winedmo/wm_reader.c
 +++ b/dlls/winedmo/wm_reader.c
-@@ -2861,6 +2861,7 @@
-     if (!stream_number && !output_number && !ret_stream_number)
-         return E_INVALIDARG;
- 
+@@ -2861,6 +2861,7 @@ static HRESULT WINAPI reader_SetOutputProps(IWMSyncReader2 *iface, DWORD output,
+     struct wm_reader *reader = impl_from_IWMSyncReader2(iface);
+     struct output_props *props = unsafe_impl_from_IWMOutputMediaProps(props_iface);
+     struct winedmo_codec_format format;
 +retry:
-     if (reader->outer == &reader->IUnknown_inner)
-     {
-         EnterCriticalSection(&reader->cs);
-@@ -2947,6 +2948,19 @@
+     struct wm_stream *stream;
+     HRESULT hr = S_OK;
+     int i;
+@@ -2947,6 +2948,19 @@ static HRESULT WINAPI reader_SetOutputSetting(IWMSyncReader2 *iface, DWORD outpu
+         FIXME("Ignoring EnableDiscreteOutput setting.\n");
+         return S_OK;
      }
- 
- done:
 +    if (hr == S_FALSE)
 +    {
 +        /* Flushing does not produce a sample. Wait for reinitialization under
@@ -53,6 +50,6 @@ diff --git a/dlls/winedmo/wm_reader.c b/dlls/winedmo/wm_reader.c
 +            goto retry;
 +    }
 +
-     if (output_number && hr == S_OK)
-         *output_number = stream_number - 1;
-     if (ret_stream_number && (hr == S_OK || stream_number))
+     if (!wcscmp(name, L"SpeakerConfig"))
+     {
+         FIXME("Ignoring SpeakerConfig setting.\n");

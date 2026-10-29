@@ -6,17 +6,15 @@ Subject: [PATCH 205/285] winewayland: Introduce wayland.xml.
 
 Avoid dependencies on host system for core protocols.
 ---
- dlls/winewayland.drv/Makefile.in  |    1 +
- dlls/winewayland.drv/wayland.xml  | 3442 +++++++++++++++++++++++++++++
- dlls/winewayland.drv/waylanddrv.h |    3 +-
+ dlls/winewayland.drv/Makefile.in  |    1 
+ dlls/winewayland.drv/wayland.xml  | 3442 +++++++++++++++++++++++++++++++++++++
+ dlls/winewayland.drv/waylanddrv.h |    3 
  3 files changed, 3445 insertions(+), 1 deletion(-)
- create mode 100644 dlls/winewayland.drv/wayland.xml
 
 diff --git a/dlls/winewayland.drv/Makefile.in b/dlls/winewayland.drv/Makefile.in
-index 739aaa372c0..177edede77c 100644
 --- a/dlls/winewayland.drv/Makefile.in
 +++ b/dlls/winewayland.drv/Makefile.in
-@@ -23,6 +23,7 @@ SOURCES = \
+@@ -24,6 +24,7 @@ SOURCES = \
  	viewporter.xml \
  	vulkan.c \
  	wayland.c \
@@ -26,7 +24,6 @@ index 739aaa372c0..177edede77c 100644
  	wayland_output.c \
 diff --git a/dlls/winewayland.drv/wayland.xml b/dlls/winewayland.drv/wayland.xml
 new file mode 100644
-index 00000000000..28babc70d93
 --- /dev/null
 +++ b/dlls/winewayland.drv/wayland.xml
 @@ -0,0 +1,3442 @@
@@ -3473,7 +3470,6 @@ index 00000000000..28babc70d93
 +
 +</protocol>
 diff --git a/dlls/winewayland.drv/waylanddrv.h b/dlls/winewayland.drv/waylanddrv.h
-index 3d0c39d1650..0353eb39b30 100644
 --- a/dlls/winewayland.drv/waylanddrv.h
 +++ b/dlls/winewayland.drv/waylanddrv.h
 @@ -26,7 +26,8 @@
@@ -3485,7 +3481,4 @@ index 3d0c39d1650..0353eb39b30 100644
 +#include "wayland-client-protocol.h"
  #include <xkbcommon/xkbcommon.h>
  #include <xkbcommon/xkbregistry.h>
- #ifdef HAVE_XKBCOMMON_XKBCOMMON_COMPOSE_H
--- 
-2.55.0
-
+ #include "cursor-shape-v1-client-protocol.h"

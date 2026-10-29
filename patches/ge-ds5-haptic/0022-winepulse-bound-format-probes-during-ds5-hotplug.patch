@@ -22,25 +22,25 @@ diff --git a/dlls/winepulse.drv/pulse.c b/dlls/winepulse.drv/pulse.c
 index 985eca357123eda3bcf87883c46190646af89a9a..2164254ef468e91e447f6fa53637f18a01097e72 100644
 --- a/dlls/winepulse.drv/pulse.c
 +++ b/dlls/winepulse.drv/pulse.c
-@@ -1528,9 +1528,7 @@ static void pulse_probe_settings(pa_mainloop *ml, pa_context *ctx, int render, c
+@@ -1375,9 +1375,7 @@ static void pulse_probe_settings(int render, const char *pulse_name,
      else
          ret = pa_stream_connect_record(stream, pulse_name, &attr, PA_STREAM_START_CORKED|PA_STREAM_FIX_RATE|PA_STREAM_FIX_CHANNELS|PA_STREAM_EARLY_REQUESTS);
      if (ret >= 0) {
--        while (pa_mainloop_iterate(ml, 1, &ret) >= 0 &&
+-        while (pa_mainloop_iterate(pulse_ml, 1, &ret) >= 0 &&
 -                pa_stream_get_state(stream) == PA_STREAM_CREATING)
 -        {}
-+        pulse_stream_wait_until_not(ml, stream, PA_STREAM_CREATING, "format probe stream");
++        pulse_stream_wait_until_not(pulse_ml, stream, PA_STREAM_CREATING, "format probe stream");
          if (pa_stream_get_state(stream) == PA_STREAM_READY) {
              ss = *pa_stream_get_sample_spec(stream);
              map = *pa_stream_get_channel_map(stream);
-@@ -1539,10 +1537,10 @@ static void pulse_probe_settings(pa_mainloop *ml, pa_context *ctx, int render, c
+@@ -1386,10 +1386,10 @@ static void pulse_probe_settings(int render, const char *pulse_name,
              else
                  length = pa_stream_get_buffer_attr(stream)->fragsize;
              pa_stream_disconnect(stream);
--            while (pa_mainloop_iterate(ml, 1, &ret) >= 0 &&
+-            while (pa_mainloop_iterate(pulse_ml, 1, &ret) >= 0 &&
 -                    pa_stream_get_state(stream) == PA_STREAM_READY)
 -            {}
-+            pulse_stream_wait_until_not(ml, stream, PA_STREAM_READY, "format probe disconnect");
++            pulse_stream_wait_until_not(pulse_ml, stream, PA_STREAM_READY, "format probe disconnect");
          }
 +        else if (pa_stream_get_state(stream) == PA_STREAM_CREATING)
 +            pa_stream_disconnect(stream);

@@ -15,59 +15,11 @@ from compressed-decoder timestamp corrections. Preserve the existing
 compressed-codec behavior. Add resampler tests for PCM and float input,
 nonzero and negative timestamps, and flushing to a new playback position.
 
-diff --git a/dlls/winedmo/unix_transform.c b/dlls/winedmo/unix_transform.c
---- a/dlls/winedmo/unix_transform.c
-+++ b/dlls/winedmo/unix_transform.c
-@@ -60,6 +60,7 @@
-     AVPacket       *parsed_packet; /* reusable packet for parser output */
- 
-     bool is_audio;
-+    bool is_raw_audio;
-     bool is_raw_video;
-     bool draining;       /* NULL packet sent — flushing decoder */
-     bool frame_pending;  /* frame holds undispatched output */
-@@ -779,6 +780,8 @@
-         const WAVEFORMATEX *wfx = &in_fmt->audio;
- 
-         t->is_audio = true;
-+        t->is_raw_audio = format_tag_from_wfx( wfx ) == WAVE_FORMAT_PCM ||
-+                format_tag_from_wfx( wfx ) == WAVE_FORMAT_IEEE_FLOAT;
-         codec_id    = codec_id_from_audio_format( wfx );
- 
-         if (wfx->cbSize && params->input_format_size >= sizeof(*wfx) + wfx->cbSize)
-@@ -1473,7 +1476,7 @@
-          * clip starts at a non-zero packet timestamp. Rebase those frame-relative
-          * timestamps onto the current input packet anchor so audio and video start
-          * on the same timeline for clip transitions. */
--        if (t->is_audio && t->avctx->codec_id != AV_CODEC_ID_WMAPRO
-+        if (t->is_audio && !t->is_raw_audio && t->avctx->codec_id != AV_CODEC_ID_WMAPRO
-                 && t->last_input_pts > 0 && params->pts >= 0 && params->pts < t->last_input_pts)
-             params->pts += t->last_input_pts;
-     }
-@@ -1493,7 +1496,7 @@
-         INT64 base_pts = params->pts;
-         NTSTATUS st;
- 
--        if (base_pts != INT64_MIN && t->audio_pts_offset)
-+        if (!t->is_raw_audio && base_pts != INT64_MIN && t->audio_pts_offset)
-         {
-             base_pts -= t->audio_pts_offset;
-             params->pts = base_pts;
-@@ -1550,7 +1553,9 @@
-          * (legacy PROVIDES_SAMPLES query) get STATUS_BUFFER_TOO_SMALL with the full
-          * size; all other callers receive up to capacity bytes with INCOMPLETE set when
-          * more data remains. */
--        if (!t->audio_started && base_pts != INT64_MIN
-+        /* PCM conversion must preserve the decoder's presentation timeline,
-+         * including a nonzero start position after a seek. */
-+        if (!t->is_raw_audio && !t->audio_started && base_pts != INT64_MIN
-                 && (t->avctx->codec_id != AV_CODEC_ID_AAC || !t->split_aac_output))
-             t->audio_output_pts_adjust = base_pts;
-         if (base_pts != INT64_MIN && t->audio_output_pts_adjust != INT64_MIN)
 diff --git a/dlls/mf/tests/transform.c b/dlls/mf/tests/transform.c
+index fe37f5b8..51c70e16 100644
 --- a/dlls/mf/tests/transform.c
 +++ b/dlls/mf/tests/transform.c
-@@ -6449,6 +6449,95 @@
+@@ -6501,6 +6501,95 @@ failed:
      CoUninitialize();
  }
  
@@ -163,11 +115,61 @@ diff --git a/dlls/mf/tests/transform.c b/dlls/mf/tests/transform.c
  static void test_mp43_decoder(void)
  {
      const GUID *subtypes[] = {&MFVideoFormat_MP43, &MFVideoFormat_mp43};
-@@ -11775,6 +11864,7 @@
+@@ -12612,6 +12701,7 @@ START_TEST(transform)
      test_wmv_decoder_media_object();
      test_mp43_decoder();
      test_audio_convert();
 +    test_audio_convert_timestamps();
      test_color_convert(FALSE);
      test_color_convert(TRUE);
-     test_video_processor(FALSE);
+     test_resizer(FALSE);
+diff --git a/dlls/winedmo/unix_transform.c b/dlls/winedmo/unix_transform.c
+index 9b5c5888..d5d85035 100644
+--- a/dlls/winedmo/unix_transform.c
++++ b/dlls/winedmo/unix_transform.c
+@@ -59,6 +59,7 @@ struct unix_transform
+     AVPacket       *parsed_packet; /* reusable packet for parser output */
+ 
+     bool is_audio;
++    bool is_raw_audio;
+     bool is_raw_video;
+     bool draining;       /* NULL packet sent — flushing decoder */
+     bool frame_pending;  /* frame holds undispatched output */
+@@ -721,6 +722,8 @@ NTSTATUS transform_create( void *arg )
+         const WAVEFORMATEX *wfx = &in_fmt->audio;
+ 
+         t->is_audio = true;
++        t->is_raw_audio = format_tag_from_wfx( wfx ) == WAVE_FORMAT_PCM ||
++                format_tag_from_wfx( wfx ) == WAVE_FORMAT_IEEE_FLOAT;
+         codec_id    = codec_id_from_audio_format( wfx );
+ 
+         if (wfx->cbSize && params->input_format_size >= sizeof(*wfx) + wfx->cbSize)
+@@ -1308,7 +1311,7 @@ NTSTATUS transform_get_output( void *arg )
+          * clip starts at a non-zero packet timestamp. Rebase those frame-relative
+          * timestamps onto the current input packet anchor so audio and video start
+          * on the same timeline for clip transitions. */
+-        if (t->is_audio && t->avctx->codec_id != AV_CODEC_ID_WMAPRO
++        if (t->is_audio && !t->is_raw_audio && t->avctx->codec_id != AV_CODEC_ID_WMAPRO
+                 && t->last_input_pts > 0 && params->pts >= 0 && params->pts < t->last_input_pts)
+             params->pts += t->last_input_pts;
+     }
+@@ -1328,7 +1331,7 @@ NTSTATUS transform_get_output( void *arg )
+         INT64 base_pts = params->pts;
+         NTSTATUS st;
+ 
+-        if (base_pts != INT64_MIN && t->audio_pts_offset)
++        if (!t->is_raw_audio && base_pts != INT64_MIN && t->audio_pts_offset)
+         {
+             base_pts -= t->audio_pts_offset;
+             params->pts = base_pts;
+@@ -1385,7 +1388,9 @@ NTSTATUS transform_get_output( void *arg )
+          * (legacy PROVIDES_SAMPLES query) get STATUS_BUFFER_TOO_SMALL with the full
+          * size; all other callers receive up to capacity bytes with INCOMPLETE set when
+          * more data remains. */
+-        if (!t->audio_started && base_pts != INT64_MIN
++        /* PCM conversion must preserve the decoder's presentation timeline,
++         * including a nonzero start position after a seek. */
++        if (!t->is_raw_audio && !t->audio_started && base_pts != INT64_MIN
+                 && (t->avctx->codec_id != AV_CODEC_ID_AAC || !t->split_aac_output))
+             t->audio_output_pts_adjust = base_pts;
+         if (base_pts != INT64_MIN && t->audio_output_pts_adjust != INT64_MIN)

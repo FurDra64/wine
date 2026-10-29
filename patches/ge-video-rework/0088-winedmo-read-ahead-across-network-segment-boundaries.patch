@@ -20,11 +20,11 @@ Account durations on enqueue, dequeue and flush under the existing queue
 lock. Clamp individual durations to the budget so invalid or unusually
 large values cannot corrupt the accounting. Do not derive the budget
 from PTS differences, which can jump at live-stream discontinuities.
----
 diff --git a/dlls/winedmo/media_source.c b/dlls/winedmo/media_source.c
+index e90bafb3..341b8ef9 100644
 --- a/dlls/winedmo/media_source.c
 +++ b/dlls/winedmo/media_source.c
-@@ -239,6 +239,16 @@
+@@ -238,6 +238,16 @@ static void media_packet_free(struct media_packet *pkt)
  
  #define MEDIA_SOURCE_MAX_QUEUED_PACKETS 8
  #define MEDIA_SOURCE_MAX_QUEUED_BYTES   (8 * 1024 * 1024)
@@ -41,7 +41,7 @@ diff --git a/dlls/winedmo/media_source.c b/dlls/winedmo/media_source.c
  
  struct media_stream;
  
-@@ -272,6 +282,7 @@
+@@ -271,6 +281,7 @@ struct media_stream
      BOOL eos;
      UINT queued_packets;
      UINT64 queued_bytes;
@@ -49,7 +49,7 @@ diff --git a/dlls/winedmo/media_source.c b/dlls/winedmo/media_source.c
  };
  
  static void media_packet_queue_flush(struct media_stream *stream)
-@@ -284,6 +295,7 @@
+@@ -283,6 +294,7 @@ static void media_packet_queue_flush(struct media_stream *stream)
      }
      stream->queued_packets = 0;
      stream->queued_bytes = 0;
@@ -57,15 +57,15 @@ diff --git a/dlls/winedmo/media_source.c b/dlls/winedmo/media_source.c
  }
  
  enum source_async_op
-@@ -337,6 +349,7 @@
-     UINT64 stream_offset;
+@@ -334,6 +346,7 @@ struct media_source
+     UINT64 file_size;
      UINT64 duration;
      bool has_duration;
 +    bool is_network;
  
      struct winedmo_demuxer demuxer;
      struct
-@@ -430,8 +443,12 @@
+@@ -427,8 +440,12 @@ static BOOL media_source_stream_queues_full(struct media_source *source)
  
          EnterCriticalSection(&stream->queue_cs);
          empty = !stream->queued_packets;
@@ -80,7 +80,7 @@ diff --git a/dlls/winedmo/media_source.c b/dlls/winedmo/media_source.c
          LeaveCriticalSection(&stream->queue_cs);
  
          if (empty)
-@@ -1114,6 +1131,7 @@
+@@ -1107,6 +1124,7 @@ static struct media_packet *stream_dequeue_packet(struct media_stream *stream)
          list_remove(&pkt->entry);
          --stream->queued_packets;
          stream->queued_bytes -= pkt->size;
@@ -88,7 +88,7 @@ diff --git a/dlls/winedmo/media_source.c b/dlls/winedmo/media_source.c
      }
      LeaveCriticalSection(&stream->queue_cs);
      return pkt;
-@@ -1264,6 +1282,7 @@
+@@ -1255,6 +1273,7 @@ static DWORD CALLBACK source_demux_thread(void *arg)
              list_add_tail(&stream->packet_queue, &pkt->entry);
              ++stream->queued_packets;
              stream->queued_bytes += pkt->size;
@@ -96,10 +96,10 @@ diff --git a/dlls/winedmo/media_source.c b/dlls/winedmo/media_source.c
              LeaveCriticalSection(&stream->queue_cs);
              WakeConditionVariable(&stream->queue_cv);
          }
-@@ -2218,6 +2237,13 @@
-     object->stream_offset = context->stream_offset;
-     object->file_size = context->file_size > context->stream_offset
-             ? context->file_size - context->stream_offset : (UINT64)-1;
+@@ -2209,6 +2228,13 @@ static HRESULT media_source_create(struct object_context *context, IMFMediaSourc
+     InitializeCriticalSectionEx(&object->cs, 0, RTL_CRITICAL_SECTION_FLAG_FORCE_DEBUG_INFO);
+     object->cs.DebugInfo->Spare[0] = (DWORD_PTR)(__FILE__ ": cs");
+ 
 +    /* Fetch the next network segment while the previous one is playing.
 +     * Eight packets only cover about 130 ms of 60 fps video. */
 +    object->is_network = context->url && (!wcsnicmp(context->url, L"http://", 7)
@@ -107,6 +107,6 @@ diff --git a/dlls/winedmo/media_source.c b/dlls/winedmo/media_source.c
 +            || !wcsnicmp(context->url, L"rtsp://", 7)
 +            || !wcsnicmp(context->url, L"rtspt://", 8)
 +            || !wcsnicmp(context->url, L"rtspu://", 8));
-     object->rate = 1.0f;
-     InitializeCriticalSectionEx(&object->cs, 0, RTL_CRITICAL_SECTION_FLAG_FORCE_DEBUG_INFO);
-     object->cs.DebugInfo->Spare[0] = (DWORD_PTR)(__FILE__ ": cs");
+     if (FAILED(hr = MFCreateEventQueue(&object->event_queue)))
+         goto fail;
+ 

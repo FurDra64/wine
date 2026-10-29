@@ -20,11 +20,12 @@ list and all RTSP/local input handling unchanged.
 Issue: https://github.com/GloriousEggroll/proton-ge-custom/issues/748
 
 diff --git a/dlls/winedmo/unix_demuxer.c b/dlls/winedmo/unix_demuxer.c
+index dd48c428..5ab7881e 100644
 --- a/dlls/winedmo/unix_demuxer.c
 +++ b/dlls/winedmo/unix_demuxer.c
-@@ -884,6 +884,13 @@ NTSTATUS demuxer_create( void *arg )
-             /* FFmpeg accepts rtsp:// plus an explicit transport option. */
-             memmove( url + 4, url + 5, strlen( url + 5 ) + 1 );
+@@ -784,3 +784,10 @@ NTSTATUS demuxer_stream_type( void *arg )
+             if ((ret = av_dict_set( &options, "user_agent", "GStreamer souphttpsrc", 0 )) >= 0)
+                 ret = avformat_open_input( &demuxer->ctx, url, input_format, &options );
          }
 +        if (!rtsp)
 +        {
@@ -33,6 +34,3 @@ diff --git a/dlls/winedmo/unix_demuxer.c b/dlls/winedmo/unix_demuxer.c
 +            av_dict_set( &options, "protocol_whitelist", "http,https,tls,rtp,tcp,udp,crypto,httpproxy,data", 0 );
 +            av_dict_set( &options, "extension_picky", "0", 0 );
 +        }
-         if (rtsp) av_dict_set( &options, "timeout", "15000000", 0 );
-         else if (!hls) av_dict_set( &options, "rw_timeout", "15000000", 0 );
-         if (progressive)

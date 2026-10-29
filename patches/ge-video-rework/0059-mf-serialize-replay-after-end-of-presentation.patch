@@ -32,12 +32,11 @@ Issue: https://github.com/GloriousEggroll/proton-ge-custom/issues/739
 References:
  https://learn.microsoft.com/en-us/windows/win32/medfound/meendofpresentation
  https://learn.microsoft.com/en-us/windows/win32/api/mfidl/nf-mfidl-imfmediasession-start
----
-
 diff --git a/dlls/mf/session.c b/dlls/mf/session.c
+index de79aa33..8a2ee72f 100644
 --- a/dlls/mf/session.c
 +++ b/dlls/mf/session.c
-@@ -4388,6 +4388,10 @@ static void session_raise_end_of_present
+@@ -4343,6 +4343,10 @@ static void session_raise_end_of_presentation(struct media_session *session)
          if (session_nodes_is_mask_set(session, MF_TOPOLOGY_MAX, SOURCE_FLAG_END_OF_PRESENTATION))
          {
              session->presentation.flags |= SESSION_FLAG_PRESENTATION_ENDING;
@@ -48,21 +47,21 @@ diff --git a/dlls/mf/session.c b/dlls/mf/session.c
              IMFMediaEventQueue_QueueEventParamVar(session->event_queue, MEEndOfPresentation, &GUID_NULL, S_OK, NULL);
          }
      }
-
 diff --git a/dlls/mf/tests/mf.c b/dlls/mf/tests/mf.c
+index 1816a3e8..7e0a1809 100644
 --- a/dlls/mf/tests/mf.c
 +++ b/dlls/mf/tests/mf.c
-@@ -994,6 +994,7 @@ struct test_stream_sink
-     IUnknown *device_manager;
+@@ -994,6 +994,7 @@ enum object_state
  
-     IMFMediaEventQueue *event_queue;
+ #define MAX_OBJECT_STATE 1024
+ 
 +    BOOL hold_markers;
- };
+ struct object_state_record
+ {
+     enum object_state states[MAX_OBJECT_STATE];
+@@ -1269,6 +1270,11 @@ static ULONG WINAPI test_stream_sink_Release(IMFStreamSink *iface)
  
- static struct test_stream_sink *impl_from_IMFStreamSink(IMFStreamSink *iface)
-@@ -1155,6 +1156,11 @@ static HRESULT WINAPI test_stream_sink_P
- static HRESULT WINAPI test_stream_sink_PlaceMarker(IMFStreamSink *iface, MFSTREAMSINK_MARKER_TYPE marker_type,
-         const PROPVARIANT *marker_value, const PROPVARIANT *context)
+ static HRESULT WINAPI test_stream_sink_GetEvent(IMFStreamSink *iface, DWORD flags, IMFMediaEvent **event)
  {
 +    struct test_stream_sink *sink = impl_from_IMFStreamSink(iface);
 +
@@ -72,7 +71,7 @@ diff --git a/dlls/mf/tests/mf.c b/dlls/mf/tests/mf.c
      ok(0, "Unexpected call.\n");
      return E_NOTIMPL;
  }
-@@ -8736,6 +8742,141 @@ static void test_media_session_seek(void
+@@ -11765,6 +11771,141 @@ static void test_media_session_sample_request(void)
      ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
  }
  
@@ -214,11 +213,11 @@ diff --git a/dlls/mf/tests/mf.c b/dlls/mf/tests/mf.c
  static void test_media_session_invalid_topology(void)
  {
      IMFAsyncCallback *callback;
-@@ -9148,6 +9289,7 @@ START_TEST(mf)
+@@ -12177,6 +12318,7 @@ START_TEST(mf)
+     test_MFEnumDeviceSources();
+     test_media_session_Close();
      test_media_session_source_shutdown();
++    test_media_session_replay_at_eop();
      test_media_session_thinning();
      test_media_session_seek();
-+    test_media_session_replay_at_eop();
-     test_media_session_sink_shutdown();
-     test_async_transform();
- }
+     test_media_session_scrubbing();

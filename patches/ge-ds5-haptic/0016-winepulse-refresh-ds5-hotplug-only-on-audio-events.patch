@@ -34,16 +34,14 @@ index 75076515e76dd24fa6ef0a7fd4cd3bf5a28fe68d..32d457ee024c3a5da185b65c369fb768
  static struct list g_phys_speakers = LIST_INIT(g_phys_speakers);
  static struct list g_phys_sources = LIST_INIT(g_phys_sources);
  static struct list g_phys_speakers_added = LIST_INIT(g_phys_speakers_added);
-@@ -192,6 +193,9 @@ static ULONG_PTR zero_bits = 0;
- static UINT32 silence_buf_size = 1048576;
- static BYTE *silence_buf;
+@@ -153,4 +153,7 @@ static ULONG_PTR zero_bits = 0;
+ static ULONG_PTR zero_bits = 0;
  
 +#define PHYS_EVENT_RENDER 0x1
 +#define PHYS_EVENT_CAPTURE 0x2
 +
  static NTSTATUS pulse_not_implemented(void *args)
  {
-     return STATUS_SUCCESS;
 @@ -540,22 +544,19 @@ static NTSTATUS pulse_get_endpoint_ids(void *args)
      size_t needed = 0;
      unsigned int offset;

@@ -18,14 +18,11 @@ while copying only visible rows into initialized NV12 output.
 
 Real dynamic size changes such as Yakuza 5's 1080p-to-720p startup videos
 are unaffected because they are not a small padding delta.
----
- dlls/winedmo/unix_transform.c | 86 +++++++++++++++++++++++++++++++++--
- 1 file changed, 82 insertions(+), 4 deletions(-)
-
 diff --git a/dlls/winedmo/unix_transform.c b/dlls/winedmo/unix_transform.c
+index f7781420..9b5c5888 100644
 --- a/dlls/winedmo/unix_transform.c
 +++ b/dlls/winedmo/unix_transform.c
-@@ -278,6 +278,46 @@ static DWORD mf_fourcc_from_pix_fmt( enum AVPixelFormat fmt )
+@@ -270,6 +270,46 @@ static DWORD mf_fourcc_from_pix_fmt( enum AVPixelFormat fmt )
      }
  }
  
@@ -72,7 +69,7 @@ diff --git a/dlls/winedmo/unix_transform.c b/dlls/winedmo/unix_transform.c
  static int fill_output_image_arrays( struct unix_transform *t, uint8_t *data[4], int linesize[4],
                                       BYTE *dst, enum AVPixelFormat fmt, int width, int height );
  
-@@ -314,11 +354,16 @@ static NTSTATUS copy_yuv420_frame_to_nv12( struct unix_transform *t, const AVFra
+@@ -306,11 +346,16 @@ static NTSTATUS copy_yuv420_frame_to_nv12( struct unix_transform *t, const AVFra
  {
      uint8_t *dst_data[4];
      int dst_linesize[4];
@@ -92,7 +89,7 @@ diff --git a/dlls/winedmo/unix_transform.c b/dlls/winedmo/unix_transform.c
          return STATUS_NOT_SUPPORTED;
      if (t->out_pix_fmt != AV_PIX_FMT_NV12)
          return STATUS_NOT_SUPPORTED;
-@@ -332,6 +377,17 @@ static NTSTATUS copy_yuv420_frame_to_nv12( struct unix_transform *t, const AVFra
+@@ -324,6 +369,17 @@ static NTSTATUS copy_yuv420_frame_to_nv12( struct unix_transform *t, const AVFra
      memset(dst, 0, dst_size);
      memset(dst_data[1], 0x80, dst_linesize[1] * height / 2);
  
@@ -110,10 +107,10 @@ diff --git a/dlls/winedmo/unix_transform.c b/dlls/winedmo/unix_transform.c
      for (y = 0; y < copy_height; ++y)
          memcpy(dst_data[0] + y * dst_linesize[0], frame->data[0] + y * frame->linesize[0], copy_width);
  
-@@ -582,9 +638,12 @@ static NTSTATUS copy_video_frame( struct unix_transform *t, const AVFrame *frame
- {
-     enum AVPixelFormat out_fmt = (t->out_pix_fmt != AV_PIX_FMT_NONE)
+@@ -560,9 +616,12 @@ static NTSTATUS copy_video_frame( struct unix_transform *t, const AVFrame *frame
                                   ? t->out_pix_fmt : (enum AVPixelFormat)frame->format;
+     int out_width = t->out_width > 0 ? t->out_width : frame->width;
+     int out_height = t->out_height > 0 ? t->out_height : frame->height;
 -    int src_width = frame->width, src_height = frame->height;
 +    int src_width, src_height;
 +
@@ -125,7 +122,7 @@ diff --git a/dlls/winedmo/unix_transform.c b/dlls/winedmo/unix_transform.c
              && frame->width - out_width < 16 && frame->height - out_height < 16)
      {
          src_width = out_width;
-@@ -1262,12 +1321,14 @@ NTSTATUS transform_get_output( void *arg )
+@@ -1198,12 +1257,14 @@ NTSTATUS transform_get_output( void *arg )
      }
      else
      {
@@ -144,7 +141,7 @@ diff --git a/dlls/winedmo/unix_transform.c b/dlls/winedmo/unix_transform.c
              t->last_pix_fmt = (enum AVPixelFormat)t->frame->format;
              if (t->sws) { sws_freeContext( t->sws ); t->sws = NULL; }
              if (!t->is_raw_video)
-@@ -1451,6 +1512,13 @@ NTSTATUS transform_get_output( void *arg )
+@@ -1382,6 +1443,13 @@ NTSTATUS transform_get_output( void *arg )
          UINT32 required = video_frame_size( out_fmt, out_width, out_height );
          NTSTATUS st;
  
@@ -158,7 +155,7 @@ diff --git a/dlls/winedmo/unix_transform.c b/dlls/winedmo/unix_transform.c
          if (capacity < required)
          {
              params->size = required;
-@@ -1597,8 +1665,7 @@ NTSTATUS transform_get_output_format( void *arg )
+@@ -1527,8 +1595,7 @@ NTSTATUS transform_get_output_format( void *arg )
                                     ? t->last_pix_fmt : AV_PIX_FMT_NV12);
          DWORD fourcc = t->out_video_fourcc ? t->out_video_fourcc : mf_fourcc_from_pix_fmt( pf );
  
@@ -168,5 +165,3 @@ diff --git a/dlls/winedmo/unix_transform.c b/dlls/winedmo/unix_transform.c
          {
              w = t->avctx->coded_width;
              h = t->avctx->coded_height;
--- 
-2.50.0

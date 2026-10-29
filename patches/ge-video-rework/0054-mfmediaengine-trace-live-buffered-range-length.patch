@@ -7,14 +7,11 @@ AVPro reloads a live player when a previously nonempty buffered range becomes
 empty.  Trace the bounded value returned by IMFMediaTimeRange::GetLength(),
 including the first range endpoints, so the value observed by AVPro can be
 distinguished from the successful GetBuffered() HRESULT.
----
- dlls/mfmediaengine/main.c | 20 ++++++++++++++++++++
- 1 file changed, 20 insertions(+)
-
 diff --git a/dlls/mfmediaengine/main.c b/dlls/mfmediaengine/main.c
+index 08f9b98a..3dc11b28 100644
 --- a/dlls/mfmediaengine/main.c
 +++ b/dlls/mfmediaengine/main.c
-@@ -491,6 +491,7 @@ struct time_range
+@@ -475,6 +475,7 @@ struct time_range
      struct range *ranges;
      size_t count;
      size_t capacity;
@@ -22,7 +19,7 @@ diff --git a/dlls/mfmediaengine/main.c b/dlls/mfmediaengine/main.c
  };
  
  static struct time_range *impl_from_IMFMediaTimeRange(IMFMediaTimeRange *iface)
-@@ -664,9 +665,26 @@ static DWORD WINAPI time_range_GetLength(IMFMediaTimeRange *iface)
+@@ -648,9 +649,26 @@ static ULONG WINAPI time_range_Release(IMFMediaTimeRange *iface)
  static DWORD WINAPI time_range_GetLength(IMFMediaTimeRange *iface)
  {
      struct time_range *range = impl_from_IMFMediaTimeRange(iface);
@@ -49,15 +46,12 @@ diff --git a/dlls/mfmediaengine/main.c b/dlls/mfmediaengine/main.c
      return range->count;
  }
  
-@@ -2084,6 +2102,8 @@ static HRESULT WINAPI media_engine_GetBuffered(IMFMediaEngineEx *iface, IMFMedia
+@@ -2068,6 +2086,8 @@ static BOOL WINAPI media_engine_IsPaused(IMFMediaEngineEx *iface)
+     struct media_engine *engine = impl_from_IMFMediaEngineEx(iface);
+     BOOL value;
  
-     duration = engine->duration;
-     flags = engine->flags;
 +    if (isinf(duration))
 +        impl_from_IMFMediaTimeRange(*range)->trace_live_buffered = TRUE;
+     TRACE("%p.\n", iface);
  
-     LeaveCriticalSection(&engine->cs);
- 
--- 
-2.52.0
-
+     EnterCriticalSection(&engine->cs);

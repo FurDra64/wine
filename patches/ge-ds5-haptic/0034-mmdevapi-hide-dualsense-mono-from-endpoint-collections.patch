@@ -73,7 +73,7 @@ index 7d439404319..2fb7a2e0b57 100644
      if (This->devices_count)
      {
          This->devices = malloc(This->devices_count * sizeof(IMMDevice *));
-         if (!This->devices_count) {
+         if (!This->devices) {
              LeaveCriticalSection(&device_list_cs);
              return E_OUTOFMEMORY;
          }

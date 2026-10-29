@@ -27,25 +27,9 @@ This removes several SteamGameId-style assumptions by making the generic path ha
 - Life Makeover and other video-frame users keep stable sample/buffer attributes needed by the downstream renderer.
 
 The EVR changes also keep presenter state, sample release, and frame scheduling aligned with the new decoder/source-reader timing model.
----
- dlls/evr/evr.c                        |   8 +
- dlls/evr/mixer.c                      |   2 +-
- dlls/evr/presenter.c                  | 247 +++++++++++++++++++---
- dlls/evr/sample.c                     |   8 -
- dlls/mf/clock.c                       |  87 ++++++--
- dlls/mf/evr.c                         | 125 ++++++++---
- dlls/mf/session.c                     | 288 +++++++++++++++-----------
- dlls/mf/topology_loader.c             |  69 +++++-
- dlls/mfmediaengine/main.c             | 174 +++++++++++-----
- dlls/mfmediaengine/video_frame_sink.c |   9 +-
- dlls/mfplat/buffer.c                  | 109 +++++++++-
- dlls/mfplat/main.c                    | 144 ++++++++++++-
- dlls/mfplat/tests/mfplat.c            |   2 +-
- dlls/rtworkq/queue.c                  |  14 +-
- 14 files changed, 1011 insertions(+), 274 deletions(-)
 
 diff --git a/dlls/evr/evr.c b/dlls/evr/evr.c
-index 108f13cdc89..d698cef10a0 100644
+index 11dd639b..7a0f7d3d 100644
 --- a/dlls/evr/evr.c
 +++ b/dlls/evr/evr.c
 @@ -349,6 +349,7 @@ static HRESULT evr_copy_sample_buffer(struct evr *filter, const GUID *subtype, I
@@ -70,21 +54,8 @@ index 108f13cdc89..d698cef10a0 100644
      if (SUCCEEDED(hr = IMFSample_GetBufferByIndex(*sample, 0, &buffer)))
      {
          if (SUCCEEDED(hr = evr_get_service(buffer, &MR_BUFFER_SERVICE, &IID_IDirect3DSurface9, (void **)&surface)))
-diff --git a/dlls/evr/mixer.c b/dlls/evr/mixer.c
-index deedf031472..65f5501c5c4 100644
---- a/dlls/evr/mixer.c
-+++ b/dlls/evr/mixer.c
-@@ -778,7 +778,7 @@ static HRESULT video_mixer_collect_output_types(struct video_mixer *mixer, const
-                 sizeof(aperture), NULL)))
-         {
-             width = aperture.OffsetX.value + aperture.Area.cx;
--            height = aperture.OffsetX.value + aperture.Area.cy;
-+            height = aperture.OffsetY.value + aperture.Area.cy;
-         }
-         else
-         {
 diff --git a/dlls/evr/presenter.c b/dlls/evr/presenter.c
-index 7ad59ccc958..cf75b36e753 100644
+index 1b579229..23143bb6 100644
 --- a/dlls/evr/presenter.c
 +++ b/dlls/evr/presenter.c
 @@ -30,6 +30,7 @@
@@ -523,9 +494,9 @@ index 7ad59ccc958..cf75b36e753 100644
  
          IDirect3DDevice9_Release(d3d_device);
          IDirect3DDeviceManager9_UnlockDevice(presenter->device_manager, presenter->hdevice, FALSE);
-@@ -1447,7 +1625,8 @@ static HRESULT WINAPI video_presenter_control_SetVideoWindow(IMFVideoDisplayCont
-         if (presenter->swapchain)
+@@ -1448,7 +1626,8 @@ static HRESULT WINAPI video_presenter_control_SetVideoWindow(IMFVideoDisplayCont
              IDirect3DSwapChain9_Release(presenter->swapchain);
+         presenter->swapchain = NULL;
          presenter->video_window = window;
 -        hr = video_presenter_create_swapchain(presenter);
 +        if (presenter->native_size.cx > 0 && presenter->native_size.cy > 0)
@@ -533,7 +504,7 @@ index 7ad59ccc958..cf75b36e753 100644
      }
      LeaveCriticalSection(&presenter->cs);
  
-@@ -1493,7 +1672,6 @@ static HRESULT WINAPI video_presenter_control_GetCurrentImage(IMFVideoDisplayCon
+@@ -1494,7 +1673,6 @@ static HRESULT WINAPI video_presenter_control_GetCurrentImage(IMFVideoDisplayCon
          BYTE **dib, DWORD *dib_size, LONGLONG *timestamp)
  {
      struct video_presenter *presenter = impl_from_IMFVideoDisplayControl(iface);
@@ -541,7 +512,7 @@ index 7ad59ccc958..cf75b36e753 100644
      IDirect3DSurface9 *readback = NULL, *surface;
      D3DSURFACE_DESC surface_desc;
      D3DLOCKED_RECT mapped_rect;
-@@ -1505,8 +1683,15 @@ static HRESULT WINAPI video_presenter_control_GetCurrentImage(IMFVideoDisplayCon
+@@ -1506,8 +1684,15 @@ static HRESULT WINAPI video_presenter_control_GetCurrentImage(IMFVideoDisplayCon
      TRACE("%p, %p, %p, %p, %p.\n", iface, header, dib, dib_size, timestamp);
  
      EnterCriticalSection(&presenter->cs);
@@ -558,7 +529,7 @@ index 7ad59ccc958..cf75b36e753 100644
      {
          hr = MF_E_INVALIDREQUEST;
      }
-@@ -1570,8 +1755,6 @@ static HRESULT WINAPI video_presenter_control_GetCurrentImage(IMFVideoDisplayCon
+@@ -1571,8 +1756,6 @@ static HRESULT WINAPI video_presenter_control_GetCurrentImage(IMFVideoDisplayCon
      if (sample)
          IMFSample_Release(sample);
  
@@ -567,25 +538,16 @@ index 7ad59ccc958..cf75b36e753 100644
      return hr;
  }
  
-@@ -1591,9 +1774,15 @@ static HRESULT WINAPI video_presenter_control_GetBorderColor(IMFVideoDisplayCont
- 
- static HRESULT WINAPI video_presenter_control_SetRenderingPrefs(IMFVideoDisplayControl *iface, DWORD flags)
+@@ -1594,7 +1777,7 @@ static HRESULT WINAPI video_presenter_control_SetRenderingPrefs(IMFVideoDisplayC
  {
+     struct video_presenter *presenter = impl_from_IMFVideoDisplayControl(iface);
+ 
 -    FIXME("%p, %#lx.\n", iface, flags);
-+    struct video_presenter *presenter = impl_from_IMFVideoDisplayControl(iface);
- 
--    return E_NOTIMPL;
 +    TRACE("%p, %#lx.\n", iface, flags);
-+
-+    EnterCriticalSection(&presenter->cs);
-+    presenter->rendering_prefs = flags;
-+    LeaveCriticalSection(&presenter->cs);
-+
-+    return S_OK;
- }
  
- static HRESULT WINAPI video_presenter_control_GetRenderingPrefs(IMFVideoDisplayControl *iface, DWORD *flags)
-@@ -2186,7 +2369,7 @@ HRESULT evr_presenter_create(IUnknown *outer, void **out)
+     if (flags & ~MFVideoRenderPrefs_Mask)
+         return E_INVALIDARG;
+@@ -2196,7 +2379,7 @@ HRESULT evr_presenter_create(IUnknown *outer, void **out)
      object->refcount = 1;
      object->src_rect.right = object->src_rect.bottom = 1.0f;
      object->ar_mode = MFVideoARMode_PreservePicture | MFVideoARMode_PreservePixel;
@@ -595,7 +557,7 @@ index 7ad59ccc958..cf75b36e753 100644
  
      if (FAILED(hr = DXVA2CreateDirect3DDeviceManager9(&object->reset_token, &object->device_manager)))
 diff --git a/dlls/evr/sample.c b/dlls/evr/sample.c
-index aa3f120b115..27f44610db6 100644
+index aa3f120b..27f44610 100644
 --- a/dlls/evr/sample.c
 +++ b/dlls/evr/sample.c
 @@ -1268,12 +1268,10 @@ static HRESULT WINAPI video_sample_GetSampleTime(IMFSample *iface, LONGLONG *tim
@@ -647,7 +609,7 @@ index aa3f120b115..27f44610db6 100644
      return S_OK;
  }
 diff --git a/dlls/mf/clock.c b/dlls/mf/clock.c
-index 1619f2790eb..61467bef175 100644
+index b5d68bb2..887f2833 100644
 --- a/dlls/mf/clock.c
 +++ b/dlls/mf/clock.c
 @@ -288,15 +288,22 @@ static ULONG WINAPI present_clock_Release(IMFPresentationClock *iface)
@@ -752,7 +714,7 @@ index 1619f2790eb..61467bef175 100644
      return hr;
  }
  
-@@ -593,7 +621,7 @@ static void CALLBACK presentation_clock_timer_callback(IUnknown *context)
+@@ -585,7 +613,7 @@ static void CALLBACK presentation_clock_timer_callback(IUnknown *context)
  }
  
  static HRESULT clock_change_state(struct presentation_clock *clock, enum clock_command command,
@@ -761,7 +723,7 @@ index 1619f2790eb..61467bef175 100644
  {
      static const MFCLOCK_STATE states[CLOCK_CMD_MAX] =
      {
-@@ -609,6 +637,7 @@ static HRESULT clock_change_state(struct presentation_clock *clock, enum clock_c
+@@ -601,6 +629,7 @@ static HRESULT clock_change_state(struct presentation_clock *clock, enum clock_c
          [CLOCK_CMD_SET_RATE] = CLOCK_NOTIFY_SET_RATE,
      };
      enum clock_notification notification;
@@ -769,7 +731,7 @@ index 1619f2790eb..61467bef175 100644
      struct clock_sink *sink;
      MFCLOCK_STATE old_state;
      MFTIME system_time;
-@@ -634,7 +663,13 @@ static HRESULT clock_change_state(struct presentation_clock *clock, enum clock_c
+@@ -626,7 +655,13 @@ static HRESULT clock_change_state(struct presentation_clock *clock, enum clock_c
      else
          notification = notifications[command];
  
@@ -784,7 +746,7 @@ index 1619f2790eb..61467bef175 100644
          return hr;
  
      old_state = clock->state;
-@@ -654,7 +689,7 @@ static HRESULT clock_change_state(struct presentation_clock *clock, enum clock_c
+@@ -646,7 +681,7 @@ static HRESULT clock_change_state(struct presentation_clock *clock, enum clock_c
          {
              if (clock->key)
              {
@@ -793,7 +755,7 @@ index 1619f2790eb..61467bef175 100644
                  clock->key = 0;
              }
          }
-@@ -674,15 +709,19 @@ static HRESULT WINAPI present_clock_Start(IMFPresentationClock *iface, LONGLONG
+@@ -666,15 +701,19 @@ static HRESULT WINAPI present_clock_Start(IMFPresentationClock *iface, LONGLONG
  {
      struct presentation_clock *clock = impl_from_IMFPresentationClock(iface);
      struct clock_state_change_param param = {{0}};
@@ -814,7 +776,7 @@ index 1619f2790eb..61467bef175 100644
      return hr;
  }
  
-@@ -690,14 +729,18 @@ static HRESULT WINAPI present_clock_Stop(IMFPresentationClock *iface)
+@@ -682,14 +721,18 @@ static HRESULT WINAPI present_clock_Stop(IMFPresentationClock *iface)
  {
      struct presentation_clock *clock = impl_from_IMFPresentationClock(iface);
      struct clock_state_change_param param = {{0}};
@@ -834,7 +796,7 @@ index 1619f2790eb..61467bef175 100644
      return hr;
  }
  
-@@ -705,14 +748,18 @@ static HRESULT WINAPI present_clock_Pause(IMFPresentationClock *iface)
+@@ -697,14 +740,18 @@ static HRESULT WINAPI present_clock_Pause(IMFPresentationClock *iface)
  {
      struct presentation_clock *clock = impl_from_IMFPresentationClock(iface);
      struct clock_state_change_param param = {{0}};
@@ -854,7 +816,7 @@ index 1619f2790eb..61467bef175 100644
      return hr;
  }
  
-@@ -758,6 +805,7 @@ static HRESULT WINAPI present_clock_rate_SetRate(IMFRateControl *iface, BOOL thi
+@@ -750,6 +797,7 @@ static HRESULT WINAPI present_clock_rate_SetRate(IMFRateControl *iface, BOOL thi
  {
      struct presentation_clock *clock = impl_from_IMFRateControl(iface);
      struct clock_state_change_param param;
@@ -862,7 +824,7 @@ index 1619f2790eb..61467bef175 100644
      HRESULT hr;
  
      TRACE("%p, %d, %f.\n", iface, thin, rate);
-@@ -767,10 +815,13 @@ static HRESULT WINAPI present_clock_rate_SetRate(IMFRateControl *iface, BOOL thi
+@@ -759,10 +807,13 @@ static HRESULT WINAPI present_clock_rate_SetRate(IMFRateControl *iface, BOOL thi
  
      EnterCriticalSection(&clock->cs);
      param.u.rate = rate;
@@ -877,7 +839,7 @@ index 1619f2790eb..61467bef175 100644
      return hr;
  }
  
-@@ -979,6 +1030,7 @@ static ULONG WINAPI present_clock_shutdown_Release(IMFShutdown *iface)
+@@ -980,6 +1031,7 @@ static ULONG WINAPI present_clock_shutdown_Release(IMFShutdown *iface)
  static HRESULT WINAPI present_clock_shutdown_Shutdown(IMFShutdown *iface)
  {
      struct presentation_clock *clock = impl_from_IMFShutdown(iface);
@@ -885,7 +847,7 @@ index 1619f2790eb..61467bef175 100644
  
      TRACE("%p.\n", iface);
  
-@@ -986,11 +1038,14 @@ static HRESULT WINAPI present_clock_shutdown_Shutdown(IMFShutdown *iface)
+@@ -987,11 +1039,14 @@ static HRESULT WINAPI present_clock_shutdown_Shutdown(IMFShutdown *iface)
      clock->is_shut_down = TRUE;
      if (clock->key)
      {
@@ -902,10 +864,18 @@ index 1619f2790eb..61467bef175 100644
  }
  
 diff --git a/dlls/mf/evr.c b/dlls/mf/evr.c
-index f09cf43f8bf..3beddfe5416 100644
+index bca5fa3f..d91d402e 100644
 --- a/dlls/mf/evr.c
 +++ b/dlls/mf/evr.c
-@@ -188,13 +188,22 @@ static HRESULT video_renderer_init_presenter_services(struct video_renderer *ren
+@@ -64,6 +64,7 @@ struct video_stream
+     LONG refcount;
+     unsigned int id;
+     unsigned int flags;
++    unsigned int preroll_count;
+     struct video_renderer *parent;
+     IMFMediaEventQueue *event_queue;
+     IMFVideoSampleAllocator *allocator;
+@@ -187,13 +188,22 @@ static HRESULT video_renderer_init_presenter_services(struct video_renderer *ren
      if (SUCCEEDED(hr = IMFVideoPresenter_QueryInterface(renderer->presenter, &IID_IMFTopologyServiceLookupClient,
              (void **)&lookup_client)))
      {
@@ -928,18 +898,18 @@ index f09cf43f8bf..3beddfe5416 100644
          IMFTopologyServiceLookupClient_Release(lookup_client);
      }
  
-@@ -204,13 +213,18 @@ static HRESULT video_renderer_init_presenter_services(struct video_renderer *ren
+@@ -203,13 +213,18 @@ static HRESULT video_renderer_init_presenter_services(struct video_renderer *ren
  static void video_renderer_release_presenter_services(struct video_renderer *renderer)
  {
      IMFTopologyServiceLookupClient *lookup_client;
 +    BOOL release;
- 
--    if (renderer->flags & EVR_PRESENTER_INITED_SERVICES && SUCCEEDED(IMFVideoPresenter_QueryInterface(renderer->presenter,
++
 +    EnterCriticalSection(&renderer->cs);
 +    release = !!(renderer->flags & EVR_PRESENTER_INITED_SERVICES);
 +    renderer->flags &= ~EVR_PRESENTER_INITED_SERVICES;
 +    LeaveCriticalSection(&renderer->cs);
-+
+ 
+-    if (renderer->flags & EVR_PRESENTER_INITED_SERVICES && SUCCEEDED(IMFVideoPresenter_QueryInterface(renderer->presenter,
 +    if (release && SUCCEEDED(IMFVideoPresenter_QueryInterface(renderer->presenter,
              &IID_IMFTopologyServiceLookupClient, (void **)&lookup_client)))
      {
@@ -949,88 +919,45 @@ index f09cf43f8bf..3beddfe5416 100644
      }
  }
  
-@@ -393,54 +407,62 @@ static HRESULT WINAPI video_stream_sink_GetMediaTypeHandler(IMFStreamSink *iface
- static HRESULT WINAPI video_stream_sink_ProcessSample(IMFStreamSink *iface, IMFSample *sample)
+@@ -393,6 +408,7 @@ static HRESULT WINAPI video_stream_sink_ProcessSample(IMFStreamSink *iface, IMFS
  {
      struct video_stream *stream = impl_from_IMFStreamSink(iface);
--    LONGLONG timestamp;
-+    struct video_renderer *renderer = stream->parent;
+     LONGLONG timestamp;
 +    BOOL request_sample = FALSE, prerolled = FALSE;
      HRESULT hr = S_OK;
  
      TRACE("%p, %p.\n", iface, sample);
- 
--    EnterCriticalSection(&stream->cs);
-+    TRACE("stream %p, renderer %p, clock %p, state %u, flags %#x.\n",
-+            stream, renderer, renderer ? renderer->clock : NULL, renderer ? renderer->state : 0, stream->flags);
- 
--    if (!stream->parent)
-+    if (!renderer)
-         hr = MF_E_STREAMSINK_REMOVED;
--    else if (!stream->parent->clock)
-+    else if (!renderer->clock)
-         hr = MF_E_NO_CLOCK;
--    else if (FAILED(hr = IMFSample_GetSampleTime(sample, &timestamp)))
--    {
--        WARN("No sample timestamp, hr %#lx.\n", hr);
--    }
--    else if (stream->parent->state == EVR_STATE_RUNNING || stream->flags & EVR_STREAM_PREROLLING)
-+    else if (renderer->state == EVR_STATE_RUNNING || stream->flags & EVR_STREAM_PREROLLING)
-     {
-         if (!(stream->flags & EVR_STREAM_STARTED))
-         {
--            IMFTransform_ProcessMessage(stream->parent->mixer, MFT_MESSAGE_NOTIFY_START_OF_STREAM, stream->id);
-+            TRACE("stream %p notifying mixer start of stream %#x.\n", stream, stream->id);
-+            IMFTransform_ProcessMessage(renderer->mixer, MFT_MESSAGE_NOTIFY_START_OF_STREAM, stream->id);
-+            TRACE("stream %p notified mixer start of stream %#x.\n", stream, stream->id);
-             stream->flags |= EVR_STREAM_STARTED;
-         }
- 
--        if (SUCCEEDED(IMFTransform_ProcessInput(stream->parent->mixer, stream->id, sample, 0)))
-+        TRACE("stream %p processing mixer input sample %p.\n", stream, sample);
-+        hr = IMFTransform_ProcessInput(renderer->mixer, stream->id, sample, 0);
-+        TRACE("stream %p processed mixer input sample %p, hr %#lx.\n", stream, sample, hr);
-+        if (SUCCEEDED(hr))
-         {
--            while ((hr = IMFVideoPresenter_ProcessMessage(stream->parent->presenter, MFVP_MESSAGE_PROCESSINPUTNOTIFY, 0)) == MF_E_TRANSFORM_TYPE_NOT_SET)
-+            TRACE("stream %p notifying presenter input.\n", stream);
-+            while ((hr = IMFVideoPresenter_ProcessMessage(renderer->presenter, MFVP_MESSAGE_PROCESSINPUTNOTIFY, 0)) == MF_E_TRANSFORM_TYPE_NOT_SET)
-             {
--                if (FAILED(hr = IMFVideoPresenter_ProcessMessage(stream->parent->presenter, MFVP_MESSAGE_INVALIDATEMEDIATYPE, 0)))
-+                if (FAILED(hr = IMFVideoPresenter_ProcessMessage(renderer->presenter, MFVP_MESSAGE_INVALIDATEMEDIATYPE, 0)))
-                     break;
-             }
-+            TRACE("stream %p notified presenter input, hr %#lx.\n", stream, hr);
-         }
+@@ -426,14 +442,26 @@ static HRESULT WINAPI video_stream_sink_ProcessSample(IMFStreamSink *iface, IMFS
  
          if (stream->flags & EVR_STREAM_PREROLLING)
          {
-             if (stream->preroll_count--)
--                IMFMediaEventQueue_QueueEventParamVar(stream->event_queue, MEStreamSinkRequestSample,
--                        &GUID_NULL, S_OK, NULL);
+-            IMFMediaEventQueue_QueueEventParamVar(stream->event_queue, MEStreamSinkPrerolled, &GUID_NULL, S_OK, NULL);
+-            stream->flags &= ~EVR_STREAM_PREROLLING;
+-            stream->flags |= EVR_STREAM_PREROLLED;
++            if (stream->preroll_count--)
 +                request_sample = TRUE;
-             else
-             {
--                IMFMediaEventQueue_QueueEventParamVar(stream->event_queue, MEStreamSinkPrerolled,
--                        &GUID_NULL, S_OK, NULL);
-                 stream->flags &= ~EVR_STREAM_PREROLLING;
-                 stream->flags |= EVR_STREAM_PREROLLED;
++            else
++            {
++                stream->flags &= ~EVR_STREAM_PREROLLING;
++                stream->flags |= EVR_STREAM_PREROLLED;
 +                prerolled = TRUE;
-             }
++            }
          }
      }
  
--    LeaveCriticalSection(&stream->cs);
+     LeaveCriticalSection(&stream->cs);
+ 
 +    if (request_sample)
 +        IMFMediaEventQueue_QueueEventParamVar(stream->event_queue, MEStreamSinkRequestSample,
 +                &GUID_NULL, S_OK, NULL);
 +    else if (prerolled)
 +        IMFMediaEventQueue_QueueEventParamVar(stream->event_queue, MEStreamSinkPrerolled,
 +                &GUID_NULL, S_OK, NULL);
- 
++
      return hr;
  }
-@@ -575,6 +597,8 @@ static HRESULT WINAPI video_stream_typehandler_GetMediaTypeByIndex(IMFMediaTypeH
+ 
+@@ -567,6 +595,8 @@ static HRESULT WINAPI video_stream_typehandler_GetMediaTypeByIndex(IMFMediaTypeH
  static HRESULT WINAPI video_stream_typehandler_SetCurrentMediaType(IMFMediaTypeHandler *iface, IMFMediaType *type)
  {
      struct video_stream *stream = impl_from_IMFMediaTypeHandler(iface);
@@ -1039,7 +966,7 @@ index f09cf43f8bf..3beddfe5416 100644
      HRESULT hr;
  
      TRACE("%p, %p.\n", iface, type);
-@@ -585,6 +609,14 @@ static HRESULT WINAPI video_stream_typehandler_SetCurrentMediaType(IMFMediaTypeH
+@@ -577,6 +607,14 @@ static HRESULT WINAPI video_stream_typehandler_SetCurrentMediaType(IMFMediaTypeH
      if (!stream->parent)
          return MF_E_STREAMSINK_REMOVED;
  
@@ -1054,7 +981,7 @@ index f09cf43f8bf..3beddfe5416 100644
      hr = IMFTransform_SetInputType(stream->parent->mixer, stream->id, type, 0);
      if (SUCCEEDED(hr) && !stream->id)
          hr = IMFVideoPresenter_ProcessMessage(stream->parent->presenter, MFVP_MESSAGE_INVALIDATEMEDIATYPE, 0);
-@@ -1381,20 +1413,30 @@ static HRESULT WINAPI video_renderer_sink_GetStreamSinkById(IMFMediaSink *iface,
+@@ -1373,20 +1411,30 @@ static HRESULT WINAPI video_renderer_sink_GetStreamSinkById(IMFMediaSink *iface,
  
  static void video_renderer_set_presentation_clock(struct video_renderer *renderer, IMFPresentationClock *clock)
  {
@@ -1092,7 +1019,7 @@ index f09cf43f8bf..3beddfe5416 100644
  }
  
  static HRESULT WINAPI video_renderer_sink_SetPresentationClock(IMFMediaSink *iface, IMFPresentationClock *clock)
-@@ -1522,14 +1564,17 @@ static ULONG WINAPI video_renderer_preroll_Release(IMFMediaSinkPreroll *iface)
+@@ -1514,14 +1562,17 @@ static ULONG WINAPI video_renderer_preroll_Release(IMFMediaSinkPreroll *iface)
  static HRESULT WINAPI video_renderer_preroll_NotifyPreroll(IMFMediaSinkPreroll *iface, MFTIME start_time)
  {
      struct video_renderer *renderer = impl_from_IMFMediaSinkPreroll(iface);
@@ -1111,14 +1038,14 @@ index f09cf43f8bf..3beddfe5416 100644
      else
      {
          for (i = 0; i < renderer->stream_count; ++i)
-@@ -1539,16 +1584,24 @@ static HRESULT WINAPI video_renderer_preroll_NotifyPreroll(IMFMediaSinkPreroll *
+@@ -1531,15 +1582,24 @@ static HRESULT WINAPI video_renderer_preroll_NotifyPreroll(IMFMediaSinkPreroll *
              EnterCriticalSection(&stream->cs);
              if (!(stream->flags & (EVR_STREAM_PREROLLING | EVR_STREAM_PREROLLED)))
              {
 -                IMFMediaEventQueue_QueueEventParamVar(stream->event_queue, MEStreamSinkRequestSample,
 -                        &GUID_NULL, S_OK, NULL);
                  stream->flags |= EVR_STREAM_PREROLLING;
-                 stream->preroll_count = 3;
++                stream->preroll_count = 3;
 +                request_streams[request_count++] = stream;
 +                IMFStreamSink_AddRef(&stream->IMFStreamSink_iface);
              }
@@ -1138,7 +1065,7 @@ index f09cf43f8bf..3beddfe5416 100644
      return hr;
  }
  
-@@ -1705,10 +1758,34 @@ static HRESULT video_renderer_configure_presenter(struct video_renderer *rendere
+@@ -1696,10 +1756,34 @@ static HRESULT video_renderer_configure_presenter(struct video_renderer *rendere
  
      if (SUCCEEDED(IMFVideoPresenter_QueryInterface(renderer->presenter, &IID_IMFVideoDisplayControl, (void **)&control)))
      {
@@ -1176,7 +1103,7 @@ index f09cf43f8bf..3beddfe5416 100644
          IMFVideoDisplayControl_Release(control);
      }
  
-@@ -2035,14 +2112,22 @@ static HRESULT WINAPI video_renderer_clock_sink_OnClockRestart(IMFClockStateSink
+@@ -2028,14 +2112,22 @@ static HRESULT WINAPI video_renderer_clock_sink_OnClockRestart(IMFClockStateSink
  
      EnterCriticalSection(&renderer->cs);
  
@@ -1202,7 +1129,7 @@ index f09cf43f8bf..3beddfe5416 100644
      LeaveCriticalSection(&renderer->cs);
  
 diff --git a/dlls/mf/session.c b/dlls/mf/session.c
-index fb8a29a640c..12a4fadd0ef 100644
+index 32ab0719..5b7d4457 100644
 --- a/dlls/mf/session.c
 +++ b/dlls/mf/session.c
 @@ -113,6 +113,7 @@ enum command_state
@@ -1213,7 +1140,7 @@ index fb8a29a640c..12a4fadd0ef 100644
      COMMAND_STATE_STOPPING_SINKS,     /* -> COMMAND_STATE_STOPPING_SOURCES */
      COMMAND_STATE_STOPPING_SOURCES,   /* -> SESSION_STATE_STOPPED */
      /* STARTED | PAUSED | STOPPED -> CLOSED transition */
-@@ -185,6 +186,7 @@ enum topo_node_flags
+@@ -184,6 +185,7 @@ enum topo_node_flags
      TOPO_NODE_END_OF_STREAM = 0x1,
      TOPO_NODE_SCRUB_SAMPLE_COMPLETE = 0x2,
      TOPO_NODE_MARKIN_HERE = 0x4,
@@ -1221,7 +1148,7 @@ index fb8a29a640c..12a4fadd0ef 100644
  };
  
  struct topo_node
-@@ -581,7 +583,6 @@ static HRESULT session_bind_output_nodes(IMFTopology *topology)
+@@ -580,7 +582,6 @@ static HRESULT session_bind_output_nodes(IMFTopology *topology)
      HRESULT hr;
  
      hr = IMFTopology_GetNodeCount(topology, &node_count);
@@ -1229,7 +1156,7 @@ index fb8a29a640c..12a4fadd0ef 100644
      for (i = 0; i < node_count; ++i)
      {
          if (FAILED(hr = IMFTopology_GetNode(topology, i, &node)))
-@@ -596,31 +597,34 @@ static HRESULT session_bind_output_nodes(IMFTopology *topology)
+@@ -595,31 +596,34 @@ static HRESULT session_bind_output_nodes(IMFTopology *topology)
          if (SUCCEEDED(hr = IMFTopologyNode_GetObject(node, &object)))
          {
              stream_sink = NULL;
@@ -1281,7 +1208,7 @@ index fb8a29a640c..12a4fadd0ef 100644
  
              if (stream_sink)
                  IMFStreamSink_Release(stream_sink);
-@@ -1046,13 +1050,13 @@ static HRESULT session_subscribe_sources(struct media_session *session)
+@@ -1039,13 +1043,13 @@ static HRESULT session_subscribe_sources(struct media_session *session)
      return hr;
  }
  
@@ -1297,7 +1224,7 @@ index fb8a29a640c..12a4fadd0ef 100644
  
      LIST_FOR_EACH_ENTRY(node, &session->presentation.nodes, struct topo_node, entry)
      {
-@@ -1062,11 +1066,13 @@ static void session_subscribe_sinks(struct media_session *session)
+@@ -1055,11 +1059,13 @@ static void session_subscribe_sinks(struct media_session *session)
          if (FAILED(hr = IMFStreamSink_BeginGetEvent(node->object.sink_stream, &session->events_callback,
                          node->object.object)))
          {
@@ -1312,7 +1239,7 @@ index fb8a29a640c..12a4fadd0ef 100644
  }
  
  static void session_flush_transform_node(struct topo_node *node)
-@@ -1089,6 +1095,7 @@ static void session_flush_transform_node(struct topo_node *node)
+@@ -1082,6 +1088,7 @@ static void session_flush_transform_node(struct topo_node *node)
              transform_stream_drop_events(stream);
              stream->requests = 0; /* these requests might have been flushed */
          }
@@ -1320,7 +1247,7 @@ index fb8a29a640c..12a4fadd0ef 100644
      }
  }
  
-@@ -1103,24 +1110,8 @@ static void session_flush_transforms(struct media_session *session)
+@@ -1096,24 +1103,8 @@ static void session_flush_transforms(struct media_session *session)
  }
  
  static void session_request_sample(struct media_session *session, IMFStreamSink *sink_stream);
@@ -1347,7 +1274,7 @@ index fb8a29a640c..12a4fadd0ef 100644
  
  static void session_flush_nodes(struct media_session *session)
  {
-@@ -1151,7 +1142,8 @@ static void session_start(struct media_session *session, const GUID *time_format
+@@ -1144,7 +1135,8 @@ static void session_start(struct media_session *session, const GUID *time_format
      /* No position change - nothing to do. */
      if (session->state == SESSION_STATE_STARTED && keep_position)
      {
@@ -1357,7 +1284,7 @@ index fb8a29a640c..12a4fadd0ef 100644
          return;
      }
  
-@@ -1613,15 +1605,16 @@ static void session_set_rate(struct media_session *session, BOOL thin, float rat
+@@ -1606,15 +1598,16 @@ static void session_set_rate(struct media_session *session, BOOL thin, float rat
              if (SUCCEEDED(hr = MFGetService(source->object, &MF_RATE_CONTROL_SERVICE, &IID_IMFRateControl,
                      (void **)&rate_control)))
              {
@@ -1379,7 +1306,7 @@ index fb8a29a640c..12a4fadd0ef 100644
              }
  
              break;
-@@ -1670,6 +1663,23 @@ static struct media_source *session_get_media_source(struct media_session *sessi
+@@ -1663,6 +1656,23 @@ static struct media_source *session_get_media_source(struct media_session *sessi
      return NULL;
  }
  
@@ -1403,7 +1330,7 @@ index fb8a29a640c..12a4fadd0ef 100644
  static void session_release_media_source(struct media_source *source)
  {
      if (source->source)
-@@ -1852,6 +1862,7 @@ static HRESULT session_set_transform_stream_info(struct topo_node *node)
+@@ -1845,6 +1855,7 @@ static HRESULT session_set_transform_stream_info(struct topo_node *node)
          }
          node->u.transform.outputs = streams;
          node->u.transform.output_count = output_count;
@@ -1411,7 +1338,7 @@ index fb8a29a640c..12a4fadd0ef 100644
      }
  
      return hr;
-@@ -1897,6 +1908,7 @@ static ULONG WINAPI node_sample_allocator_cb_Release(IMFVideoSampleAllocatorNoti
+@@ -1890,6 +1901,7 @@ static ULONG WINAPI node_sample_allocator_cb_Release(IMFVideoSampleAllocatorNoti
  }
  
  static HRESULT session_request_sample_from_node(struct media_session *session, struct topo_node *topo_node, DWORD output);
@@ -1419,7 +1346,7 @@ index fb8a29a640c..12a4fadd0ef 100644
  
  static HRESULT WINAPI node_sample_allocator_cb_NotifyRelease(IMFVideoSampleAllocatorNotify *iface)
  {
-@@ -2071,9 +2083,9 @@ static HRESULT session_set_current_topology(struct media_session *session, IMFTo
+@@ -2064,9 +2076,9 @@ static HRESULT session_set_current_topology(struct media_session *session, IMFTo
  {
      struct media_source *source;
      DWORD caps, object_flags;
@@ -1430,7 +1357,7 @@ index fb8a29a640c..12a4fadd0ef 100644
      HRESULT hr;
  
      if (FAILED(hr = IMFTopology_CloneFrom(session->presentation.current_topology, topology)))
-@@ -2095,17 +2107,6 @@ static HRESULT session_set_current_topology(struct media_session *session, IMFTo
+@@ -2087,17 +2099,6 @@ static HRESULT session_set_current_topology(struct media_session *session, IMFTo
          }
      }
  
@@ -1448,7 +1375,7 @@ index fb8a29a640c..12a4fadd0ef 100644
      /* Update session caps. */
      caps = MFSESSIONCAP_START | MFSESSIONCAP_SEEK | MFSESSIONCAP_RATE_FORWARD | MFSESSIONCAP_RATE_REVERSE |
              MFSESSIONCAP_DOES_NOT_USE_NETWORK;
-@@ -2144,6 +2145,15 @@ static HRESULT session_set_current_topology(struct media_session *session, IMFTo
+@@ -2136,6 +2137,15 @@ static HRESULT session_set_current_topology(struct media_session *session, IMFTo
          }
      }
  
@@ -1464,7 +1391,7 @@ index fb8a29a640c..12a4fadd0ef 100644
      session_set_caps(session, caps);
  
      return S_OK;
-@@ -2853,8 +2863,6 @@ static HRESULT WINAPI session_commands_callback_GetParameters(IMFAsyncCallback *
+@@ -2843,8 +2853,6 @@ static HRESULT WINAPI session_commands_callback_GetParameters(IMFAsyncCallback *
      return E_NOTIMPL;
  }
  
@@ -1473,7 +1400,7 @@ index fb8a29a640c..12a4fadd0ef 100644
  static HRESULT WINAPI session_commands_callback_Invoke(IMFAsyncCallback *iface, IMFAsyncResult *result)
  {
      struct session_op *op = impl_op_from_IUnknown(IMFAsyncResult_GetStateNoAddRef(result));
-@@ -2975,9 +2983,7 @@ static HRESULT WINAPI session_sa_ready_callback_Invoke(IMFAsyncCallback *iface,
+@@ -2965,9 +2973,7 @@ static HRESULT WINAPI session_sa_ready_callback_Invoke(IMFAsyncCallback *iface,
  
      if (topo_node->u.sink.requests)
      {
@@ -1484,7 +1411,7 @@ index fb8a29a640c..12a4fadd0ef 100644
              session_deliver_pending_samples(session, up_node);
      }
  
-@@ -3016,6 +3022,7 @@ static void session_handle_source_shutdown(struct media_session *session)
+@@ -3006,6 +3012,7 @@ static void session_handle_source_shutdown(struct media_session *session)
              session_command_complete_with_event(session, MESessionPaused, MF_E_SHUTDOWN, NULL);
              break;
          case COMMAND_STATE_STOPPING_SINKS:
@@ -1492,7 +1419,7 @@ index fb8a29a640c..12a4fadd0ef 100644
          case COMMAND_STATE_STOPPING_SOURCES:
              session_clear_presentation(session);
              session->state = SESSION_STATE_STOPPED;
-@@ -3226,7 +3233,6 @@ static void session_set_source_object_state(struct media_session *session, IUnkn
+@@ -3222,7 +3229,6 @@ static void session_set_source_object_state(struct media_session *session, IUnkn
      struct media_source *src;
      struct media_sink *sink;
      enum object_state state;
@@ -1500,7 +1427,7 @@ index fb8a29a640c..12a4fadd0ef 100644
      BOOL changed = FALSE;
      DWORD i, count;
      HRESULT hr;
-@@ -3272,21 +3278,12 @@ static void session_set_source_object_state(struct media_session *session, IUnkn
+@@ -3268,21 +3274,12 @@ static void session_set_source_object_state(struct media_session *session, IUnkn
  
              session_set_topo_status(session, S_OK, MF_TOPOSTATUS_STARTED_SOURCE);
  
@@ -1526,7 +1453,7 @@ index fb8a29a640c..12a4fadd0ef 100644
              session_set_presentation_clock(session);
  
              if (session->presentation.rate != 0.0f && (session->presentation.flags & SESSION_FLAG_NEEDS_PREROLL)
-@@ -3326,12 +3323,6 @@ static void session_set_source_object_state(struct media_session *session, IUnkn
+@@ -3322,12 +3319,6 @@ static void session_set_source_object_state(struct media_session *session, IUnkn
              }
              else
              {
@@ -1539,7 +1466,7 @@ index fb8a29a640c..12a4fadd0ef 100644
                  if (SUCCEEDED(hr = session_start_clock(session)))
                  {
                      /* If sinks are already started, start session immediately. This can happen when doing a
-@@ -3402,6 +3393,7 @@ static void session_set_source_object_state(struct media_session *session, IUnkn
+@@ -3398,6 +3389,7 @@ static void session_set_source_object_state(struct media_session *session, IUnkn
          case COMMAND_STATE_PREROLLING_SINKS:
          case COMMAND_STATE_STARTING_SINKS:
          case COMMAND_STATE_PAUSING_SINKS:
@@ -1547,7 +1474,7 @@ index fb8a29a640c..12a4fadd0ef 100644
          case COMMAND_STATE_STOPPING_SINKS:
          case COMMAND_STATE_CLOSING_SINKS:
          case COMMAND_STATE_FINALIZING_SINKS:
-@@ -3486,6 +3478,7 @@ static void session_set_sink_stream_state(struct media_session *session, IMFStre
+@@ -3482,6 +3474,7 @@ static void session_set_sink_stream_state(struct media_session *session, IMFStre
          case COMMAND_STATE_RESTARTING_SOURCES:
          case COMMAND_STATE_STARTING_SOURCES:
          case COMMAND_STATE_PAUSING_SOURCES:
@@ -1555,7 +1482,7 @@ index fb8a29a640c..12a4fadd0ef 100644
          case COMMAND_STATE_STOPPING_SOURCES:
          case COMMAND_STATE_CLOSING_SOURCES:
          case COMMAND_STATE_FINALIZING_SINKS:
-@@ -3519,7 +3512,8 @@ static HRESULT transform_get_external_output_sample(const struct media_session *
+@@ -3505,7 +3498,8 @@ static HRESULT transform_get_external_output_sample(const struct media_session *
          return MF_E_UNEXPECTED;
      }
  
@@ -1565,7 +1492,7 @@ index fb8a29a640c..12a4fadd0ef 100644
      {
          hr = IMFVideoSampleAllocator_AllocateSample(topo_node->u.sink.allocator, sample);
      }
-@@ -3679,7 +3673,7 @@ static HRESULT allocate_output_samples(const struct media_session *session, stru
+@@ -3667,7 +3661,7 @@ static HRESULT allocate_output_samples(const struct media_session *session, stru
  
          if (FAILED(hr = IMFTransform_GetOutputStreamInfo(node->object.transform, buffers[i].dwStreamID, &stream_info)))
              return hr;
@@ -1574,7 +1501,7 @@ index fb8a29a640c..12a4fadd0ef 100644
                  && FAILED(hr = transform_get_external_output_sample(session, node, i, &stream_info, &buffers[i].pSample)))
              return hr;
      }
-@@ -3707,7 +3701,8 @@ static BOOL transform_node_markin_need_more_input(const struct media_session *se
+@@ -3695,7 +3689,8 @@ static BOOL transform_node_markin_need_more_input(const struct media_session *se
      HRESULT hr;
      UINT i;
  
@@ -1584,7 +1511,7 @@ index fb8a29a640c..12a4fadd0ef 100644
          return FALSE;
  
      need_more_input = TRUE;
-@@ -3829,6 +3824,11 @@ static HRESULT transform_node_pull_samples(const struct media_session *session,
+@@ -3818,6 +3813,11 @@ static HRESULT transform_node_pull_samples(const struct media_session *session,
      }
      while (hr == S_OK && transform_node_markin_need_more_input(session, node, buffers));
  
@@ -1596,7 +1523,7 @@ index fb8a29a640c..12a4fadd0ef 100644
      /* Collect returned samples for all streams. */
      for (i = 0; i < node->u.transform.output_count; ++i)
      {
-@@ -3838,7 +3838,7 @@ static HRESULT transform_node_pull_samples(const struct media_session *session,
+@@ -3825,7 +3825,7 @@ static HRESULT transform_node_pull_samples(const struct media_session *session,
  
          if (buffers[i].pEvents && FAILED(hr = transform_stream_push_events(stream, buffers[i].pEvents)))
              WARN("Failed to push transform events, hr %#lx\n", hr);
@@ -1605,7 +1532,7 @@ index fb8a29a640c..12a4fadd0ef 100644
              continue;
  
          if (SUCCEEDED(hr))
-@@ -3897,6 +3893,8 @@ static HRESULT transform_node_push_sample(const struct media_session *session, s
+@@ -3880,6 +3880,8 @@ static HRESULT transform_node_push_sample(const struct media_session *session, s
      if (sample)
      {
          hr = IMFTransform_ProcessInput(transform, id, sample, 0);
@@ -1614,7 +1541,7 @@ index fb8a29a640c..12a4fadd0ef 100644
          if (hr == MF_E_NOTACCEPTING)
              hr = transform_stream_push_sample(stream, sample);
      }
-@@ -3914,6 +3912,7 @@ static HRESULT transform_node_push_sample(const struct media_session *session, s
+@@ -3897,6 +3899,7 @@ static HRESULT transform_node_push_sample(const struct media_session *session, s
  static void session_deliver_sample_to_node(struct media_session *session, struct topo_node *topo_node, unsigned int input,
          IMFSample *sample);
  static void transform_node_deliver_samples(struct media_session *session, struct topo_node *topo_node);
@@ -1622,7 +1549,7 @@ index fb8a29a640c..12a4fadd0ef 100644
  
  static HRESULT transform_node_handle_format_change(struct media_session *session, struct topo_node *topo_node,
          UINT input, IMFMediaType *media_type)
-@@ -3934,8 +3933,7 @@ static HRESULT transform_node_handle_format_change(struct media_session *session
+@@ -3917,8 +3920,7 @@ static HRESULT transform_node_handle_format_change(struct media_session *session
          IMFAttributes_Release(attributes);
      }
  
@@ -1632,7 +1559,7 @@ index fb8a29a640c..12a4fadd0ef 100644
      {
          if (SUCCEEDED(hr = IMFTransform_ProcessMessage(transform, MFT_MESSAGE_COMMAND_DRAIN, id)))
          {
-@@ -4048,13 +4046,19 @@ static void transform_node_deliver_samples(struct media_session *session, struct
+@@ -4031,13 +4033,19 @@ static void transform_node_deliver_samples(struct media_session *session, struct
  
              if (FAILED(hr = transform_stream_pop_event(stream, &event)))
              {
@@ -1653,7 +1580,7 @@ index fb8a29a640c..12a4fadd0ef 100644
              }
  
              if (FAILED(hr = transform_stream_handle_event(session, stream, down_node, input, event)))
-@@ -4071,7 +4075,7 @@ static void transform_node_deliver_samples(struct media_session *session, struct
+@@ -4054,7 +4062,7 @@ static void transform_node_deliver_samples(struct media_session *session, struct
          }
      }
  
@@ -1662,7 +1589,7 @@ index fb8a29a640c..12a4fadd0ef 100644
      {
          struct transform_stream *stream;
  
-@@ -4102,9 +4106,9 @@ static void session_deliver_sample_to_node(struct media_session *session, struct
+@@ -4085,9 +4093,9 @@ static void session_deliver_sample_to_node(struct media_session *session, struct
      switch (topo_node->type)
      {
          case MF_TOPOLOGY_OUTPUT_NODE:
@@ -1674,7 +1601,7 @@ index fb8a29a640c..12a4fadd0ef 100644
                  {
                      if (SUCCEEDED(hr = IMFStreamSink_ProcessSample(topo_node->object.sink_stream, sample)))
                      {
-@@ -4116,21 +4120,25 @@ static void session_deliver_sample_to_node(struct media_session *session, struct
+@@ -4099,21 +4107,25 @@ static void session_deliver_sample_to_node(struct media_session *session, struct
                          IMFMediaEventQueue_QueueEventParamVar(session->event_queue, MEError, &GUID_NULL, hr, NULL);
                      }
                  }
@@ -1710,7 +1637,7 @@ index fb8a29a640c..12a4fadd0ef 100644
              break;
          case MF_TOPOLOGY_TEE_NODE:
              FIXME("Unhandled downstream node type %d.\n", topo_node->type);
-@@ -4145,15 +4153,16 @@ static void session_deliver_pending_samples(struct media_session *session, struc
+@@ -4128,15 +4140,16 @@ static void session_deliver_pending_samples(struct media_session *session, struc
      switch (topo_node->type)
      {
          case MF_TOPOLOGY_TRANSFORM_NODE:
@@ -1729,7 +1656,7 @@ index fb8a29a640c..12a4fadd0ef 100644
  static HRESULT session_request_sample_from_node(struct media_session *session, struct topo_node *topo_node, DWORD output)
  {
      struct topo_node *down_node;
-@@ -4164,12 +4173,28 @@ static HRESULT session_request_sample_from_node(struct media_session *session, s
+@@ -4147,12 +4160,28 @@ static HRESULT session_request_sample_from_node(struct media_session *session, s
      {
          case MF_TOPOLOGY_SOURCESTREAM_NODE:
              if (FAILED(hr = IMFMediaStream_RequestSample(topo_node->object.source_stream, NULL)))
@@ -1759,7 +1686,7 @@ index fb8a29a640c..12a4fadd0ef 100644
  
              if (!(down_node = session_get_topo_node_output(session, topo_node, output, &input)))
              {
-@@ -4177,22 +4202,17 @@ static HRESULT session_request_sample_from_node(struct media_session *session, s
+@@ -4160,22 +4189,17 @@ static HRESULT session_request_sample_from_node(struct media_session *session, s
                  break;
              }
  
@@ -1786,7 +1713,7 @@ index fb8a29a640c..12a4fadd0ef 100644
              break;
          }
          case MF_TOPOLOGY_TEE_NODE:
-@@ -4397,6 +4417,28 @@ static void session_handle_end_of_presentation(struct media_session *session, IM
+@@ -4380,6 +4404,28 @@ static void session_handle_end_of_presentation(struct media_session *session, IM
      }
  }
  
@@ -1815,7 +1742,7 @@ index fb8a29a640c..12a4fadd0ef 100644
  static void session_sink_stream_marker(struct media_session *session, IMFStreamSink *stream_sink)
  {
      struct topo_node *node;
-@@ -4410,7 +4452,9 @@ static void session_sink_stream_marker(struct media_session *session, IMFStreamS
+@@ -4393,7 +4439,9 @@ static void session_sink_stream_marker(struct media_session *session, IMFStreamS
  
      node->flags |= TOPO_NODE_END_OF_STREAM;
  
@@ -1826,7 +1753,7 @@ index fb8a29a640c..12a4fadd0ef 100644
              session_nodes_is_mask_set(session, MF_TOPOLOGY_OUTPUT_NODE, TOPO_NODE_END_OF_STREAM))
      {
          session_set_topo_status(session, S_OK, MF_TOPOSTATUS_ENDED);
-@@ -4739,6 +4783,9 @@ static HRESULT WINAPI session_events_callback_Invoke(IMFAsyncCallback *iface, IM
+@@ -4725,6 +4773,9 @@ static HRESULT WINAPI session_events_callback_Invoke(IMFAsyncCallback *iface, IM
  
  failed:
  
@@ -1836,7 +1763,7 @@ index fb8a29a640c..12a4fadd0ef 100644
      if (FAILED(hr = IMFMediaEventGenerator_BeginGetEvent(event_source, iface, (IUnknown *)event_source)))
      {
          if (hr == MF_E_SHUTDOWN && session_get_media_source(session, (IMFMediaSource *)event_source))
-@@ -4752,6 +4799,7 @@ failed:
+@@ -4738,6 +4789,7 @@ failed:
          }
      }
  
@@ -1845,10 +1772,10 @@ index fb8a29a640c..12a4fadd0ef 100644
          IMFMediaEvent_Release(event);
  
 diff --git a/dlls/mf/topology_loader.c b/dlls/mf/topology_loader.c
-index 5a1a9c4a755..bed12bbc673 100644
+index a07249cf..6d564840 100644
 --- a/dlls/mf/topology_loader.c
 +++ b/dlls/mf/topology_loader.c
-@@ -828,13 +828,32 @@ static HRESULT topology_branch_connect_optional_chain(IMFTopology *topology, str
+@@ -825,13 +825,32 @@ static HRESULT topology_branch_connect_optional_chain(IMFTopology *topology, str
  
          if (SUCCEEDED(hr = topology_branch_create_optional(topology, current, node, stream, &up_branch, &down_branch)))
          {
@@ -1882,7 +1809,7 @@ index 5a1a9c4a755..bed12bbc673 100644
              topology_branch_destroy(down_branch);
              topology_branch_destroy(up_branch);
          }
-@@ -986,6 +1005,29 @@ static HRESULT topology_loader_connect_copier(IMFTopology *topology, IMFTopology
+@@ -983,6 +1002,29 @@ static HRESULT topology_loader_connect_copier(IMFTopology *topology, IMFTopology
      return S_OK;
  }
  
@@ -1912,7 +1839,7 @@ index 5a1a9c4a755..bed12bbc673 100644
  HRESULT topology_node_set_device_manager(IMFTopologyNode *node, IUnknown *device_manager)
  {
      IMFTransform *transform;
-@@ -1038,16 +1080,36 @@ static HRESULT topology_loader_connect_d3d_aware_sink(IMFTopology *topology,
+@@ -1035,16 +1077,36 @@ static HRESULT topology_loader_connect_d3d_aware_sink(IMFTopology *topology,
          IMFTopologyNode *node, MFTOPOLOGY_DXVA_MODE dxva_mode)
  {
      IMFTopologyNode *upstream_node;
@@ -1950,7 +1877,7 @@ index 5a1a9c4a755..bed12bbc673 100644
      {
          if (SUCCEEDED(IMFTopologyNode_GetInput(node, 0, &upstream_node, &upstream_output)))
          {
-@@ -1062,6 +1124,9 @@ static HRESULT topology_loader_connect_d3d_aware_sink(IMFTopology *topology,
+@@ -1059,6 +1121,9 @@ static HRESULT topology_loader_connect_d3d_aware_sink(IMFTopology *topology,
                          || !(info.dwFlags & (MFT_OUTPUT_STREAM_CAN_PROVIDE_SAMPLES | MFT_OUTPUT_STREAM_PROVIDES_SAMPLES)))
                      needs_copier = FALSE;
  
@@ -1961,7 +1888,7 @@ index 5a1a9c4a755..bed12bbc673 100644
              }
  
 diff --git a/dlls/mfmediaengine/main.c b/dlls/mfmediaengine/main.c
-index 02359ff4dc8..63241f1ad02 100644
+index 4b5c9df6..a33d476a 100644
 --- a/dlls/mfmediaengine/main.c
 +++ b/dlls/mfmediaengine/main.c
 @@ -100,6 +100,7 @@ enum media_engine_flags
@@ -1972,15 +1899,21 @@ index 02359ff4dc8..63241f1ad02 100644
  };
  
  struct vec3
-@@ -816,6 +817,31 @@ static unsigned int get_gcd(unsigned int a, unsigned int b)
+@@ -815,55 +816,93 @@ static unsigned int get_gcd(unsigned int a, unsigned int b)
      return a;
  }
  
+-static void media_engine_get_frame_size(struct media_engine *engine, IMFTopology *topology)
 +static HRESULT media_engine_set_frame_size_from_media_type(struct media_engine *engine, IMFMediaType *media_type)
-+{
-+    UINT64 size;
-+    HRESULT hr;
-+
+ {
+-    IMFMediaTypeHandler *handler;
+-    IMFMediaType *media_type;
+-    IMFStreamDescriptor *sd;
+-    IMFTopologyNode *node;
+-    unsigned int gcd;
+     UINT64 size;
+     HRESULT hr;
+ 
 +    if (FAILED(hr = IMFMediaType_GetUINT64(media_type, &MF_MT_FRAME_SIZE, &size)))
 +        return hr;
 +
@@ -2001,48 +1934,72 @@ index 02359ff4dc8..63241f1ad02 100644
 +    return S_OK;
 +}
 +
- static void media_engine_get_frame_size(struct media_engine *engine)
- {
-     IMFMediaTypeHandler *handler;
-@@ -831,28 +857,52 @@ static void media_engine_get_frame_size(struct media_engine *engine)
-     {
-         if (SUCCEEDED(IMFMediaTypeHandler_GetCurrentMediaType(handler, &media_type)))
-         {
--            UINT64 size;
--            HRESULT hr = IMFMediaType_GetUINT64(media_type, &MF_MT_FRAME_SIZE, &size);
--            if (SUCCEEDED(hr))
--            {
--                unsigned int gcd;
--                engine->video_frame.size.cx = size >> 32;
--                engine->video_frame.size.cy = size;
++static void media_engine_get_frame_size(struct media_engine *engine)
++{
++    IMFMediaTypeHandler *handler;
++    IMFMediaType *media_type;
++
+     engine->video_frame.size.cx = 0;
+     engine->video_frame.size.cy = 0;
+     engine->video_frame.ratio.cx = 1;
+     engine->video_frame.ratio.cy = 1;
+ 
+-    if (FAILED(IMFTopology_GetNodeByID(topology, engine->video_frame.node_id, &node)))
+-        return;
+-
+-    hr = IMFTopologyNode_GetUnknown(node, &MF_TOPONODE_STREAM_DESCRIPTOR,
+-            &IID_IMFStreamDescriptor, (void **)&sd);
+-    IMFTopologyNode_Release(node);
+-    if (FAILED(hr))
+-        return;
++    if (engine->presentation.frame_sink &&
++                SUCCEEDED(video_frame_sink_query_iface(engine->presentation.frame_sink, &IID_IMFMediaTypeHandler, (void**)&handler)))
++    {
++        if (SUCCEEDED(IMFMediaTypeHandler_GetCurrentMediaType(handler, &media_type)))
++        {
 +            HRESULT hr = media_engine_set_frame_size_from_media_type(engine, media_type);
 +            if (FAILED(hr))
 +                WARN("Failed to get frame size from sink type %#lx.\n", hr);
  
--                if ((gcd = get_gcd(engine->video_frame.size.cx, engine->video_frame.size.cy)))
+-    hr = IMFStreamDescriptor_GetMediaTypeHandler(sd, &handler);
+-    IMFStreamDescriptor_Release(sd);
+-    if (FAILED(hr))
+-        return;
 +            IMFMediaType_Release(media_type);
 +        }
 +        IMFMediaTypeHandler_Release(handler);
 +    }
-+
+ 
+-    hr = IMFMediaTypeHandler_GetCurrentMediaType(handler, &media_type);
+-    IMFMediaTypeHandler_Release(handler);
+-    if (FAILED(hr))
 +    if (!engine->video_frame.size.cx && !engine->video_frame.size.cy && engine->presentation.pd)
-+    {
+     {
+-        WARN("Failed to get current media type %#lx.\n", hr);
+-        return;
+-    }
 +        DWORD stream_count = 0, i;
-+
+ 
+-    IMFMediaType_GetUINT64(media_type, &MF_MT_FRAME_SIZE, &size);
 +        if (FAILED(IMFPresentationDescriptor_GetStreamDescriptorCount(engine->presentation.pd, &stream_count)))
 +            return;
-+
+ 
+-    engine->video_frame.size.cx = size >> 32;
+-    engine->video_frame.size.cy = size;
 +        for (i = 0; i < stream_count; ++i)
 +        {
 +            IMFStreamDescriptor *sd;
 +            BOOL selected;
-+
+ 
+-    if ((gcd = get_gcd(engine->video_frame.size.cx, engine->video_frame.size.cy)))
+-    {
+-        engine->video_frame.ratio.cx = engine->video_frame.size.cx / gcd;
+-        engine->video_frame.ratio.cy = engine->video_frame.size.cy / gcd;
+-    }
 +            if (SUCCEEDED(IMFPresentationDescriptor_GetStreamDescriptorByIndex(engine->presentation.pd, i, &selected, &sd)))
 +            {
 +                if (selected && SUCCEEDED(IMFStreamDescriptor_GetMediaTypeHandler(sd, &handler)))
-                 {
--                    engine->video_frame.ratio.cx = engine->video_frame.size.cx / gcd;
--                    engine->video_frame.ratio.cy = engine->video_frame.size.cy / gcd;
++                {
 +                    GUID major = {0};
 +
 +                    if (SUCCEEDED(IMFMediaTypeHandler_GetMajorType(handler, &major))
@@ -2056,24 +2013,20 @@ index 02359ff4dc8..63241f1ad02 100644
 +                    }
 +
 +                    IMFMediaTypeHandler_Release(handler);
-                 }
--            }
--            else
--            {
--                WARN("Failed to get frame size %#lx.\n", hr);
-+
-+                IMFStreamDescriptor_Release(sd);
-             }
++                }
  
--            IMFMediaType_Release(media_type);
+-    IMFMediaType_Release(media_type);
++                IMFStreamDescriptor_Release(sd);
++            }
++
 +            if (engine->video_frame.size.cx || engine->video_frame.size.cy)
 +                break;
-         }
--        IMFMediaTypeHandler_Release(handler);
-     }
++        }
++    }
  }
  
-@@ -935,6 +985,7 @@ static HRESULT WINAPI media_engine_session_events_Invoke(IMFAsyncCallback *iface
+ static void media_engine_apply_volume(const struct media_engine *engine)
+@@ -945,6 +984,7 @@ static HRESULT WINAPI media_engine_session_events_Invoke(IMFAsyncCallback *iface
  {
      struct media_engine *engine = impl_from_session_events_IMFAsyncCallback(iface);
      BOOL playing_event, ended_event = FALSE;
@@ -2081,7 +2034,41 @@ index 02359ff4dc8..63241f1ad02 100644
      IMFMediaEvent *event = NULL;
      MediaEventType event_type;
      PROPVARIANT rate;
-@@ -1005,7 +1056,13 @@ static HRESULT WINAPI media_engine_session_events_Invoke(IMFAsyncCallback *iface
+@@ -973,32 +1013,19 @@ static HRESULT WINAPI media_engine_session_events_Invoke(IMFAsyncCallback *iface
+         case MESessionTopologyStatus:
+         {
+             UINT32 topo_status = 0;
+-            IMFTopology *topology;
+             PROPVARIANT value;
+ 
+             IMFMediaEvent_GetUINT32(event, &MF_EVENT_TOPOLOGY_STATUS, &topo_status);
+             if (topo_status != MF_TOPOSTATUS_READY)
+                 break;
+ 
+-            value.vt = VT_EMPTY;
+-            if (FAILED(IMFMediaEvent_GetValue(event, &value)))
+-                break;
+-
+-            if (value.vt != VT_UNKNOWN)
+-            {
+-                PropVariantClear(&value);
+-                break;
+-            }
+-
+-            topology = (IMFTopology *)value.punkVal;
+-
+             EnterCriticalSection(&engine->cs);
+ 
+             media_engine_apply_volume(engine);
+ 
+             engine->ready_state = MF_MEDIA_ENGINE_READY_HAVE_METADATA;
+ 
+-            media_engine_get_frame_size(engine, topology);
++            media_engine_get_frame_size(engine);
+ 
+             IMFMediaEngineNotify_EventNotify(engine->callback, MF_MEDIA_ENGINE_EVENT_DURATIONCHANGE, 0, 0);
+             IMFMediaEngineNotify_EventNotify(engine->callback, MF_MEDIA_ENGINE_EVENT_LOADEDMETADATA, 0, 0);
+@@ -1028,7 +1055,13 @@ static HRESULT WINAPI media_engine_session_events_Invoke(IMFAsyncCallback *iface
                      media_engine_set_current_time(engine, engine->next_seek);
              }
  
@@ -2096,7 +2083,7 @@ index 02359ff4dc8..63241f1ad02 100644
              LeaveCriticalSection(&engine->cs);
              if (playing_event)
                  IMFMediaEngineNotify_EventNotify(engine->callback, MF_MEDIA_ENGINE_EVENT_PLAYING, 0, 0);
-@@ -1049,7 +1106,10 @@ static HRESULT WINAPI media_engine_session_events_Invoke(IMFAsyncCallback *iface
+@@ -1072,7 +1105,10 @@ static HRESULT WINAPI media_engine_session_events_Invoke(IMFAsyncCallback *iface
                      /* Scrubbing is complete */
                      media_engine_set_flag(engine, FLAGS_ENGINE_SCRUBBING, FALSE);
                      if (engine->flags & FLAGS_ENGINE_PLAY_PENDING)
@@ -2107,7 +2094,7 @@ index 02359ff4dc8..63241f1ad02 100644
                  }
              }
              LeaveCriticalSection(&engine->cs);
-@@ -1068,6 +1128,17 @@ static HRESULT WINAPI media_engine_session_events_Invoke(IMFAsyncCallback *iface
+@@ -1091,6 +1127,17 @@ static HRESULT WINAPI media_engine_session_events_Invoke(IMFAsyncCallback *iface
              EnterCriticalSection(&engine->cs);
              if (engine->flags & FLAGS_ENGINE_SCRUBBING)
                  media_engine_set_rate(engine, FALSE, engine->default_playback_rate);
@@ -2125,7 +2112,7 @@ index 02359ff4dc8..63241f1ad02 100644
              LeaveCriticalSection(&engine->cs);
              break;
      }
-@@ -1521,7 +1592,7 @@ static HRESULT WINAPI media_engine_load_handler_Invoke(IMFAsyncCallback *iface,
+@@ -1527,7 +1574,7 @@ static HRESULT WINAPI media_engine_load_handler_Invoke(IMFAsyncCallback *iface,
      engine->network_state = MF_MEDIA_ENGINE_NETWORK_LOADING;
      IMFMediaEngineNotify_EventNotify(engine->callback, MF_MEDIA_ENGINE_EVENT_LOADSTART, 0, 0);
  
@@ -2134,7 +2121,7 @@ index 02359ff4dc8..63241f1ad02 100644
      media_engine_set_flag(engine, FLAGS_ENGINE_SOURCE_PENDING | FLAGS_ENGINE_PLAY_PENDING, FALSE);
  
      if (engine->extension)
-@@ -1808,10 +1879,17 @@ static HRESULT WINAPI media_engine_GetCurrentSource(IMFMediaEngineEx *iface, BST
+@@ -1814,10 +1861,17 @@ static HRESULT WINAPI media_engine_GetCurrentSource(IMFMediaEngineEx *iface, BST
  static USHORT WINAPI media_engine_GetNetworkState(IMFMediaEngineEx *iface)
  {
      struct media_engine *engine = impl_from_IMFMediaEngineEx(iface);
@@ -2154,7 +2141,7 @@ index 02359ff4dc8..63241f1ad02 100644
  }
  
  static MF_MEDIA_ENGINE_PRELOAD WINAPI media_engine_GetPreload(IMFMediaEngineEx *iface)
-@@ -1910,10 +1988,9 @@ static USHORT WINAPI media_engine_GetReadyState(IMFMediaEngineEx *iface)
+@@ -1916,10 +1970,9 @@ static USHORT WINAPI media_engine_GetReadyState(IMFMediaEngineEx *iface)
      struct media_engine *engine = impl_from_IMFMediaEngineEx(iface);
      unsigned short state;
  
@@ -2166,7 +2153,7 @@ index 02359ff4dc8..63241f1ad02 100644
      LeaveCriticalSection(&engine->cs);
  
      return state;
-@@ -1932,8 +2009,6 @@ static double WINAPI media_engine_GetCurrentTime(IMFMediaEngineEx *iface)
+@@ -1938,8 +1991,6 @@ static double WINAPI media_engine_GetCurrentTime(IMFMediaEngineEx *iface)
      double ret = 0.0;
      MFTIME clocktime;
  
@@ -2175,7 +2162,7 @@ index 02359ff4dc8..63241f1ad02 100644
      EnterCriticalSection(&engine->cs);
      if (engine->flags & FLAGS_ENGINE_IS_ENDED)
      {
-@@ -1947,6 +2022,10 @@ static double WINAPI media_engine_GetCurrentTime(IMFMediaEngineEx *iface)
+@@ -1953,6 +2004,10 @@ static double WINAPI media_engine_GetCurrentTime(IMFMediaEngineEx *iface)
      {
          ret = mftime_to_seconds(clocktime);
      }
@@ -2186,31 +2173,7 @@ index 02359ff4dc8..63241f1ad02 100644
      LeaveCriticalSection(&engine->cs);
  
      return ret;
-@@ -1968,23 +2047,6 @@ static HRESULT media_engine_set_current_time(struct media_engine *engine, double
-         return S_OK;
-     }
- 
--    /* HACK: Don't seek if the time delta is too small. */
--    do
--    {
--        const char *game_id = getenv("SteamGameId");
--        MFTIME clocktime;
--
--        if (game_id && !strcmp(game_id, "3185890"))
--        {
--            if (IMFMediaEngineEx_IsPaused(&engine->IMFMediaEngineEx_iface)
--                    || FAILED(IMFPresentationClock_GetTime(engine->clock, &clocktime)))
--                break;
--
--            if (fabs(mftime_to_seconds(clocktime) - seektime) < 0.01)
--                return S_OK;
--        }
--    } while(0);
--
-     engine->next_seek = NAN;
- 
-     position.vt = VT_I8;
-@@ -2053,10 +2115,9 @@ static BOOL WINAPI media_engine_IsPaused(IMFMediaEngineEx *iface)
+@@ -2042,10 +2097,9 @@ static BOOL WINAPI media_engine_IsPaused(IMFMediaEngineEx *iface)
      struct media_engine *engine = impl_from_IMFMediaEngineEx(iface);
      BOOL value;
  
@@ -2222,7 +2185,7 @@ index 02359ff4dc8..63241f1ad02 100644
      LeaveCriticalSection(&engine->cs);
  
      return value;
-@@ -2255,9 +2316,9 @@ static HRESULT WINAPI media_engine_Play(IMFMediaEngineEx *iface)
+@@ -2244,9 +2298,9 @@ static HRESULT WINAPI media_engine_Play(IMFMediaEngineEx *iface)
      struct media_engine *engine = impl_from_IMFMediaEngineEx(iface);
      HRESULT hr = S_OK;
  
@@ -2234,7 +2197,7 @@ index 02359ff4dc8..63241f1ad02 100644
  
      if (engine->flags & FLAGS_ENGINE_SHUT_DOWN)
          hr = MF_E_SHUTDOWN;
-@@ -2270,17 +2331,23 @@ static HRESULT WINAPI media_engine_Play(IMFMediaEngineEx *iface)
+@@ -2259,17 +2313,23 @@ static HRESULT WINAPI media_engine_Play(IMFMediaEngineEx *iface)
              media_engine_set_flag(engine, FLAGS_ENGINE_PAUSED | FLAGS_ENGINE_IS_ENDED, FALSE);
              IMFMediaEngineNotify_EventNotify(engine->callback, MF_MEDIA_ENGINE_EVENT_PLAY, 0, 0);
  
@@ -2259,7 +2222,7 @@ index 02359ff4dc8..63241f1ad02 100644
      LeaveCriticalSection(&engine->cs);
  
      return hr;
-@@ -2291,20 +2358,25 @@ static HRESULT WINAPI media_engine_Pause(IMFMediaEngineEx *iface)
+@@ -2280,20 +2340,25 @@ static HRESULT WINAPI media_engine_Pause(IMFMediaEngineEx *iface)
      struct media_engine *engine = impl_from_IMFMediaEngineEx(iface);
      HRESULT hr = S_OK;
  
@@ -2289,7 +2252,7 @@ index 02359ff4dc8..63241f1ad02 100644
  
                  IMFMediaEngineNotify_EventNotify(engine->callback, MF_MEDIA_ENGINE_EVENT_TIMEUPDATE, 0, 0);
                  IMFMediaEngineNotify_EventNotify(engine->callback, MF_MEDIA_ENGINE_EVENT_PAUSE, 0, 0);
-@@ -2314,6 +2386,8 @@ static HRESULT WINAPI media_engine_Pause(IMFMediaEngineEx *iface)
+@@ -2303,6 +2368,8 @@ static HRESULT WINAPI media_engine_Pause(IMFMediaEngineEx *iface)
          IMFMediaEngineNotify_EventNotify(engine->callback, MF_MEDIA_ENGINE_EVENT_PURGEQUEUEDEVENTS, 0, 0);
      }
  
@@ -2299,7 +2262,7 @@ index 02359ff4dc8..63241f1ad02 100644
  
      return hr;
 diff --git a/dlls/mfmediaengine/video_frame_sink.c b/dlls/mfmediaengine/video_frame_sink.c
-index 5f2dcbb8c95..11e3a0a1511 100644
+index 5f2dcbb8..11e3a0a1 100644
 --- a/dlls/mfmediaengine/video_frame_sink.c
 +++ b/dlls/mfmediaengine/video_frame_sink.c
 @@ -385,6 +385,7 @@ static HRESULT WINAPI video_frame_sink_stream_ProcessSample(IMFStreamSink *iface
@@ -2346,18 +2309,18 @@ index 5f2dcbb8c95..11e3a0a1511 100644
  
      LeaveCriticalSection(&sink->cs);
 diff --git a/dlls/mfplat/buffer.c b/dlls/mfplat/buffer.c
-index d94e63e2244..633b64ea0f9 100644
+index 0ab7cd03..421e07b6 100644
 --- a/dlls/mfplat/buffer.c
 +++ b/dlls/mfplat/buffer.c
-@@ -24,6 +24,7 @@
- #include "rtworkq.h"
+@@ -25,6 +25,7 @@
  
  #include "d3d11.h"
+ #include "mfd3d12.h"
 +#include "d3d11_4.h"
  #include "initguid.h"
  #include "d3d9.h"
  #include "evr.h"
-@@ -94,6 +95,33 @@ static void copy_image_nv12(BYTE *dest, LONG dest_stride, const BYTE *src, LONG
+@@ -116,6 +117,33 @@ static void copy_image_nv12(BYTE *dest, LONG dest_stride, const BYTE *src, LONG
      MFCopyImage(dest, dest_stride, src, src_stride, width, lines / 2);
  }
  
@@ -2391,7 +2354,7 @@ index d94e63e2244..633b64ea0f9 100644
  static void copy_image_imc1(BYTE *dest, LONG dest_stride, const BYTE *src, LONG src_stride, DWORD width, DWORD lines)
  {
      MFCopyImage(dest, dest_stride, src, src_stride, width / 2, lines);
-@@ -689,9 +717,62 @@ static HRESULT WINAPI memory_2d_buffer_Lock2DSize(IMF2DBuffer2 *iface, MF2DBuffe
+@@ -726,9 +754,62 @@ static HRESULT WINAPI memory_2d_buffer_Lock2DSize(IMF2DBuffer2 *iface, MF2DBuffe
  
  static HRESULT WINAPI memory_2d_buffer_Copy2DTo(IMF2DBuffer2 *iface, IMF2DBuffer2 *dest_buffer)
  {
@@ -2456,7 +2419,7 @@ index d94e63e2244..633b64ea0f9 100644
  }
  
  static const IMF2DBuffer2Vtbl memory_2d_buffer_vtbl =
-@@ -934,6 +1015,19 @@ static HRESULT WINAPI dxgi_1d_2d_buffer_QueryInterface(IMFMediaBuffer *iface, RE
+@@ -971,6 +1052,19 @@ static HRESULT WINAPI dxgi_1d_2d_buffer_QueryInterface(IMFMediaBuffer *iface, RE
      return S_OK;
  }
  
@@ -2476,7 +2439,7 @@ index d94e63e2244..633b64ea0f9 100644
  static HRESULT dxgi_surface_buffer_create_readback_texture(struct buffer *buffer)
  {
      D3D11_TEXTURE2D_DESC texture_desc;
-@@ -970,6 +1064,7 @@ static HRESULT dxgi_surface_buffer_map(struct buffer *buffer, MF2DBuffer_LockFla
+@@ -1007,6 +1101,7 @@ static HRESULT dxgi_surface_buffer_map(struct buffer *buffer, MF2DBuffer_LockFla
  
      ID3D11Texture2D_GetDevice(buffer->dxgi_surface.texture, &device);
      ID3D11Device_GetImmediateContext(device, &immediate_context);
@@ -2484,7 +2447,7 @@ index d94e63e2244..633b64ea0f9 100644
  
      if (flags == MF2DBuffer_LockFlags_Read || flags == MF2DBuffer_LockFlags_ReadWrite)
      {
-@@ -997,6 +1092,7 @@ static void dxgi_surface_buffer_unmap(struct buffer *buffer, MF2DBuffer_LockFlag
+@@ -1034,6 +1129,7 @@ static void dxgi_surface_buffer_unmap(struct buffer *buffer, MF2DBuffer_LockFlag
  
      ID3D11Texture2D_GetDevice(buffer->dxgi_surface.texture, &device);
      ID3D11Device_GetImmediateContext(device, &immediate_context);
@@ -2492,15 +2455,7 @@ index d94e63e2244..633b64ea0f9 100644
      ID3D11DeviceContext_Unmap(immediate_context, (ID3D11Resource *)buffer->dxgi_surface.rb_texture, 0);
      memset(&buffer->dxgi_surface.map_desc, 0, sizeof(buffer->dxgi_surface.map_desc));
  
-@@ -1004,7 +1100,6 @@ static void dxgi_surface_buffer_unmap(struct buffer *buffer, MF2DBuffer_LockFlag
-     {
-         ID3D11DeviceContext_CopySubresourceRegion(immediate_context, (ID3D11Resource *)buffer->dxgi_surface.texture,
-                 buffer->dxgi_surface.sub_resource_idx, 0, 0, 0, (ID3D11Resource *)buffer->dxgi_surface.rb_texture, 0, NULL);
--        ID3D11DeviceContext_Flush(immediate_context);
-     }
- 
-     ID3D11DeviceContext_Release(immediate_context);
-@@ -1118,7 +1213,7 @@ static HRESULT dxgi_surface_buffer_lock(struct buffer *buffer, MF2DBuffer_LockFl
+@@ -1154,7 +1250,7 @@ static HRESULT dxgi_surface_buffer_lock(struct buffer *buffer, MF2DBuffer_LockFl
          if (buffer_start)
              *buffer_start = *scanline0;
          if (buffer_length)
@@ -2509,7 +2464,7 @@ index d94e63e2244..633b64ea0f9 100644
      }
  
      return hr;
-@@ -1399,10 +1494,14 @@ static p_copy_image_func get_2d_buffer_copy_func(DWORD fourcc)
+@@ -1867,10 +1963,14 @@ static p_copy_image_func get_2d_buffer_copy_func(DWORD fourcc)
          case MAKEFOURCC('I','M','C','2'):
          case MAKEFOURCC('I','M','C','4'):
          case MAKEFOURCC('N','V','1','1'):
@@ -2526,10 +2481,10 @@ index d94e63e2244..633b64ea0f9 100644
          case MAKEFOURCC('N','V','1','2'):
          case MAKEFOURCC('P','0','1','0'):
 diff --git a/dlls/mfplat/main.c b/dlls/mfplat/main.c
-index dd489e3587f..1ea52cd3c24 100644
+index 23fbde30..8834b339 100644
 --- a/dlls/mfplat/main.c
 +++ b/dlls/mfplat/main.c
-@@ -56,6 +56,107 @@
+@@ -55,6 +55,107 @@
  
  WINE_DEFAULT_DEBUG_CHANNEL(mfplat);
  
@@ -2637,7 +2592,7 @@ index dd489e3587f..1ea52cd3c24 100644
  struct local_handler
  {
      struct list entry;
-@@ -6142,10 +6243,26 @@ static HRESULT resolver_create_registered_handler(HKEY hkey, REFIID riid, void *
+@@ -6132,10 +6233,26 @@ static HRESULT resolver_create_registered_handler(HKEY hkey, REFIID riid, void *
      return hr;
  }
  
@@ -2664,7 +2619,7 @@ index dd489e3587f..1ea52cd3c24 100644
      HRESULT hr = E_FAIL;
      unsigned int i, j;
  
-@@ -6203,11 +6320,18 @@ static HRESULT resolver_create_bytestream_handler(IMFByteStream *stream, DWORD f
+@@ -6193,11 +6310,18 @@ static HRESULT resolver_create_bytestream_handler(IMFByteStream *stream, DWORD f
              break;
      }
  
@@ -2683,7 +2638,7 @@ index dd489e3587f..1ea52cd3c24 100644
      static const unsigned char asfmagic[]     = {0x30,0x26,0xb2,0x75,0x8e,0x66,0xcf,0x11,0xa6,0xd9,0x00,0xaa,0x00,0x62,0xce,0x6c};
      static const unsigned char wavmagic[]     = { 'R', 'I', 'F', 'F',0x00,0x00,0x00,0x00, 'W', 'A', 'V', 'E', 'f', 'm', 't', ' '};
      static const unsigned char wavmask[]      = {0xff,0xff,0xff,0xff,0x00,0x00,0x00,0x00,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff};
-@@ -6238,9 +6362,12 @@ static HRESULT resolver_get_bytestream_url_hint(IMFByteStream *stream, WCHAR con
+@@ -6228,9 +6352,12 @@ static HRESULT resolver_get_bytestream_url_hint(IMFByteStream *stream, WCHAR con
          { idv2_3_magic, L".mp3", idv2_3_mask },
      };
      unsigned char buffer[4 * sizeof(unsigned int)], pattern[4 * sizeof(unsigned int)];
@@ -2697,7 +2652,7 @@ index dd489e3587f..1ea52cd3c24 100644
      QWORD position;
      HRESULT hr;
  
-@@ -6264,33 +6391,81 @@ static HRESULT resolver_get_bytestream_url_hint(IMFByteStream *stream, WCHAR con
+@@ -6254,33 +6381,81 @@ static HRESULT resolver_get_bytestream_url_hint(IMFByteStream *stream, WCHAR con
  
      if (FAILED(hr = IMFByteStream_GetCurrentPosition(stream, &position)))
          return hr;
@@ -2795,16 +2750,29 @@ index dd489e3587f..1ea52cd3c24 100644
      if (*url)
          TRACE("Content type guessed as %s from %s.\n", debugstr_w(*url), debugstr_an((char *)buffer, length));
      else
-@@ -6338,11 +6513,25 @@ static HRESULT resolver_get_bytestream_handler(IMFByteStream *stream, const WCHA
+@@ -6295,6 +6470,11 @@ static HRESULT resolver_create_gstreamer_handler(IMFByteStreamHandler **handler)
+     return CoCreateInstance(&CLSID_GStreamerByteStreamHandler, NULL, CLSCTX_INPROC_SERVER, &IID_IMFByteStreamHandler, (void **)handler);
+ }
+ 
++static HRESULT resolver_create_default_handler(IMFByteStreamHandler **handler)
++{
++    return CoCreateInstance(&CLSID_MPEG4ByteStreamHandlerPlugin, NULL, CLSCTX_INPROC_SERVER, &IID_IMFByteStreamHandler, (void **)handler);
++}
++
+ static HRESULT resolver_get_bytestream_handler(IMFByteStream *stream, const WCHAR *url, DWORD flags,
+         IMFByteStreamHandler **handler)
+ {
+@@ -6328,12 +6508,28 @@ static HRESULT resolver_get_bytestream_handler(IMFByteStream *stream, const WCHA
+        this handler for all possible types.
       */
  
-     TRACE( "url_ext %s mimeW %s\n", debugstr_w(url_ext), debugstr_w(mimeW) );
--
++    TRACE( "url_ext %s mimeW %s\n", debugstr_w(url_ext), debugstr_w(mimeW) );
      if (url_ext || mimeW)
      {
          hr = resolver_create_bytestream_handler(stream, flags, mimeW, url_ext, handler);
  
-+        if (FAILED(hr))
+         if (FAILED(hr))
+-            hr = resolver_create_gstreamer_handler(handler);
 +        {
 +            const WCHAR *guessed_ext;
 +
@@ -2819,10 +2787,12 @@ index dd489e3587f..1ea52cd3c24 100644
 +    {
 +        hr = resolver_create_bytestream_handler(stream, flags, NULL, url_ext, handler);
 +
-         if (FAILED(hr))
-             hr = resolver_create_default_handler(handler);
++        if (FAILED(hr))
++            hr = resolver_create_default_handler(handler);
      }
-@@ -7483,11 +7672,19 @@ static HRESULT WINAPI eventqueue_GetEvent(IMFMediaEventQueue *iface, DWORD flags
+ 
+     CoTaskMemFree(mimeW);
+@@ -7472,11 +7668,19 @@ static HRESULT WINAPI eventqueue_GetEvent(IMFMediaEventQueue *iface, DWORD flags
  
  static void queue_notify_subscriber(struct event_queue *queue)
  {
@@ -2844,10 +2814,10 @@ index dd489e3587f..1ea52cd3c24 100644
  
  static HRESULT WINAPI eventqueue_BeginGetEvent(IMFMediaEventQueue *iface, IMFAsyncCallback *callback, IUnknown *state)
 diff --git a/dlls/mfplat/tests/mfplat.c b/dlls/mfplat/tests/mfplat.c
-index 8754118fde7..867821d651f 100644
+index bdf2482e..c76fbd71 100644
 --- a/dlls/mfplat/tests/mfplat.c
 +++ b/dlls/mfplat/tests/mfplat.c
-@@ -1398,7 +1398,7 @@ static void test_source_resolver(void)
+@@ -1722,7 +1722,7 @@ static void test_source_resolver(void)
      ok(hr == S_OK, "Failed to set string value, hr %#lx.\n", hr);
      IMFAttributes_Release(attributes);
  
@@ -2857,7 +2827,7 @@ index 8754118fde7..867821d651f 100644
      hr = IMFSourceResolver_CreateObjectFromByteStream(resolver, stream, NULL, MF_RESOLUTION_MEDIASOURCE, NULL,
              &obj_type, (IUnknown **)&mediasource);
 diff --git a/dlls/rtworkq/queue.c b/dlls/rtworkq/queue.c
-index 144feb98c55..5e28171b8c4 100644
+index 144feb98..5e28171b 100644
 --- a/dlls/rtworkq/queue.c
 +++ b/dlls/rtworkq/queue.c
 @@ -224,6 +224,7 @@ static HRESULT lock_user_queue(DWORD queue)
@@ -2891,7 +2861,7 @@ index 144feb98c55..5e28171b8c4 100644
      return hr;
  }
  
-@@ -816,10 +816,11 @@ static void CALLBACK scheduled_item_cancelable_callback(TP_CALLBACK_INSTANCE *in
+@@ -816,10 +823,11 @@ static void CALLBACK scheduled_item_cancelable_callback(TP_CALLBACK_INSTANCE *in
  static void CALLBACK periodic_item_callback(TP_CALLBACK_INSTANCE *instance, void *context, TP_TIMER *timer)
  {
      struct work_item *item = context;
@@ -2904,5 +2874,3 @@ index 144feb98c55..5e28171b8c4 100644
  
      IUnknown_Release(&item->IUnknown_iface);
  }
---
-2.54.0

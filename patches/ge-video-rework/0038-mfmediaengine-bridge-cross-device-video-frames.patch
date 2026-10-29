@@ -12,16 +12,12 @@ Keep the GPU copy for textures on the same device. For different devices, map
 the Media Foundation 2D buffer for reading and upload the frame through the
 destination texture's own immediate context. This also avoids depending on NT
 shared-resource handle import, which is not available for this path on Wine.
----
- dlls/mfmediaengine/main.c | 117 +++++++++++++++++++++++++++++++++++++++---
- 1 file changed, 112 insertions(+), 5 deletions(-)
-
 diff --git a/dlls/mfmediaengine/main.c b/dlls/mfmediaengine/main.c
-index 4cefe5e8f6f..6caa31f9b84 100644
+index 0c01d9b5..56163366 100644
 --- a/dlls/mfmediaengine/main.c
 +++ b/dlls/mfmediaengine/main.c
-@@ -2995,6 +2995,90 @@ static void media_engine_update_d3d11_frame_surface(ID3D11DeviceContext *context
-     IMFSample_Release(sample);
+@@ -2601,6 +2601,90 @@ static HRESULT get_d3d11_resource_from_sample(IMFSample *sample, ID3D11Texture2D
+     return hr;
  }
  
 +static unsigned int media_engine_get_d3d11_format_size(DXGI_FORMAT format)
@@ -111,7 +107,8 @@ index 4cefe5e8f6f..6caa31f9b84 100644
  static HRESULT media_engine_transfer_d3d11(struct media_engine *engine, ID3D11Texture2D *dst_texture,
          const MFVideoNormalizedRect *src_rect, const RECT *dst_rect, const MFARGB *color)
  {
-@@ -3005,6 +3089,7 @@ static HRESULT media_engine_transfer_d3d11(struct media_engine *engine, ID3D11Te
+@@ -2611,7 +2695,8 @@ static HRESULT media_engine_transfer_d3d11(struct media_engine *engine, ID3D11Te
+     ID3D11Texture2D *src_texture;
      RECT dst_rect_default = {0};
      D3D11_BOX src_box = {0};
 -    ID3D11Device *device;
@@ -120,7 +117,8 @@ index 4cefe5e8f6f..6caa31f9b84 100644
      IMFSample *sample;
      UINT subresource;
      HRESULT hr;
-@@ -3023,8 +3108,10 @@ static HRESULT media_engine_transfer_d3d11(struct media_engine *engine, ID3D11Te
+@@ -2626,9 +2711,11 @@ static HRESULT media_engine_transfer_d3d11(struct media_engine *engine, ID3D11Te
+     if (!video_frame_sink_get_sample(engine->presentation.frame_sink, &sample))
          return MF_E_UNEXPECTED;
      hr = get_d3d11_resource_from_sample(sample, &src_texture, &subresource);
 -    IMFSample_Release(sample);
@@ -132,7 +130,7 @@ index 4cefe5e8f6f..6caa31f9b84 100644
  
      ID3D11Texture2D_GetDesc(src_texture, &src_desc);
      ID3D11Texture2D_GetDesc(dst_texture, &dst_desc);
-@@ -3041,12 +3128,31 @@ static HRESULT media_engine_transfer_d3d11(struct media_engine *engine, ID3D11Te
+@@ -2643,12 +2730,31 @@ static HRESULT media_engine_transfer_d3d11(struct media_engine *engine, ID3D11Te
      if (dst_rect->left + src_box.right - src_box.left > dst_desc.Width ||
              dst_rect->top + src_box.bottom - src_box.top > dst_desc.Height)
      {
@@ -164,7 +162,7 @@ index 4cefe5e8f6f..6caa31f9b84 100644
          ID3D11Texture2D_Release(src_texture);
          return hr;
      }
-@@ -3060,6 +3166,7 @@ static HRESULT media_engine_transfer_d3d11(struct media_engine *engine, ID3D11Te
+@@ -2659,6 +2765,7 @@ static HRESULT media_engine_transfer_d3d11(struct media_engine *engine, ID3D11Te
      ID3D11DeviceContext_Release(context);
  
      media_engine_unlock_d3d_device(engine, device);
@@ -172,5 +170,3 @@ index 4cefe5e8f6f..6caa31f9b84 100644
      ID3D11Texture2D_Release(src_texture);
      return hr;
  }
--- 
-2.51.0

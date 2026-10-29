@@ -21,30 +21,11 @@ file. Check the default stop position and available range too.
 
 Reference: https://github.com/GloriousEggroll/proton-ge-custom/issues/681
 
----
-diff --git a/dlls/winedmo/unix_demuxer.c b/dlls/winedmo/unix_demuxer.c
-index 606e484..d16212c 100644
---- a/dlls/winedmo/unix_demuxer.c
-+++ b/dlls/winedmo/unix_demuxer.c
-@@ -600,6 +600,13 @@ static INT64 get_context_duration( const AVFormatContext *ctx )
- 
-     if (ctx->duration_estimation_method == AVFMT_DURATION_FROM_BITRATE)
-     {
-+        /* MPEG audio without a Xing/VBRI header has no duration other than the
-+         * bitrate estimate. Do not turn a finite, seekable file into a stream
-+         * with no duration or stop position. */
-+        if (ctx->iformat && !strcmp( ctx->iformat->name, "mp3" ) && ctx->pb &&
-+                (ctx->pb->seekable & AVIO_SEEKABLE_NORMAL) && ctx->duration > 0 && avio_size( ctx->pb ) > 0)
-+            return get_user_time( ctx->duration, AV_TIME_BASE_Q );
-+
-         duration = get_asf_header_duration( (AVFormatContext *)ctx );
-         if (duration != AV_NOPTS_VALUE)
-             return duration;
 diff --git a/dlls/quartz/tests/mpegsplit.c b/dlls/quartz/tests/mpegsplit.c
-index 934a66d..910045c 100644
+index 3b8cc34f..46c70c0c 100644
 --- a/dlls/quartz/tests/mpegsplit.c
 +++ b/dlls/quartz/tests/mpegsplit.c
-@@ -1906,12 +1906,13 @@ static void test_streaming(void)
+@@ -1907,12 +1907,13 @@ static void test_streaming(void)
      ok(ret, "Failed to delete file, error %lu.\n", GetLastError());
  }
  
@@ -60,7 +41,7 @@ index 934a66d..910045c 100644
      IMediaSeeking *seeking;
      IFilterGraph2 *graph;
      unsigned int i;
-@@ -1923,14 +1924,18 @@ static void test_large_file(void)
+@@ -1924,14 +1925,18 @@ static void test_large_file(void)
      FILE *f;
  
      GetTempPathW(ARRAY_SIZE(path), path);
@@ -82,7 +63,7 @@ index 934a66d..910045c 100644
          fwrite(buffer, 1000 * sizeof(frame), 1, f);
      fclose(f);
      free(buffer);
-@@ -1942,7 +1947,18 @@ static void test_large_file(void)
+@@ -1943,7 +1948,18 @@ static void test_large_file(void)
      duration = 0xdeadbeef;
      hr = IMediaSeeking_GetDuration(seeking, &duration);
      ok(hr == S_OK, "Got hr %#lx.\n", hr);
@@ -102,7 +83,7 @@ index 934a66d..910045c 100644
  
      IMediaSeeking_Release(seeking);
      IPin_Release(source);
-@@ -2292,7 +2308,9 @@ START_TEST(mpegsplit)
+@@ -2307,7 +2323,9 @@ START_TEST(mpegsplit)
      test_connect_pin();
      test_seeking();
      test_streaming();
@@ -113,3 +94,21 @@ index 934a66d..910045c 100644
      test_video_file();
      test_mpeg_audio_connection(L"test.mpg");
      test_mpeg_audio_connection(L"test2.mpg");
+diff --git a/dlls/winedmo/unix_demuxer.c b/dlls/winedmo/unix_demuxer.c
+index de7caad7..2863be14 100644
+--- a/dlls/winedmo/unix_demuxer.c
++++ b/dlls/winedmo/unix_demuxer.c
+@@ -382,6 +382,13 @@ static INT64 get_context_duration( const AVFormatContext *ctx )
+ 
+     if (ctx->duration_estimation_method == AVFMT_DURATION_FROM_BITRATE)
+     {
++        /* MPEG audio without a Xing/VBRI header has no duration other than the
++         * bitrate estimate. Do not turn a finite, seekable file into a stream
++         * with no duration or stop position. */
++        if (ctx->iformat && !strcmp( ctx->iformat->name, "mp3" ) && ctx->pb &&
++                (ctx->pb->seekable & AVIO_SEEKABLE_NORMAL) && ctx->duration > 0 && avio_size( ctx->pb ) > 0)
++            return get_user_time( ctx->duration, AV_TIME_BASE_Q );
++
+         duration = get_asf_header_duration( (AVFormatContext *)ctx );
+         return duration != AV_NOPTS_VALUE ? duration : AV_NOPTS_VALUE;
+     }

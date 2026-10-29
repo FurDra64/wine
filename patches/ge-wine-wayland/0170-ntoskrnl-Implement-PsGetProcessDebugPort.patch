@@ -9,9 +9,10 @@ diff --git a/dlls/ntoskrnl.exe/ntoskrnl.c b/dlls/ntoskrnl.exe/ntoskrnl.c
 index b4058c07..0edeb41e 100644
 --- a/dlls/ntoskrnl.exe/ntoskrnl.c
 +++ b/dlls/ntoskrnl.exe/ntoskrnl.c
-@@ -2552,6 +2552,9 @@ static void *create_process_object( HANDLE handle )
+@@ -2552,7 +2552,10 @@ static void *create_process_object( HANDLE handle )
      get_process_image_file_name( handle, process );
-     IsWow64Process( handle, &process->wow64 );
+     status = NtQueryInformationProcess( handle, ProcessWow64Information, &process->peb32, sizeof(process->peb32), NULL );
+     if (status) process->peb32 = NULL;
  
 +    status = NtQueryInformationProcess( handle, ProcessDebugPort, &process->debug_port, sizeof(process->debug_port), NULL );
 +    if (status) process->debug_port = 0;
@@ -19,7 +20,7 @@ index b4058c07..0edeb41e 100644
      return process;
  }
  
-@@ -2639,6 +2642,15 @@ LONGLONG WINAPI PsGetProcessCreateTimeQuadPart( PEPROCESS process )
+@@ -2638,6 +2641,15 @@ LONGLONG WINAPI PsGetProcessCreateTimeQuadPart( PEPROCESS process )
      return process->times.CreateTime.QuadPart;
  }
  
@@ -39,14 +40,14 @@ diff --git a/dlls/ntoskrnl.exe/ntoskrnl.exe.spec b/dlls/ntoskrnl.exe/ntoskrnl.ex
 index 785f511d..39fb7d93 100644
 --- a/dlls/ntoskrnl.exe/ntoskrnl.exe.spec
 +++ b/dlls/ntoskrnl.exe/ntoskrnl.exe.spec
-@@ -924,7 +924,7 @@
+@@ -927,7 +927,7 @@
  @ stub PsGetJobSessionId
  @ stub PsGetJobUIRestrictionsClass
  @ stdcall PsGetProcessCreateTimeQuadPart(ptr)
 -@ stub PsGetProcessDebugPort
 +@ stdcall PsGetProcessDebugPort(ptr)
  @ stub PsGetProcessExitProcessCalled
- @ stub PsGetProcessExitStatus
+ @ stdcall PsGetProcessExitStatus(ptr)
  @ stub PsGetProcessExitTime
 diff --git a/dlls/ntoskrnl.exe/ntoskrnl_private.h b/dlls/ntoskrnl.exe/ntoskrnl_private.h
 index 4bbf26c6..309e5fed 100644
@@ -57,6 +58,6 @@ index 4bbf26c6..309e5fed 100644
      PROCESS_BASIC_INFORMATION info;
      KERNEL_USER_TIMES times;
 +    DWORD_PTR debug_port;
-     BOOL wow64;
+     PEB32 *peb32;
      ULONG session_id;
      char image_name[15];

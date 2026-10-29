@@ -32,8 +32,10 @@ diff --git a/dlls/winepulse.drv/pulse.c b/dlls/winepulse.drv/pulse.c
  static struct list g_phys_speakers = LIST_INIT(g_phys_speakers);
  static struct list g_phys_sources = LIST_INIT(g_phys_sources);
  static struct list g_phys_speakers_added = LIST_INIT(g_phys_speakers_added);
-@@ -244,6 +246,22 @@ static int pulse_cond_timedwait_ms(unsigned int timeout_ms)
-     return pthread_cond_timedwait(&pulse_cond, &pulse_mutex, &ts);
+@@ -195,8 +195,24 @@ static int pulse_cond_wait(void)
+ static int pulse_cond_wait(void)
+ {
+     return pthread_cond_wait(&pulse_cond, &pulse_mutex);
  }
  
 +static int g_phys_cond_timedwait_ms(unsigned int timeout_ms)

@@ -12,11 +12,11 @@ past their end and the movie ended at once.
 Report the whole stream as available: earliest 0, latest the graph
 duration. With no seekable filter, return E_NOTIMPL like Windows (the
 existing test was todo_wine).
----
 diff --git a/dlls/quartz/filtergraph.c b/dlls/quartz/filtergraph.c
+index 8a6ea407..7d46869f 100644
 --- a/dlls/quartz/filtergraph.c
 +++ b/dlls/quartz/filtergraph.c
-@@ -2884,14 +2884,26 @@
+@@ -2521,14 +2521,26 @@ static HRESULT WINAPI MediaSeeking_GetPositions(IMediaSeeking *iface,
      return hr;
  }
  
@@ -49,10 +49,11 @@ diff --git a/dlls/quartz/filtergraph.c b/dlls/quartz/filtergraph.c
  
  static HRESULT WINAPI MediaSeeking_SetRate(IMediaSeeking *iface, double dRate)
 diff --git a/dlls/quartz/tests/filtergraph.c b/dlls/quartz/tests/filtergraph.c
+index 3f1b14fa..ac0a9479 100644
 --- a/dlls/quartz/tests/filtergraph.c
 +++ b/dlls/quartz/tests/filtergraph.c
-@@ -4688,7 +4688,7 @@
-     ok(!current, "Got time %s.\n", wine_dbgstr_longlong(time));
+@@ -4683,7 +4683,7 @@ static void test_graph_seeking(void)
+     ok(!current, "Got time %I64d.\n", time);
  
      hr = IMediaSeeking_GetAvailable(seeking, &earliest, &latest);
 -    todo_wine ok(hr == E_NOTIMPL, "Got hr %#lx.\n", hr);
@@ -60,7 +61,7 @@ diff --git a/dlls/quartz/tests/filtergraph.c b/dlls/quartz/tests/filtergraph.c
  
      hr = IMediaSeeking_SetRate(seeking, 1.0);
      ok(hr == S_OK, "Got hr %#lx.\n", hr);
-@@ -4896,6 +4896,14 @@
+@@ -4891,6 +4891,14 @@ static void test_graph_seeking(void)
      ok(hr == E_NOTIMPL, "Got hr %#lx.\n", hr);
      filter1.seek_hr = filter2.seek_hr = S_OK;
  
@@ -75,6 +76,3 @@ diff --git a/dlls/quartz/tests/filtergraph.c b/dlls/quartz/tests/filtergraph.c
      flush_cached_seeking(graph, &filter1);
      flush_cached_seeking(graph, &filter2);
  
--- 
-2.55.0
-

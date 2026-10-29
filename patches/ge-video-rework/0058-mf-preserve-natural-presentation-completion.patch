@@ -24,14 +24,11 @@ Issue: https://github.com/GloriousEggroll/proton-ge-custom/issues/739
 References:
  https://learn.microsoft.com/en-us/windows/win32/medfound/mesessionended
  https://learn.microsoft.com/en-us/windows/win32/medfound/mesessionstopped
----
- dlls/mf/session.c | 6 +++++-
- 1 file changed, 5 insertions(+), 1 deletion(-)
-
 diff --git a/dlls/mf/session.c b/dlls/mf/session.c
+index 32ab0719..de79aa33 100644
 --- a/dlls/mf/session.c
 +++ b/dlls/mf/session.c
-@@ -495,7 +495,6 @@ static HRESULT session_submit_command(struct media_session *session, struct session_op *op)
+@@ -492,7 +492,6 @@ static HRESULT session_submit_command(struct media_session *session, struct sess
      EnterCriticalSection(&session->cs);
      if (SUCCEEDED(hr = session_is_shut_down(session)))
      {
@@ -39,7 +36,7 @@ diff --git a/dlls/mf/session.c b/dlls/mf/session.c
          if (list_empty(&session->commands) && session->command_state == COMMAND_STATE_COMPLETE)
          {
              hr = MFPutWorkItem(MFASYNC_CALLBACK_QUEUE_STANDARD, &session->commands_callback, &op->IUnknown_iface);
-@@ -2875,6 +2874,9 @@ static HRESULT WINAPI session_commands_callback_Invoke(IMFAsyncCallback *iface, IMFAsyncResult *result)
+@@ -2857,6 +2856,9 @@ static HRESULT WINAPI session_commands_callback_Invoke(IMFAsyncCallback *iface,
      assert( session->command_state == COMMAND_STATE_SUBMITTED );
      list_remove(&op->entry);
  
@@ -49,12 +46,12 @@ diff --git a/dlls/mf/session.c b/dlls/mf/session.c
      switch (op->command)
      {
          case SESSION_CMD_CLEAR_TOPOLOGIES:
-@@ -4442,6 +4444,8 @@ static void session_synthesize_end_of_presentation_from_sinks(struct media_session *session)
-     LIST_FOR_EACH_ENTRY(source, &session->presentation.sources, struct media_source, entry)
-         source->flags |= SOURCE_FLAG_END_OF_PRESENTATION;
- 
+@@ -4424,6 +4426,8 @@ static void session_sink_stream_scrub_complete(struct media_session *session, IM
+     if (session->presentation.flags & SESSION_FLAG_SOURCES_SUBSCRIBED &&
+             session_nodes_is_mask_set(session, MF_TOPOLOGY_OUTPUT_NODE, TOPO_NODE_SCRUB_SAMPLE_COMPLETE))
+     {
 +    /* A command may have cleared the ending flag while the sinks were draining. */
 +    session->presentation.flags |= SESSION_FLAG_PRESENTATION_ENDING;
-     session->command_state = COMMAND_STATE_ENDING_STREAMS;
-     if (!source_eop)
-         IMFMediaEventQueue_QueueEventParamVar(session->event_queue, MEEndOfPresentation, &GUID_NULL, S_OK, NULL);
+         IMFMediaEventQueue_QueueEventParamVar(session->event_queue, MESessionScrubSampleComplete, &GUID_NULL, S_OK, NULL);
+         session_nodes_unset_mask(session, MF_TOPOLOGY_OUTPUT_NODE, TOPO_NODE_SCRUB_SAMPLE_COMPLETE);
+     }

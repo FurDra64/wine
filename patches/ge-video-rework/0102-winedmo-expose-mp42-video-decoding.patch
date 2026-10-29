@@ -102,4 +102,89 @@ Decoder DMO in RGB24 (its WMV9 movies already did).
 +        {.type = MEDIATYPE_Video, .subtype = MFVideoFormat_mp42},
      };
      HRESULT hr;
+diff --git a/dlls/mf/tests/transform.c b/dlls/mf/tests/transform.c
+index 08aba899..8d6877e4 100644
+--- a/dlls/mf/tests/transform.c
++++ b/dlls/mf/tests/transform.c
+@@ -67,6 +67,8 @@ DEFINE_MEDIATYPE_GUID(MFVideoFormat_A2B10G10R10, D3DFMT_A2R10G10B10);
+ DEFINE_MEDIATYPE_GUID(MFVideoFormat_P208,MAKEFOURCC('P','2','0','8'));
+ DEFINE_MEDIATYPE_GUID(MFVideoFormat_VC1S,MAKEFOURCC('V','C','1','S'));
+ DEFINE_MEDIATYPE_GUID(MFVideoFormat_mp43,MAKEFOURCC('m','p','4','3'));
++DEFINE_MEDIATYPE_GUID(MFVideoFormat_MP42,MAKEFOURCC('M','P','4','2'));
++DEFINE_MEDIATYPE_GUID(MFVideoFormat_mp42,MAKEFOURCC('m','p','4','2'));
  
+ DEFINE_GUID(mft_output_sample_incomplete,0xffffff,0xffff,0xffff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff);
+ 
+@@ -6704,7 +6706,7 @@ static void test_audio_convert_timestamps(void)
+ 
+ static void test_mp43_decoder(void)
+ {
+-    const GUID *subtypes[] = {&MFVideoFormat_MP43, &MFVideoFormat_mp43};
++    const GUID *subtypes[] = {&MFVideoFormat_MP43, &MFVideoFormat_mp43, &MFVideoFormat_MP42, &MFVideoFormat_mp42};
+     const struct attribute_desc input_desc[] =
+     {
+         ATTR_GUID(MF_MT_MAJOR_TYPE, MFMediaType_Video),
+@@ -6755,7 +6757,7 @@ static void test_mp43_decoder(void)
+         hr = MFTEnumEx(MFT_CATEGORY_VIDEO_DECODER, MFT_ENUM_FLAG_SYNCMFT,
+                 &input_filter, &output_filter, &activates, &count);
+         ok(hr == S_OK, "MFTEnumEx returned %#lx.\n", hr);
+-        ok(count != 0, "No MP43 video decoder found.\n");
++        ok(count != 0, "No MS MPEG-4 video decoder found.\n");
+         if (SUCCEEDED(hr) && count)
+         {
+             hr = IMFActivate_ActivateObject(activates[0], &IID_IMFTransform, (void **)&transform);
+diff --git a/dlls/winedmo/video_decoder.c b/dlls/winedmo/video_decoder.c
+index ba445c0f..f0e0bccb 100644
+--- a/dlls/winedmo/video_decoder.c
++++ b/dlls/winedmo/video_decoder.c
+@@ -2250,6 +2250,10 @@ extern const GUID MEDIASUBTYPE_VC1S;
+ extern const GUID MEDIASUBTYPE_WMV_Unknown;
+ static const GUID MFVideoFormat_mp43 = {MAKEFOURCC('m','p','4','3'), 0x0000, 0x0010,
+         {0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71}};
++static const GUID MFVideoFormat_MP42 = {MAKEFOURCC('M','P','4','2'), 0x0000, 0x0010,
++        {0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71}};
++static const GUID MFVideoFormat_mp42 = {MAKEFOURCC('m','p','4','2'), 0x0000, 0x0010,
++        {0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71}};
+ static const GUID *const wmv_decoder_input_types[] =
+ {
+     &MEDIASUBTYPE_WMV1,
+@@ -2266,6 +2270,8 @@ static const GUID *const wmv_decoder_output_types[] =
+ {
+     &MFVideoFormat_MP43,
+     &MFVideoFormat_mp43,
++    &MFVideoFormat_MP42,
++    &MFVideoFormat_mp42,
+     &MFVideoFormat_NV12,
+     &MFVideoFormat_YV12,
+     &MFVideoFormat_IYUV,
+diff --git a/dlls/wmvdecod/wmvdecod.c b/dlls/wmvdecod/wmvdecod.c
+index 795a85b1..d28ea2c9 100644
+--- a/dlls/wmvdecod/wmvdecod.c
++++ b/dlls/wmvdecod/wmvdecod.c
+@@ -36,6 +36,8 @@ DEFINE_GUID(DMOVideoFormat_RGB565,D3DFMT_R5G6B5,0x524f,0x11ce,0x9f,0x53,0x00,0x2
+ DEFINE_GUID(DMOVideoFormat_RGB555,D3DFMT_X1R5G5B5,0x524f,0x11ce,0x9f,0x53,0x00,0x20,0xaf,0x0b,0xa7,0x70);
+ DEFINE_GUID(DMOVideoFormat_RGB8,D3DFMT_P8,0x524f,0x11ce,0x9f,0x53,0x00,0x20,0xaf,0x0b,0xa7,0x70);
+ DEFINE_MEDIATYPE_GUID(MFVideoFormat_mp43,MAKEFOURCC('m','p','4','3'));
++DEFINE_MEDIATYPE_GUID(MFVideoFormat_MP42,MAKEFOURCC('M','P','4','2'));
++DEFINE_MEDIATYPE_GUID(MFVideoFormat_mp42,MAKEFOURCC('m','p','4','2'));
+ 
+ /***********************************************************************
+  *              DllGetClassObject (wmvdecod.@)
+@@ -71,6 +73,8 @@ HRESULT WINAPI DllRegisterServer(void)
+     {
+         {MFMediaType_Video, MFVideoFormat_MP43},
+         {MFMediaType_Video, MFVideoFormat_mp43},
++        {MFMediaType_Video, MFVideoFormat_MP42},
++        {MFMediaType_Video, MFVideoFormat_mp42},
+         {MFMediaType_Video, MFVideoFormat_YV12},
+         {MFMediaType_Video, MFVideoFormat_YUY2},
+         {MFMediaType_Video, MFVideoFormat_UYVY},
+@@ -115,6 +119,8 @@ HRESULT WINAPI DllRegisterServer(void)
+     if (FAILED(hr = __wine_register_resources()))
+         {.type = MEDIATYPE_Video, .subtype = MFVideoFormat_MP43},
+         {.type = MEDIATYPE_Video, .subtype = MFVideoFormat_mp43},
++        {.type = MEDIATYPE_Video, .subtype = MFVideoFormat_MP42},
++        {.type = MEDIATYPE_Video, .subtype = MFVideoFormat_mp42},
+         return hr;
+     if (FAILED(hr = MFTRegister(CLSID_WMVDecoderMFT, MFT_CATEGORY_VIDEO_DECODER,
+             (WCHAR *)L"WMVideo Decoder MFT", MFT_ENUM_FLAG_SYNCMFT,

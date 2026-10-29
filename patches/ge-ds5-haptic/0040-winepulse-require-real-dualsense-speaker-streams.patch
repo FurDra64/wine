@@ -78,15 +78,12 @@ diff --git a/dlls/winepulse.drv/pulse.c b/dlls/winepulse.drv/pulse.c
              }
          }
          else
-@@ -2756,7 +2770,10 @@ static NTSTATUS pulse_create_stream(void *args)
-     }
+@@ -2405,3 +2405,6 @@ static NTSTATUS pulse_create_stream(void *args)
      else
-     {
 -        hr = pulse_stream_connect(stream, connect_device, haptic_target, stream->period_bytes);
 +        if (dualsense_mono_candidate)
 +            hr = pulse_stream_connect_dualsense_speaker(stream, connect_device, stream->period_bytes);
 +        else
 +            hr = pulse_stream_connect(stream, connect_device, haptic_target, stream->period_bytes);
-     }
      if (SUCCEEDED(hr)) {
          UINT32 unalign;

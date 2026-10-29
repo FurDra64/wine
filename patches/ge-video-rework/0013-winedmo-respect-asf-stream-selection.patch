@@ -14,16 +14,11 @@ stream of each non-video major type by default, report the enabled state
 through IAMStreamSelect::Info(), and switch selection within a media type when
 IAMStreamSelect::Enable() is called. Demux/thread/flush paths then only run
 connected and selected streams.
----
- dlls/winedmo/unix_demuxer.c          |   3 +-
- dlls/winedmo/winedmo_quartz_parser.c | 118 +++++++++++++++++++++++++++++++----
- 2 files changed, 108 insertions(+), 13 deletions(-)
-
 diff --git a/dlls/winedmo/unix_demuxer.c b/dlls/winedmo/unix_demuxer.c
-index 0415b6d0d034a39606870769e9fcd3a677be8ffc..12c1a297312c000cd362bf916cc411030f33cbed 100644
+index 7693999d..d0974cce 100644
 --- a/dlls/winedmo/unix_demuxer.c
 +++ b/dlls/winedmo/unix_demuxer.c
-@@ -1039,9 +1039,10 @@ NTSTATUS demuxer_stream_lang( void *arg )
+@@ -721,9 +721,10 @@ NTSTATUS demuxer_stream_lang( void *arg )
  
      TRACE( "demuxer %p, stream %u\n", demuxer, params->stream );
  
@@ -36,10 +31,10 @@ index 0415b6d0d034a39606870769e9fcd3a677be8ffc..12c1a297312c000cd362bf916cc41103
      return STATUS_SUCCESS;
  }
 diff --git a/dlls/winedmo/winedmo_quartz_parser.c b/dlls/winedmo/winedmo_quartz_parser.c
-index bfd3717bd00031563bcb30b1553c7bf915a170f9..ca0c0dda2a348fc88df2fcdfcb62c268f1600ca8 100644
+index 39544124..1b25747b 100644
 --- a/dlls/winedmo/winedmo_quartz_parser.c
 +++ b/dlls/winedmo/winedmo_quartz_parser.c
-@@ -189,6 +189,7 @@ struct dmo_parser_source
+@@ -188,6 +188,7 @@ struct dmo_parser_source
  
      bool eos;       /* demuxer reached end for this stream */
      bool eos_sent;  /* EndOfStream sent downstream */
@@ -47,7 +42,7 @@ index bfd3717bd00031563bcb30b1553c7bf915a170f9..ca0c0dda2a348fc88df2fcdfcb62c268
  
      SourceSeeking seek;
      HANDLE thread;
-@@ -279,6 +280,24 @@ static inline struct dmo_parser_source *dmo_impl_from_IMediaSeeking(IMediaSeekin
+@@ -273,6 +274,24 @@ static inline struct dmo_parser_source *dmo_impl_from_IMediaSeeking(IMediaSeekin
      return CONTAINING_RECORD(iface, struct dmo_parser_source, seek.IMediaSeeking_iface);
  }
  
@@ -72,7 +67,7 @@ index bfd3717bd00031563bcb30b1553c7bf915a170f9..ca0c0dda2a348fc88df2fcdfcb62c268
  /* ========================================================================
   * winedmo stream callbacks (IAsyncReader bridge)
   * ======================================================================== */
-@@ -556,7 +575,7 @@ static HRESULT WINAPI dmo_seeking_SetPositions(IMediaSeeking *iface,
+@@ -531,7 +550,7 @@ static HRESULT WINAPI dmo_seeking_SetPositions(IMediaSeeking *iface,
      /* Acquire per-pin flushing_cs to ensure no Receive is in progress. */
      for (i = 0; i < filter->source_count; ++i)
      {
@@ -81,7 +76,7 @@ index bfd3717bd00031563bcb30b1553c7bf915a170f9..ca0c0dda2a348fc88df2fcdfcb62c268
              EnterCriticalSection(&filter->sources[i]->flushing_cs);
      }
  
-@@ -590,7 +609,7 @@ static HRESULT WINAPI dmo_seeking_SetPositions(IMediaSeeking *iface,
+@@ -571,7 +590,7 @@ static HRESULT WINAPI dmo_seeking_SetPositions(IMediaSeeking *iface,
      /* Release per-pin locks in reverse order. */
      for (i = filter->source_count; i-- > 0;)
      {
@@ -90,7 +85,7 @@ index bfd3717bd00031563bcb30b1553c7bf915a170f9..ca0c0dda2a348fc88df2fcdfcb62c268
          {
              WakeConditionVariable(&filter->sources[i]->eos_cv);
              WakeConditionVariable(&filter->sources[i]->queue_cv);
-@@ -724,7 +743,7 @@ static HRESULT WINAPI dmo_stream_select_Info(IAMStreamSelect *iface, LONG index,
+@@ -702,7 +721,7 @@ static HRESULT WINAPI dmo_stream_select_Info(IAMStreamSelect *iface, LONG index,
          CopyMediaType(*ppmt, &pin->stream_mt);
      }
      if (flags)
@@ -99,7 +94,7 @@ index bfd3717bd00031563bcb30b1553c7bf915a170f9..ca0c0dda2a348fc88df2fcdfcb62c268
      if (lcid)
          *lcid = 0;
      if (group)
-@@ -749,7 +768,33 @@ static HRESULT WINAPI dmo_stream_select_Info(IAMStreamSelect *iface, LONG index,
+@@ -727,7 +746,33 @@ static HRESULT WINAPI dmo_stream_select_Info(IAMStreamSelect *iface, LONG index,
  
  static HRESULT WINAPI dmo_stream_select_Enable(IAMStreamSelect *iface, LONG index, DWORD flags)
  {
@@ -134,7 +129,7 @@ index bfd3717bd00031563bcb30b1553c7bf915a170f9..ca0c0dda2a348fc88df2fcdfcb62c268
      return S_OK;
  }
  
-@@ -898,6 +943,8 @@ static struct dmo_parser_source *create_dmo_pin(struct dmo_parser *filter,
+@@ -876,6 +921,8 @@ static struct dmo_parser_source *create_dmo_pin(struct dmo_parser *filter,
      pin->flushing_cs.DebugInfo->Spare[0] = (DWORD_PTR)(__FILE__ ": pin.flushing_cs");
      InitializeConditionVariable(&pin->eos_cv);
      CopyMediaType(&pin->stream_mt, mt);
@@ -143,7 +138,7 @@ index bfd3717bd00031563bcb30b1553c7bf915a170f9..ca0c0dda2a348fc88df2fcdfcb62c268
      BaseFilterImpl_IncrementPinVersion(&filter->filter);
  
      filter->sources[filter->source_count++] = pin;
-@@ -926,7 +973,7 @@ static void dmo_parser_wait_for_queue_space(struct dmo_parser *filter)
+@@ -904,7 +951,7 @@ static void dmo_parser_wait_for_queue_space(struct dmo_parser *filter)
      {
          struct dmo_parser_source *pin = filter->sources[i];
  
@@ -152,8 +147,8 @@ index bfd3717bd00031563bcb30b1553c7bf915a170f9..ca0c0dda2a348fc88df2fcdfcb62c268
              continue;
  
          EnterCriticalSection(&pin->queue_cs);
-@@ -1090,7 +1137,7 @@ static DWORD CALLBACK dmo_demux_thread(void *arg)
-         IMediaBuffer_SetLength(&sbuf->IMediaBuffer_iface, needed_size);
+@@ -1042,7 +1089,7 @@ static DWORD CALLBACK dmo_demux_thread(void *arg)
+         pin = filter->sources[stream_idx];
  
          /* Only queue if the pin is connected. */
 -        if (!pin->pin.pin.peer)
@@ -161,7 +156,7 @@ index bfd3717bd00031563bcb30b1553c7bf915a170f9..ca0c0dda2a348fc88df2fcdfcb62c268
          {
              IMediaBuffer_Release(&sbuf->IMediaBuffer_iface);
              continue;
-@@ -1171,7 +1218,7 @@ static void dmo_parser_begin_downstream_flush(struct dmo_parser *filter)
+@@ -1119,7 +1166,7 @@ static void dmo_parser_begin_downstream_flush(struct dmo_parser *filter)
      {
          struct dmo_parser_source *pin = filter->sources[i];
  
@@ -170,7 +165,7 @@ index bfd3717bd00031563bcb30b1553c7bf915a170f9..ca0c0dda2a348fc88df2fcdfcb62c268
              IPin_BeginFlush(pin->pin.pin.peer);
      }
      if (filter->reader)
-@@ -1191,7 +1238,7 @@ static void dmo_parser_end_downstream_flush(struct dmo_parser *filter)
+@@ -1139,7 +1186,7 @@ static void dmo_parser_end_downstream_flush(struct dmo_parser *filter)
      {
          struct dmo_parser_source *pin = filter->sources[i];
  
@@ -179,7 +174,7 @@ index bfd3717bd00031563bcb30b1553c7bf915a170f9..ca0c0dda2a348fc88df2fcdfcb62c268
              IPin_EndFlush(pin->pin.pin.peer);
      }
      if (filter->reader)
-@@ -1455,7 +1502,7 @@ static HRESULT dmo_parser_init_stream(struct strmbase_filter *iface)
+@@ -1387,7 +1434,7 @@ static HRESULT dmo_parser_init_stream(struct strmbase_filter *iface)
      for (i = 0; i < filter->source_count; ++i)
      {
          struct dmo_parser_source *pin = filter->sources[i];
@@ -188,7 +183,7 @@ index bfd3717bd00031563bcb30b1553c7bf915a170f9..ca0c0dda2a348fc88df2fcdfcb62c268
              continue;
          if (FAILED(IMemAllocator_Commit(pin->pin.pAllocator)))
              ERR("Failed to commit allocator for pin %p.\n", pin);
-@@ -1529,7 +1576,7 @@ static HRESULT dmo_parser_stop_stream(struct strmbase_filter *iface)
+@@ -1460,7 +1507,7 @@ static HRESULT dmo_parser_stop_stream(struct strmbase_filter *iface)
      {
          struct dmo_parser_source *pin = filter->sources[i];
  
@@ -197,7 +192,7 @@ index bfd3717bd00031563bcb30b1553c7bf915a170f9..ca0c0dda2a348fc88df2fcdfcb62c268
              continue;
          EnterCriticalSection(&pin->flushing_cs);
          LeaveCriticalSection(&pin->flushing_cs);
-@@ -1578,7 +1625,7 @@ static HRESULT dmo_parser_cleanup_stream(struct strmbase_filter *iface)
+@@ -1508,7 +1555,7 @@ static HRESULT dmo_parser_cleanup_stream(struct strmbase_filter *iface)
      for (i = 0; i < filter->source_count; ++i)
      {
          struct dmo_parser_source *pin = filter->sources[i];
@@ -206,7 +201,7 @@ index bfd3717bd00031563bcb30b1553c7bf915a170f9..ca0c0dda2a348fc88df2fcdfcb62c268
              continue;
          IMemAllocator_Decommit(pin->pin.pAllocator);
          if (pin->thread)
-@@ -2066,8 +2113,42 @@ static const struct strmbase_sink_ops asf_sink_ops =
+@@ -1992,8 +2039,42 @@ static const struct strmbase_sink_ops asf_sink_ops =
  
  static BOOL asf_init_streams(struct dmo_parser *filter, UINT stream_count, INT64 duration)
  {
@@ -249,7 +244,7 @@ index bfd3717bd00031563bcb30b1553c7bf915a170f9..ca0c0dda2a348fc88df2fcdfcb62c268
      for (i = 0; i < stream_count; ++i)
      {
          union winedmo_format *fmt = NULL;
-@@ -2088,6 +2169,16 @@ static BOOL asf_init_streams(struct dmo_parser *filter, UINT stream_count, INT64
+@@ -2014,6 +2095,16 @@ static BOOL asf_init_streams(struct dmo_parser *filter, UINT stream_count, INT64
                  ? sizeof(fmt->audio) + fmt->audio.cbSize
                  : fmt->video.dwSize;
  
@@ -266,7 +261,7 @@ index bfd3717bd00031563bcb30b1553c7bf915a170f9..ca0c0dda2a348fc88df2fcdfcb62c268
          if (IsEqualGUID(&major, &MFMediaType_Video))
              name = L"Video";
          else if (IsEqualGUID(&major, &MFMediaType_Audio))
-@@ -2097,7 +2188,10 @@ static BOOL asf_init_streams(struct dmo_parser *filter, UINT stream_count, INT64
+@@ -2023,7 +2114,10 @@ static BOOL asf_init_streams(struct dmo_parser *filter, UINT stream_count, INT64
  
          if (SUCCEEDED(amt_from_winedmo_demuxer_format(&mt, &major, fmt, fmt_size)))
          {

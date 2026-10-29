@@ -18,19 +18,19 @@ winedmo_transform_set_output_format(), which keeps the decoder state.
 Other dynamic format changes are still ignored, as before.
 
 https://github.com/GloriousEggroll/proton-ge-custom/issues/863
----
 diff --git a/dlls/winedmo/quartz_transform.c b/dlls/winedmo/quartz_transform.c
+index c8de3789..a3c52546 100644
 --- a/dlls/winedmo/quartz_transform.c
 +++ b/dlls/winedmo/quartz_transform.c
-@@ -53,6 +53,7 @@
-     bool have_next_output_time;
-     bool have_video_input;
-     bool have_decoded_output;
+@@ -53,6 +53,7 @@ struct transform_ops
+     HRESULT (*sink_query_accept)(struct transform *filter, const AM_MEDIA_TYPE *mt);
+     HRESULT (*source_query_accept)(struct transform *filter, const AM_MEDIA_TYPE *mt);
+     HRESULT (*source_get_media_type)(struct transform *filter, unsigned int index, AM_MEDIA_TYPE *mt);
 +    bool output_bottom_up;
-     REFERENCE_TIME next_output_time;
+     HRESULT (*source_decide_buffer_size)(struct transform *filter, IMemAllocator *allocator, ALLOCATOR_PROPERTIES *props);
+     HRESULT (*source_qc_notify)(struct transform *filter, IBaseFilter *sender, Quality q);
  };
- 
-@@ -225,7 +226,8 @@
+@@ -182,7 +183,8 @@ static HRESULT transform_init_stream(struct strmbase_filter *iface)
              output_fmt.guidFormat = source_mt->subtype;
              output_fmt.videoInfo.dwWidth = vih->bmiHeader.biWidth;
              output_fmt.videoInfo.dwHeight = abs(vih->bmiHeader.biHeight);
@@ -40,10 +40,10 @@ diff --git a/dlls/winedmo/quartz_transform.c b/dlls/winedmo/quartz_transform.c
                  output_fmt.videoInfo.VideoFlags |= MFVideoFlag_BottomUpLinearRep;
              if (vih->AvgTimePerFrame)
              {
-@@ -437,6 +439,68 @@
-     return S_OK;
- }
- 
+@@ -394,6 +396,68 @@ static HRESULT WINAPI transform_sink_receive(struct strmbase_sink *pin, IMediaSa
+     REFERENCE_TIME start_time = 0, end_time = 0;
+     INT64 pts = INT64_MIN, duration = INT64_MIN;
+     DWORD push_flags = 0, out_flags;
 +/* Allocators such as amstream's DirectDraw stream attach a media type to the
 + * sample to request top-down output into surface memory, while the connected
 + * type stays bottom-up. Follow the requested row order. */
@@ -106,10 +106,10 @@ diff --git a/dlls/winedmo/quartz_transform.c b/dlls/winedmo/quartz_transform.c
 +    DeleteMediaType(mt);
 +}
 +
- static HRESULT transform_drain_output(struct transform *filter, BOOL *delivered, BOOL drain_all)
- {
-     DWORD out_flags;
-@@ -456,6 +520,9 @@
+     UINT32 out_size;
+     NTSTATUS status;
+     BYTE *data;
+@@ -458,6 +522,9 @@ static HRESULT WINAPI transform_sink_receive(struct strmbase_sink *pin, IMediaSa
          if (FAILED(hr))
              return hr;
  

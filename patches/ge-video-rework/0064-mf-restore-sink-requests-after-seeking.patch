@@ -31,16 +31,13 @@ needed.
 Reference:
 https://github.com/GloriousEggroll/proton-ge-custom/issues/792
 
----
- dlls/mf/session.c | 24 ++++++++++++++++++++++++
- 1 file changed, 24 insertions(+)
-
 diff --git a/dlls/mf/session.c b/dlls/mf/session.c
+index 8a2ee72f..48d75983 100644
 --- a/dlls/mf/session.c
 +++ b/dlls/mf/session.c
-@@ -1112,6 +1112,24 @@
- static HRESULT session_get_stream_sink_type(IMFStreamSink *sink, IMFMediaType **media_type);
- static HRESULT session_start_clock(struct media_session *session);
+@@ -1114,6 +1114,24 @@ static void session_flush_sinks(struct media_session *session)
+     }
+ }
  
 +static void session_flush_sinks(struct media_session *session)
 +{
@@ -63,16 +60,16 @@ diff --git a/dlls/mf/session.c b/dlls/mf/session.c
  static void session_flush_nodes(struct media_session *session)
  {
      struct topo_node *node;
-@@ -3331,6 +3349,12 @@
-             }
-             else
-             {
+@@ -3333,6 +3351,12 @@ static void session_set_source_object_state(struct media_session *session, IUnkn
+                 if (SUCCEEDED(hr = session_start_clock(session)))
+                 {
+                     /* If sinks are already started, start session immediately. This can happen when doing a
 +                if (session->presentation.flags & SESSION_FLAG_RESTARTING)
 +                {
 +                    session->presentation.flags &= ~SESSION_FLAG_RESTARTING;
 +                    session_flush_sinks(session);
 +                }
 +
-                 if (SUCCEEDED(hr = session_start_clock(session)))
-                 {
-                     /* If sinks are already started, start session immediately. This can happen when doing a
+                      * seek from SESSION_STATE_STARTED (i.e. a seek without pause/stop) */
+                     if (session_is_output_nodes_state(session, OBJ_STATE_STARTED))
+                         session_set_started(session);

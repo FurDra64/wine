@@ -16,9 +16,10 @@ transform-provided sample allocation unchanged. Extend the session seek
 test to require fresh samples while discarding two preroll outputs.
 
 diff --git a/dlls/mf/session.c b/dlls/mf/session.c
+index 48d75983..07954ab0 100644
 --- a/dlls/mf/session.c
 +++ b/dlls/mf/session.c
-@@ -3839,10 +3839,9 @@
+@@ -3826,10 +3826,9 @@ static HRESULT transform_node_pull_samples(const struct media_session *session,
      if (FAILED(hr = allocate_output_samples(session, node, buffers)))
          goto done;
  
@@ -31,7 +32,7 @@ diff --git a/dlls/mf/session.c b/dlls/mf/session.c
          hr = IMFTransform_ProcessOutput(node->object.transform, 0, node->u.transform.output_count, buffers, &status);
          if (hr == MF_E_TRANSFORM_STREAM_CHANGE && SUCCEEDED(hr = transform_node_format_changed(node, buffers)))
          {
-@@ -3854,8 +3853,17 @@
+@@ -3841,8 +3840,17 @@ static HRESULT transform_node_pull_samples(const struct media_session *session,
  
              hr = IMFTransform_ProcessOutput(node->object.transform, 0, node->u.transform.output_count, buffers, &status);
          }
@@ -48,45 +49,46 @@ diff --git a/dlls/mf/session.c b/dlls/mf/session.c
      }
 -    while (hr == S_OK && transform_node_markin_need_more_input(session, node, buffers));
  
-     if (hr == MF_E_TRANSFORM_NEED_MORE_INPUT)
-         node->flags |= TOPO_NODE_TRANSFORM_NEEDS_INPUT;
+     /* Collect returned samples for all streams. */
+     for (i = 0; i < node->u.transform.output_count; ++i)
 diff --git a/dlls/mf/tests/mf.c b/dlls/mf/tests/mf.c
+index 7e0a1809..31f2bd92 100644
 --- a/dlls/mf/tests/mf.c
 +++ b/dlls/mf/tests/mf.c
-@@ -995,6 +995,7 @@
+@@ -995,6 +995,7 @@ enum object_state
+ #define MAX_OBJECT_STATE 1024
  
-     IMFMediaEventQueue *event_queue;
      BOOL hold_markers;
 +    HANDLE sample_event;
- };
- 
- static struct test_stream_sink *impl_from_IMFStreamSink(IMFStreamSink *iface)
-@@ -1140,6 +1141,7 @@
- 
- static HRESULT WINAPI test_stream_sink_ProcessSample(IMFStreamSink *iface, IMFSample *sample)
+ struct object_state_record
+ {
+     enum object_state states[MAX_OBJECT_STATE];
+@@ -1384,6 +1385,7 @@ static HRESULT WINAPI test_stream_sink_ProcessSample(IMFStreamSink *iface, IMFSa
+ static HRESULT WINAPI test_stream_sink_PlaceMarker(IMFStreamSink *iface, MFSTREAMSINK_MARKER_TYPE marker_type,
+         const PROPVARIANT *marker_value, const PROPVARIANT *context)
  {
 +    struct test_stream_sink *sink = impl_from_IMFStreamSink(iface);
      HRESULT hr;
  
-     if (expect_test_stream_sink_ProcessSample)
-@@ -1149,6 +1151,8 @@
+     if (expect_test_stream_sink_PlaceMarker)
+@@ -1393,6 +1395,8 @@ static HRESULT WINAPI test_stream_sink_PlaceMarker(IMFStreamSink *iface, MFSTREA
  
-     CHECK_EXPECT(test_stream_sink_ProcessSample);
-     add_object_state(&actual_object_state_record, SINK_PROCESS_SAMPLE);
+     CHECK_EXPECT(test_stream_sink_PlaceMarker);
+     add_object_state(&actual_object_state_record, SINK_MARKER);
 +    if (sink->sample_event)
 +        SetEvent(sink->sample_event);
  
      return hr;
  }
-@@ -7915,6 +7919,7 @@
+@@ -10432,6 +10436,7 @@ struct test_transform
      IMFMediaType *output_type;
  
      IMFSample *output;
 +    unsigned int preroll_samples;
  
-     IMFAttributes *attributes;
-     IMFMediaEventQueue *event_queue;
-@@ -8317,7 +8322,21 @@
+     HANDLE flush_event;
+ 
+@@ -10838,7 +10843,21 @@ static HRESULT WINAPI test_transform_ProcessOutput(IMFTransform *iface, DWORD fl
  
      if (expect_test_transform_ProcessOutput)
      {
@@ -109,24 +111,24 @@ diff --git a/dlls/mf/tests/mf.c b/dlls/mf/tests/mf.c
          {
              *status = 0;
              data->pSample = transform->output;
-@@ -8544,6 +8563,8 @@
+@@ -11065,6 +11084,8 @@ static void test_media_session_seek(void)
+     static const struct object_state_record expected_seek_start_no_pending_request_records = {{SOURCE_STOP, MFT_FLUSH, SOURCE_START, SINK_FLUSH, SINK_ON_CLOCK_START}, 5};
+     static const struct object_state_record expected_seek_start_pending_request_records = {{SOURCE_STOP, MFT_FLUSH, SOURCE_START, MFT_PROCESS_OUTPUT, SOURCE_REQUEST_SAMPLE, SINK_FLUSH, SINK_ON_CLOCK_START}, 7};
  
-     IMFClockStateSink test_seek_clock_sink = {&test_seek_clock_sink_vtbl};
-     MFT_OUTPUT_STREAM_INFO output_stream_info = {0};
 +    IMFTopologyNode *transform_node;
 +    struct test_stream_sink *stream_sink;
-     IMFPresentationClock *presentation_clock;
+     IMFTopologyNode *src_node, *mft_node, *sink_node;
+     MFT_OUTPUT_STREAM_INFO output_stream_info = {0};
      struct test_callback *test_callback;
-     struct test_media_sink *media_sink;
-@@ -8558,6 +8579,7 @@
+@@ -11390,6 +11411,7 @@ static void test_media_session_scrubbing(void)
+     IMFMediaType *type;
      IMFTransform *mft;
-     IMFClock *clock;
      UINT32 status;
 +    DWORD wait_result;
      HRESULT hr;
      INT i;
  
-@@ -8584,6 +8606,8 @@
+@@ -11419,6 +11441,8 @@ static void test_media_session_scrubbing(void)
      ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
      hr = IMFMediaType_SetUINT64(type, &MF_MT_FRAME_SIZE, (UINT64)640 << 32 | 480);
      ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
@@ -135,8 +137,8 @@ diff --git a/dlls/mf/tests/mf.c b/dlls/mf/tests/mf.c
      mft = NULL;
      hr = test_transform_create(1, &type, 1, &type, FALSE, FALSE, &mft);
      ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
-@@ -8592,6 +8616,11 @@
- 
+@@ -11434,6 +11458,11 @@ static void test_media_session_scrubbing(void)
+     /* Create and set-up the required topology */
      SET_EXPECT(test_transform_ProcessMessage_BEGIN_STREAMING);
      topology = create_test_topology_unk(source, (IUnknown*)media_sink->stream, (IUnknown*) mft, NULL);
 +    hr = IMFTopology_GetNode(topology, 2, &transform_node);
@@ -147,10 +149,10 @@ diff --git a/dlls/mf/tests/mf.c b/dlls/mf/tests/mf.c
      hr = IMFMediaSession_SetTopology(session, 0, topology);
      ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
      IMFTopology_Release(topology);
-@@ -8722,6 +8751,25 @@
-     flaky
-     compare_object_states(&actual_object_state_record, &expected_seek_start_no_pending_request_records);
+@@ -11564,6 +11593,25 @@ static void test_media_session_scrubbing(void)
  
+     SET_EXPECT(test_media_sink_GetStreamSinkCount);
+     hr = WaitForSingleObject(media_sink->preroll_event, 100);
 +    /* Drop two preroll frames before the seek target. Each retry must receive
 +     * a fresh caller-allocated output sample, even without another input. */
 +    stream_sink = impl_from_IMFStreamSink(media_sink->stream);
@@ -170,6 +172,6 @@ diff --git a/dlls/mf/tests/mf.c b/dlls/mf/tests/mf.c
 +    ok(!test_transform_from_IMFTransform(mft)->preroll_samples, "Preroll output stalled.\n");
 +    test_transform_from_IMFTransform(mft)->preroll_samples = 0;
 +
-     /* Test a sample request only (i.e. with no sample delivery), then pause and then start with a seek */
-     for (i = 0; i < media_source->stream_count; i++)
-         media_source->streams[i]->delay_sample = TRUE;
+     ok(hr == WAIT_OBJECT_0, "Unexpected hr %#lx.\n", hr);
+ 
+     todo_wine

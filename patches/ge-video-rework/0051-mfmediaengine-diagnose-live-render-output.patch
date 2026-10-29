@@ -9,30 +9,27 @@ Record the first four live sample sizes and sparse pixel values, then read
 back the corresponding final render destinations. This distinguishes a
 failed system-memory upload from a later AVPro presentation failure while
 keeping the synchronous diagnostic bounded.
----
- dlls/mfmediaengine/main.c | 50 ++++++++++++++++++++++++++++++++++++++++
- 1 file changed, 50 insertions(+)
-
 diff --git a/dlls/mfmediaengine/main.c b/dlls/mfmediaengine/main.c
+index 3f2243b9..cd587a0a 100644
 --- a/dlls/mfmediaengine/main.c
 +++ b/dlls/mfmediaengine/main.c
-@@ -3133,6 +3133,7 @@ static HRESULT media_engine_get_current_frame_size(struct media_engine *engine,
+@@ -2542,6 +2542,7 @@ static void media_engine_adjust_destination_for_ratio(const struct media_engine
  
  static void media_engine_update_d3d11_frame_surface(ID3D11DeviceContext *context, struct media_engine *engine)
  {
 +    static LONG live_render_upload_count;
      D3D11_TEXTURE2D_DESC surface_desc;
-     D3D11_TEXTURE2D_DESC src_desc;
      IMFMediaBuffer *media_buffer;
-@@ -3140,6 +3141,7 @@ static void media_engine_update_d3d11_frame_surface(ID3D11DeviceContext *context
-     ID3D11Device *device;
      IMFSample *sample;
-     UINT subresource;
-+    LONG diagnostic_id = 0;
-     HRESULT hr;
- 
+@@ -2549,6 +2550,7 @@ static void media_engine_update_d3d11_frame_surface(ID3D11DeviceContext *context
      if (!video_frame_sink_get_sample(engine->presentation.frame_sink, &sample))
-@@ -3178,8 +3180,42 @@ static void media_engine_update_d3d11_frame_surface(ID3D11DeviceContext *context
+         return;
+ 
++    LONG diagnostic_id = 0;
+     ID3D11Texture2D_GetDesc(engine->video_frame.d3d11.source, &surface_desc);
+ 
+     switch (surface_desc.Format)
+@@ -2566,8 +2568,42 @@ static void media_engine_update_d3d11_frame_surface(ID3D11DeviceContext *context
      {
          BYTE *buffer;
          DWORD buffer_size;
@@ -75,7 +72,7 @@ diff --git a/dlls/mfmediaengine/main.c b/dlls/mfmediaengine/main.c
              if (buffer_size == surface_desc.Width * surface_desc.Height)
              {
                  ID3D11DeviceContext_UpdateSubresource(context, (ID3D11Resource *)engine->video_frame.d3d11.source,
-@@ -3606,16 +3642,19 @@ static void media_engine_unlock_d3d_device(struct media_engine *engine, ID3D11De
+@@ -3017,16 +3053,19 @@ static HRESULT media_engine_transfer_to_d3d11_texture(struct media_engine *engin
          const MFVideoNormalizedRect *src_rect, const RECT *dst_rect, const MFARGB *color)
  {
      static const float black[] = {0.0f, 0.0f, 0.0f, 0.0f};
@@ -95,7 +92,7 @@ diff --git a/dlls/mfmediaengine/main.c b/dlls/mfmediaengine/main.c
      HRESULT hr;
      RECT rect;
  
-@@ -3640,6 +3679,8 @@ static HRESULT media_engine_transfer_to_d3d11_texture(struct media_engine *engin
+@@ -3051,6 +3090,8 @@ static HRESULT media_engine_transfer_to_d3d11_texture(struct media_engine *engin
      }
  
      ID3D11Texture2D_GetDesc(texture, &desc);
@@ -104,7 +101,7 @@ diff --git a/dlls/mfmediaengine/main.c b/dlls/mfmediaengine/main.c
  
      if (FAILED(hr = ID3D11Device_CreateRenderTargetView(device, (ID3D11Resource *)texture, NULL, &rtv)))
      {
-@@ -3743,6 +3784,15 @@ static HRESULT media_engine_transfer_to_d3d11_texture(struct media_engine *engin
+@@ -3154,6 +3195,15 @@ static HRESULT media_engine_transfer_to_d3d11_texture(struct media_engine *engin
  
      ID3D11DeviceContext_Draw(context, 4, 0);
  
@@ -120,5 +117,3 @@ diff --git a/dlls/mfmediaengine/main.c b/dlls/mfmediaengine/main.c
      ID3D11RenderTargetView_Release(rtv);
      ID3D11DeviceContext_Release(context);
  
--- 
-2.52.0

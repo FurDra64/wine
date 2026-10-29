@@ -11,18 +11,11 @@ No game-specific media workaround is introduced here; the gameplay-visible fixes
 Rebased 2026-10-30 onto 75fa5bc0: drop ntdll loader GST_LIVE_LATENCY hunk
 (already absent upstream, hacks_init gone); refresh wine.inf.in context
 to current dll list.
----
- dlls/wtsapi32/wtsapi32.c  |  2 +-
- loader/preloader_mac.c    |  4 ++--
- loader/wine.inf.in        |  2 +-
- tools/gitlab/image.docker | 16 ----------------
- 4 files changed, 4 insertions(+), 20 deletions(-)
-
 diff --git a/dlls/wtsapi32/wtsapi32.c b/dlls/wtsapi32/wtsapi32.c
-index 5a1a87f416e..51db5f16b40 100644
+index 5a7e799a..bfb7ddc5 100644
 --- a/dlls/wtsapi32/wtsapi32.c
 +++ b/dlls/wtsapi32/wtsapi32.c
-@@ -796,7 +796,7 @@ BOOL WINAPI WTSUnRegisterSessionNotification(HWND hWnd)
+@@ -795,7 +795,7 @@ BOOL WINAPI WTSUnRegisterSessionNotification(HWND hWnd)
  BOOL WINAPI WTSUnRegisterSessionNotificationEx(HANDLE hServer, HWND hWnd)
  {
      FIXME("Stub %p %p\n", hServer, hWnd);
@@ -32,10 +25,10 @@ index 5a1a87f416e..51db5f16b40 100644
  
  
 diff --git a/loader/preloader_mac.c b/loader/preloader_mac.c
-index e35444fd133..695934610e0 100644
+index e4dd6554..de74f29e 100644
 --- a/loader/preloader_mac.c
 +++ b/loader/preloader_mac.c
-@@ -110,8 +110,8 @@ void __stack_chk_fail(void) { return; }
+@@ -85,8 +85,8 @@ void __stack_chk_fail(void) { return; }
   * dyld4 (starting in Monterey) does not like it to be missing:
   * - running vmmap on a Wine process prints this warning:
   *   "Process exists but has not fully started -- dyld has initialized but libSystem has not"
@@ -47,10 +40,10 @@ index e35444fd133..695934610e0 100644
   *
   * Adding __program_vars fixes those issues, and also allows more of the vars to
 diff --git a/loader/wine.inf.in b/loader/wine.inf.in
+index 9288b580..e70d6d0a 100644
 --- a/loader/wine.inf.in
 +++ b/loader/wine.inf.in
-@@ -713,7 +713,7 @@
- 11,,resampledmo.dll,1
+@@ -714,7 +714,7 @@ HKLM,SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x86,"Version",2,"14.51.362
  11,,urlmon.dll,1
  11,,vidreszr.dll,1
  11,,windowscodecs.dll,1
@@ -60,10 +53,10 @@ diff --git a/loader/wine.inf.in b/loader/wine.inf.in
  11,,winevulkan.dll,1
  55,,winprint.dll,1
 diff --git a/tools/gitlab/image.docker b/tools/gitlab/image.docker
-index eaf19f0cde5..96e3b71a156 100644
+index f6e45275..1a452f64 100644
 --- a/tools/gitlab/image.docker
 +++ b/tools/gitlab/image.docker
-@@ -26,11 +26,6 @@ RUN export DEBIAN_FRONTEND=noninteractive; \
+@@ -25,11 +25,6 @@ RUN export DEBIAN_FRONTEND=noninteractive; \
          fvwm \
          gettext \
          git     \
@@ -75,7 +68,7 @@ index eaf19f0cde5..96e3b71a156 100644
          jq \
          libasound2-dev \
          libasound2-plugins \
-@@ -45,8 +40,6 @@ RUN export DEBIAN_FRONTEND=noninteractive; \
+@@ -44,8 +39,6 @@ RUN export DEBIAN_FRONTEND=noninteractive; \
          libgl1-mesa-dev \
          libgnutls28-dev \
          libgphoto2-dev \
@@ -84,8 +77,8 @@ index eaf19f0cde5..96e3b71a156 100644
          libice-dev \
          libkrb5-dev \
          libpcap-dev \
-@@ -99,11 +92,6 @@ RUN export DEBIAN_FRONTEND=noninteractive; \
-             gcc-mingw-w64-x86-64 \
+@@ -102,11 +95,6 @@ RUN export DEBIAN_FRONTEND=noninteractive; \
+             g++-mingw-w64-x86-64 \
              gcc-multilib \
              libunwind-dev \
 -            gstreamer1.0-libav:i386 \
@@ -96,9 +89,9 @@ index eaf19f0cde5..96e3b71a156 100644
              libasound2-dev:i386 \
              libasound2-plugins:i386 \
              libavcodec-dev:i386 \
-@@ -146,10 +134,6 @@ RUN export DEBIAN_FRONTEND=noninteractive; \
-             mesa-vulkan-drivers:i386 \
+@@ -152,10 +140,6 @@ RUN export DEBIAN_FRONTEND=noninteractive; \
              ocl-icd-opencl-dev:i386 \
+             samba-dev:i386 \
              unixodbc-dev:i386 && \
 -        apt-get download -y libgstreamer-plugins-base1.0-dev:i386 libgstreamer1.0-dev:i386 && \
 -        (for deb in *.deb; do dpkg-deb -x $deb /dpkg; done) && \
@@ -107,5 +100,3 @@ index eaf19f0cde5..96e3b71a156 100644
          curl -L -o /usr/local/bin/sarif-converter https://gitlab.com/ignis-build/sarif-converter/-/releases/permalink/latest/downloads/bin/sarif-converter-linux-amd64 && \
          chmod +x /usr/local/bin/sarif-converter ;; \
      arm64) \
--- 
-2.54.0

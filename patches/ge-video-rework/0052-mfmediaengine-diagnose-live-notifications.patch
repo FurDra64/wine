@@ -8,14 +8,11 @@ AVPro still does not report video readiness. Record the Media Engine startup
 notifications that drive the client's state machine, including the callback
 HRESULT and engine state. Keep the trace limited to live sources and the
 small set of startup events so it does not perturb frame delivery timing.
----
- dlls/mfmediaengine/main.c | 32 +++++++++++++++++++++++---------
- 1 file changed, 23 insertions(+), 9 deletions(-)
-
 diff --git a/dlls/mfmediaengine/main.c b/dlls/mfmediaengine/main.c
+index cd587a0a..08f9b98a 100644
 --- a/dlls/mfmediaengine/main.c
 +++ b/dlls/mfmediaengine/main.c
-@@ -224,6 +224,20 @@ struct media_engine
+@@ -208,6 +208,20 @@ struct media_engine
      CRITICAL_SECTION cs;
  };
  
@@ -36,9 +33,9 @@ diff --git a/dlls/mfmediaengine/main.c b/dlls/mfmediaengine/main.c
  static void media_engine_release_video_frame_resources(struct media_engine *engine)
  {
      if (engine->video_frame.d3d11.vb)
-@@ -1066,13 +1078,13 @@ static HRESULT WINAPI media_engine_session_events_Invoke(IMFAsyncCallback *iface
+@@ -1000,13 +1014,13 @@ static HRESULT WINAPI media_engine_session_events_Invoke(IMFAsyncCallback *iface
  
-             media_engine_get_frame_size(engine);
+             media_engine_get_frame_size(engine, topology);
  
 -            IMFMediaEngineNotify_EventNotify(engine->callback, MF_MEDIA_ENGINE_EVENT_DURATIONCHANGE, 0, 0);
 -            IMFMediaEngineNotify_EventNotify(engine->callback, MF_MEDIA_ENGINE_EVENT_LOADEDMETADATA, 0, 0);
@@ -54,8 +51,8 @@ diff --git a/dlls/mfmediaengine/main.c b/dlls/mfmediaengine/main.c
  
              if (engine->flags & FLAGS_ENGINE_SCRUBBING)
                  media_engine_set_rate(engine, FALSE, 0.0);
-@@ -1115,7 +1127,7 @@ static HRESULT WINAPI media_engine_session_events_Invoke(IMFAsyncCallback *iface
-             WARN("Session started, notify playing %u, flags %#x.\n", playing_event, engine->flags);
+@@ -1031,7 +1045,7 @@ static HRESULT WINAPI media_engine_session_events_Invoke(IMFAsyncCallback *iface
+             playing_event = !(engine->flags & FLAGS_ENGINE_SCRUBBING);
              LeaveCriticalSection(&engine->cs);
              if (playing_event)
 -                IMFMediaEngineNotify_EventNotify(engine->callback, MF_MEDIA_ENGINE_EVENT_PLAYING, 0, 0);
@@ -63,7 +60,7 @@ diff --git a/dlls/mfmediaengine/main.c b/dlls/mfmediaengine/main.c
              break;
          case MESessionEnded:
              EnterCriticalSection(&engine->cs);
-@@ -1244,7 +1256,7 @@ static HRESULT WINAPI media_engine_sink_events_Invoke(IMFAsyncCallback *iface, I
+@@ -1139,7 +1153,7 @@ static HRESULT WINAPI media_engine_sink_events_Invoke(IMFAsyncCallback *iface, I
      switch (event)
      {
          case MF_MEDIA_ENGINE_EVENT_FIRSTFRAMEREADY:
@@ -72,7 +69,7 @@ diff --git a/dlls/mfmediaengine/main.c b/dlls/mfmediaengine/main.c
              break;
          default:
              ;
-@@ -2764,12 +2776,12 @@ static HRESULT WINAPI media_engine_Play(IMFMediaEngineEx *iface)
+@@ -2265,12 +2279,12 @@ static HRESULT WINAPI media_engine_Play(IMFMediaEngineEx *iface)
          hr = MF_E_SHUTDOWN;
      else
      {
@@ -85,16 +82,14 @@ diff --git a/dlls/mfmediaengine/main.c b/dlls/mfmediaengine/main.c
 -            IMFMediaEngineNotify_EventNotify(engine->callback, MF_MEDIA_ENGINE_EVENT_PLAY, 0, 0);
 +            media_engine_notify_live_event(engine, MF_MEDIA_ENGINE_EVENT_PLAY, 0, 0);
  
-             if (engine->flags & FLAGS_ENGINE_DEFERRED_SEEK)
-                 hr = media_engine_flush_deferred_seek(engine);
-@@ -2787,7 +2799,7 @@ static HRESULT WINAPI media_engine_Play(IMFMediaEngineEx *iface)
-         else if (engine->flags & FLAGS_ENGINE_PAUSE_PENDING)
-             media_engine_set_flag(engine, FLAGS_ENGINE_PLAY_PENDING, TRUE);
+             if (!(engine->flags & (FLAGS_ENGINE_SOURCE_PENDING | FLAGS_ENGINE_SCRUBBING)))
+                 media_engine_start_playback(engine);
+@@ -2280,7 +2294,7 @@ static HRESULT WINAPI media_engine_Play(IMFMediaEngineEx *iface)
+             media_engine_set_flag(engine, FLAGS_ENGINE_WAITING, TRUE);
+         }
  
 -        IMFMediaEngineNotify_EventNotify(engine->callback, MF_MEDIA_ENGINE_EVENT_WAITING, 0, 0);
 +        media_engine_notify_live_event(engine, MF_MEDIA_ENGINE_EVENT_WAITING, 0, 0);
      }
  
-     WARN("%p leave hr %#lx flags %#x ready %u network %u.\n", iface, hr, engine->flags,
--- 
-2.52.0
+     LeaveCriticalSection(&engine->cs);

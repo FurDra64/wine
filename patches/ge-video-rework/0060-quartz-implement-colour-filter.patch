@@ -22,22 +22,21 @@ No title-specific override or native quartz installation is required.
 
 Issue: https://github.com/GloriousEggroll/proton-ge-custom/issues/755
 Reference: https://learn.microsoft.com/en-us/windows/win32/directshow/color-space-converter-filter
----
-
 diff --git a/dlls/quartz/Makefile.in b/dlls/quartz/Makefile.in
+index b743139c..235a9dc9 100644
 --- a/dlls/quartz/Makefile.in
 +++ b/dlls/quartz/Makefile.in
-@@ -6,6 +6,7 @@
+@@ -6,6 +6,7 @@ DELAYIMPORTS = ddraw
+ 
+ VER_PRODUCTVERSION  = 6,5,1,902
+ VER_OLESELFREGISTER = 1
++	colour.c \
+ 
  SOURCES = \
  	acmwrapper.c \
- 	avidec.c \
-+	colour.c \
- 	control_tlb.idl \
- 	decoder.c \
- 	dsoundrender.c \
-
 diff --git a/dlls/quartz/colour.c b/dlls/quartz/colour.c
 new file mode 100644
+index 00000000..1bc37c4b
 --- /dev/null
 +++ b/dlls/quartz/colour.c
 @@ -0,0 +1,462 @@
@@ -503,19 +502,19 @@ new file mode 100644
 +    *out = &filter->filter.IUnknown_inner;
 +    return S_OK;
 +}
-
 diff --git a/dlls/quartz/main.c b/dlls/quartz/main.c
+index d38ace1e..f232445d 100644
 --- a/dlls/quartz/main.c
 +++ b/dlls/quartz/main.c
-@@ -95,6 +95,7 @@
-     { &CLSID_AviSplitter, avi_splitter_create },
+@@ -96,6 +96,7 @@ static const struct object_creation_info object_creation[] =
+     { &CLSID_Colour, color_create },
      { &CLSID_CMpegAudioCodec, mpeg_audio_codec_create },
      { &CLSID_CMpegVideoCodec, mpeg_video_codec_create },
 +    { &CLSID_Colour, colour_create },
      { &CLSID_DSoundRender, dsound_render_create },
      { &CLSID_FilterGraph, filter_graph_create },
      { &CLSID_FilterGraphNoThread, filter_graph_no_thread_create },
-@@ -398,6 +399,27 @@
+@@ -434,6 +435,27 @@ HRESULT WINAPI DllRegisterServer(void)
          .rgPins2 = mpeg_splitter_pins,
      };
  
@@ -543,7 +542,7 @@ diff --git a/dlls/quartz/main.c b/dlls/quartz/main.c
      static const REGPINTYPES avi_splitter_inputs[] =
      {
          {&MEDIATYPE_Stream, &MEDIASUBTYPE_Avi},
-@@ -579,6 +601,9 @@
+@@ -599,6 +621,9 @@ HRESULT WINAPI DllRegisterServer(void)
      if (FAILED(hr = IFilterMapper2_RegisterFilter(mapper, &CLSID_CMpegVideoCodec, L"MPEG Video Decoder", NULL,
              NULL, NULL, &mpeg_video_codec_reg)))
          goto done;
@@ -553,7 +552,7 @@ diff --git a/dlls/quartz/main.c b/dlls/quartz/main.c
  
  done:
      IFilterMapper2_Release(mapper);
-@@ -621,6 +646,8 @@
+@@ -643,6 +668,8 @@ HRESULT WINAPI DllUnregisterServer(void)
          goto done;
      if (FAILED(hr = IFilterMapper2_UnregisterFilter(mapper, NULL, NULL, &CLSID_CMpegVideoCodec)))
          goto done;
@@ -562,23 +561,23 @@ diff --git a/dlls/quartz/main.c b/dlls/quartz/main.c
  
  done:
      IFilterMapper2_Release(mapper);
-
 diff --git a/dlls/quartz/quartz_private.h b/dlls/quartz/quartz_private.h
+index 7c8e296d..7757e4e7 100644
 --- a/dlls/quartz/quartz_private.h
 +++ b/dlls/quartz/quartz_private.h
-@@ -54,6 +54,7 @@
+@@ -54,6 +54,7 @@ HRESULT acm_wrapper_create(IUnknown *outer, IUnknown **out);
  HRESULT async_reader_create(IUnknown *outer, IUnknown **out);
  HRESULT avi_dec_create(IUnknown *outer, IUnknown **out);
  HRESULT avi_splitter_create(IUnknown *outer, IUnknown **out);
 +HRESULT colour_create(IUnknown *outer, IUnknown **out);
+ HRESULT color_create(IUnknown *outer, IUnknown **out);
  HRESULT dsound_render_create(IUnknown *outer, IUnknown **out);
  HRESULT filter_graph_create(IUnknown *outer, IUnknown **out);
- HRESULT filter_graph_no_thread_create(IUnknown *outer, IUnknown **out);
-
 diff --git a/dlls/quartz/quartz_strmif.idl b/dlls/quartz/quartz_strmif.idl
+index e9469e1b..9b5f8166 100644
 --- a/dlls/quartz/quartz_strmif.idl
 +++ b/dlls/quartz/quartz_strmif.idl
-@@ -180,3 +180,10 @@
+@@ -187,3 +187,10 @@ coclass CMpegAudioCodec {}
      uuid(feb50740-7bef-11ce-9bd9-0000e202599c)
  ]
  coclass CMpegVideoCodec {}
@@ -589,21 +588,21 @@ diff --git a/dlls/quartz/quartz_strmif.idl b/dlls/quartz/quartz_strmif.idl
 +    uuid(1643e180-90f5-11ce-97d5-00aa0055595a)
 +]
 +coclass Colour {}
-
 diff --git a/dlls/quartz/tests/Makefile.in b/dlls/quartz/tests/Makefile.in
+index e99858d5..88fde73a 100644
 --- a/dlls/quartz/tests/Makefile.in
 +++ b/dlls/quartz/tests/Makefile.in
-@@ -6,6 +6,7 @@
+@@ -6,6 +6,7 @@ SOURCES = \
  	acmwrapper.c \
  	avidec.c \
  	avisplit.c \
 +	colour.c \
+ 	colorconv.c \
  	dsoundrender.c \
  	filesource.c \
- 	filtergraph.c \
-
 diff --git a/dlls/quartz/tests/colour.c b/dlls/quartz/tests/colour.c
 new file mode 100644
+index 00000000..320032d5
 --- /dev/null
 +++ b/dlls/quartz/tests/colour.c
 @@ -0,0 +1,364 @@
