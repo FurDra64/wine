@@ -17,10 +17,11 @@ device and haptics behavior.
  1 file changed, 14 insertions(+)
 
 diff --git a/dlls/winebus.sys/bus_udev.c b/dlls/winebus.sys/bus_udev.c
+index 2da09573..669167ed 100644
 --- a/dlls/winebus.sys/bus_udev.c
 +++ b/dlls/winebus.sys/bus_udev.c
-@@ -1507,6 +1507,13 @@ static void get_device_subsystem_info(struct udev_device *dev, const char *subsy
-     }
+@@ -1225,6 +1225,13 @@ static void get_device_usb_info(struct udev_device *dev, struct device_desc *des
+     else if ((tmp = udev_device_get_sysnum(usb_dev))) sscanf(tmp, "%u", &desc->index);
  }
  
 +static BOOL enable_sony_hidraw_xinput(void)
@@ -33,7 +34,7 @@ diff --git a/dlls/winebus.sys/bus_udev.c b/dlls/winebus.sys/bus_udev.c
  static NTSTATUS hidraw_device_create(struct udev_device *dev, int fd, const char *devnode, struct device_desc desc)
  {
  #ifdef HAVE_LINUX_HIDRAW_H
-@@ -1516,6 +1523,13 @@ static NTSTATUS hidraw_device_create(struct udev_device *dev, int fd, const char
+@@ -1233,6 +1240,13 @@ static NTSTATUS hidraw_device_create(struct udev_device *dev, int fd, const char
      char buffer[MAX_PATH];
  
      desc.is_hidraw = TRUE;
@@ -47,5 +48,3 @@ diff --git a/dlls/winebus.sys/bus_udev.c b/dlls/winebus.sys/bus_udev.c
      if (!desc.product[0] && ioctl(fd, HIDIOCGRAWNAME(sizeof(buffer) - 1), buffer) >= 0)
          ntdll_umbstowcs(buffer, strlen(buffer) + 1, desc.product, ARRAY_SIZE(desc.product));
  
--- 
-2.55.0

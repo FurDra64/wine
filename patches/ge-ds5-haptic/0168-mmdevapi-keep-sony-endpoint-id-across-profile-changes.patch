@@ -25,10 +25,11 @@ all other Sony endpoint names and disconnect handling remain unchanged.
  1 file changed, 103 insertions(+), 12 deletions(-)
 
 diff --git a/dlls/mmdevapi/devenum.c b/dlls/mmdevapi/devenum.c
+index dc7087a3..8ea12dc4 100644
 --- a/dlls/mmdevapi/devenum.c
 +++ b/dlls/mmdevapi/devenum.c
-@@ -129,12 +129,13 @@ static BOOL use_stable_dualsense_device_ids(void)
-     return (env && env[0] == '1' && !env[1]) || use_death_stranding_controller_effects();
+@@ -114,12 +114,13 @@ static BOOL use_stable_dualsense_device_ids(void)
+     return env && env[0] == '1' && !env[1];
  }
  
 -static DWORD hash_dualsense_device_name(const char *name, EDataFlow flow, DWORD seed)
@@ -43,7 +44,7 @@ diff --git a/dlls/mmdevapi/devenum.c b/dlls/mmdevapi/devenum.c
      {
          hash ^= *p++;
          hash *= 0x01000193;
-@@ -144,14 +145,37 @@ static DWORD hash_dualsense_device_name(const char *name, EDataFlow flow, DWORD
+@@ -129,14 +130,37 @@ static DWORD hash_dualsense_device_name(const char *name, EDataFlow flow, DWORD
      return hash;
  }
  
@@ -85,7 +86,7 @@ diff --git a/dlls/mmdevapi/devenum.c b/dlls/mmdevapi/devenum.c
  
      guid->Data1 = hashes[0];
      guid->Data2 = hashes[1];
-@@ -291,6 +315,33 @@ static struct device *find_device_name_in_cache( const char *name, EDataFlow flo
+@@ -276,6 +300,33 @@ static struct device *find_device_name_in_cache( const char *name, EDataFlow flo
      return NULL;
  }
  
@@ -119,7 +120,7 @@ diff --git a/dlls/mmdevapi/devenum.c b/dlls/mmdevapi/devenum.c
  static void remove_device_from_cache( const GUID *guid )
  {
      struct device *dev, *next;
-@@ -392,13 +443,26 @@ static void get_device_guid( EDataFlow flow, const char *dev_name, BOOL create,
+@@ -377,13 +428,26 @@ static void get_device_guid( EDataFlow flow, const char *dev_name, BOOL create,
          struct device *dev;
  
          EnterCriticalSection( &devices_cache_cs );
@@ -151,7 +152,7 @@ diff --git a/dlls/mmdevapi/devenum.c b/dlls/mmdevapi/devenum.c
          else if (create)
          {
              CoCreateGuid( guid );
-@@ -1876,6 +1940,27 @@ static void add_endpoints_from_params(struct get_endpoint_ids_params *params, BO
+@@ -1568,6 +1632,27 @@ static void add_endpoints_from_params(struct get_endpoint_ids_params *params, BO
      }
  }
  
@@ -179,7 +180,7 @@ diff --git a/dlls/mmdevapi/devenum.c b/dlls/mmdevapi/devenum.c
  static void MMDevice_Destroy(MMDevice *This);
  
  static HANDLE g_update_thread;
-@@ -1956,6 +2041,8 @@ static DWORD CALLBACK update_thread_proc(void *user)
+@@ -1648,6 +1733,8 @@ static DWORD WINAPI update_thread_proc(void *user)
                      const GUID *id = &dev->devguid;
                      BOOL dualsense_mono_endpoint = is_dualsense_mono_endpoint(dev);
                      BOOL sony_controller_endpoint = is_dualsense_endpoint_name(dev->drv_id);
@@ -188,7 +189,7 @@ diff --git a/dlls/mmdevapi/devenum.c b/dlls/mmdevapi/devenum.c
                      WCHAR devid[56];
  
                      if (sony_controller_endpoint)
-@@ -1971,7 +2058,11 @@ static DWORD CALLBACK update_thread_proc(void *user)
+@@ -1660,7 +1747,11 @@ static DWORD WINAPI update_thread_proc(void *user)
                              remove_dualsense_media_devices();
                          }
                          notify_endpoint_removed(dev->flow, id);
@@ -201,5 +202,3 @@ diff --git a/dlls/mmdevapi/devenum.c b/dlls/mmdevapi/devenum.c
                          delete_device_state_key(dev);
                          dev->removed = TRUE;
                          dev->state = DEVICE_STATE_NOTPRESENT;
--- 
-2.55.0

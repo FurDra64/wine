@@ -7,14 +7,14 @@ Subject: [PATCH] server: Avoid heap allocation for small hit-test lists.
 
 Source: https://github.com/nanomatters/wine-salkim/commit/1d434f8af8879a5ad6e77c2f83f10e8c19fe58c3
 ---
- server/window.c | 32 ++++++++++++++++++++++++++------
+server/window.c | 32 ++++++++++++++++++++++++++------
  1 file changed, 26 insertions(+), 6 deletions(-)
 
 diff --git a/server/window.c b/server/window.c
-index af0eb5e8eee..3618d903ae7 100644
+index 3cd82b0c..c7c5d81f 100644
 --- a/server/window.c
 +++ b/server/window.c
-@@ -157,6 +157,7 @@ static const struct object_ops window_ops =
+@@ -121,6 +121,7 @@ static const struct object_ops window_ops =
  struct user_handle_array
  {
      user_handle_t *handles;
@@ -22,7 +22,7 @@ index af0eb5e8eee..3618d903ae7 100644
      int            count;
      int            total;
  };
-@@ -501,10 +502,20 @@ static int add_handle_to_array( struct user_handle_array *array, user_handle_t h
+@@ -458,10 +459,20 @@ static int add_handle_to_array( struct user_handle_array *array, user_handle_t h
      if (array->count >= array->total)
      {
          int new_total = max( array->total * 2, 32 );
@@ -45,7 +45,7 @@ index af0eb5e8eee..3618d903ae7 100644
              set_error( STATUS_NO_MEMORY );
              return 0;
          }
-@@ -2868,20 +2879,29 @@ DECL_HANDLER(get_class_windows)
+@@ -2640,20 +2651,29 @@ DECL_HANDLER(get_class_windows)
  DECL_HANDLER(get_window_children_from_point)
  {
      struct user_handle_array array;
@@ -78,7 +78,6 @@ index af0eb5e8eee..3618d903ae7 100644
 +    }
  }
  
- /* get the first window that contains a given point */
+ 
 -- 
 2.55.0
-

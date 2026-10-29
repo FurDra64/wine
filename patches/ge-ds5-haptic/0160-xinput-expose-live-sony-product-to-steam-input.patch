@@ -20,17 +20,18 @@ XInput identity unchanged.
  2 files changed, 23 insertions(+)
 
 diff --git a/dlls/xinput1_3/main.c b/dlls/xinput1_3/main.c
+index cd2c7336..f91aafd1 100644
 --- a/dlls/xinput1_3/main.c
 +++ b/dlls/xinput1_3/main.c
-@@ -124,6 +124,7 @@ static HANDLE steam_overlay_event;
- static SRWLOCK state_lock = SRWLOCK_INIT;
- static XINPUT_STATE current_state[XUSER_MAX_COUNT];
+@@ -124,6 +124,7 @@ static BOOL get_current_state(UINT index, XINPUT_STATE *state)
+     return state->dwPacketNumber;
+ }
  
 +DWORD WINAPI __wine_XInputGetSonyProductId(DWORD index, WORD *product_id);
- static USHORT sony_gamepad_product_id(const WCHAR *path);
- 
- static void set_current_state(UINT index, const XINPUT_STATE *state)
-@@ -1303,6 +1303,27 @@ DWORD WINAPI DECLSPEC_HOTPATCH XInputGetCapabilities(DWORD index, DWORD flags, X
+ static void check_value_caps(struct xinput_controller *controller, USHORT usage, HIDP_VALUE_CAPS *caps)
+ {
+     switch (usage)
+@@ -1153,6 +1154,27 @@ DWORD WINAPI DECLSPEC_HOTPATCH XInputGetCapabilities(DWORD index, DWORD flags, X
      return ret;
  }
  
@@ -59,6 +60,7 @@ diff --git a/dlls/xinput1_3/main.c b/dlls/xinput1_3/main.c
  {
      DWORD ret;
 diff --git a/dlls/xinput1_3/xinput1_3.spec b/dlls/xinput1_3/xinput1_3.spec
+index 0023016a..4cb65e6a 100644
 --- a/dlls/xinput1_3/xinput1_3.spec
 +++ b/dlls/xinput1_3/xinput1_3.spec
 @@ -7,3 +7,4 @@
@@ -66,5 +68,3 @@ diff --git a/dlls/xinput1_3/xinput1_3.spec b/dlls/xinput1_3/xinput1_3.spec
  8 stdcall XInputGetKeystroke(long long ptr)
  100 stdcall XInputGetStateEx(long ptr)
 +@ stdcall -private __wine_XInputGetSonyProductId(long ptr)
--- 
-2.55.0

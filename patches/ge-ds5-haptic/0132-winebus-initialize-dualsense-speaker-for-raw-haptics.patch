@@ -14,9 +14,11 @@ volume and pre-gain, and clear the speaker power-save mute. Touch only the
 documented output-path and pre-gain bits so microphone routing remains intact.
 Leave the normal Pulse mono-speaker path untouched.
 
+diff --git a/dlls/winebus.sys/main.c b/dlls/winebus.sys/main.c
+index 4860f2f9..79d0759a 100644
 --- a/dlls/winebus.sys/main.c
 +++ b/dlls/winebus.sys/main.c
-@@ -106,11 +106,26 @@
+@@ -92,11 +92,26 @@ enum device_state
  #define DUALSENSE_OUTPUT_REPORT_USB_COMMON_OFFSET 1
  #define DUALSENSE_OUTPUT_VALID_FLAG0_COMPATIBLE_VIBRATION 0x01
  #define DUALSENSE_OUTPUT_VALID_FLAG0_HAPTICS_SELECT 0x02
@@ -42,8 +44,8 @@ Leave the normal Pulse mono-speaker path untouched.
 +#define DUALSENSE_OUTPUT_SPEAKER_GAIN 0x02
  #define DUALSENSE_HID_HAPTICS_RUMBLE_OFFSET 13
  #define DUALSENSE_HID_HAPTICS_BUZZ_OFFSET 24
- #define DUALSENSE_OUTPUT_COMMON_VALID_FLAG0_OFFSET 0
-@@ -630,6 +644,7 @@
+ 
+@@ -496,6 +511,7 @@ static void bus_unlink_devices_from_vid_pid(struct device_desc *desc, USAGE_AND_
  static void hidraw_enable_dualsense_usb_haptics(DEVICE_OBJECT *device)
  {
      struct device_extension *ext = (struct device_extension *)device->DeviceExtension;
@@ -51,7 +53,7 @@ Leave the normal Pulse mono-speaker path untouched.
      HID_XFER_PACKET packet;
      IO_STATUS_BLOCK io = {0};
      BYTE report[DUALSENSE_OUTPUT_REPORT_USB_SIZE] = {0};
-@@ -643,6 +658,27 @@
+@@ -509,6 +525,27 @@ static void hidraw_enable_dualsense_usb_haptics(DEVICE_OBJECT *device)
      report[DUALSENSE_OUTPUT_VALID_FLAG0_OFFSET] =
              DUALSENSE_OUTPUT_VALID_FLAG0_COMPATIBLE_VIBRATION | DUALSENSE_OUTPUT_VALID_FLAG0_HAPTICS_SELECT;
      report[DUALSENSE_OUTPUT_VALID_FLAG2_OFFSET] = DUALSENSE_OUTPUT_VALID_FLAG2_COMPATIBLE_VIBRATION2;
@@ -79,5 +81,3 @@ Leave the normal Pulse mono-speaker path untouched.
  
      packet.reportId = DUALSENSE_OUTPUT_REPORT_USB;
      packet.reportBuffer = report;
--- 
-2.55.0

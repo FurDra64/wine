@@ -9,10 +9,11 @@ Subject: [PATCH 020/285] winewayland: Store the pending warp position.
  2 files changed, 8 insertions(+)
 
 diff --git a/dlls/winewayland.drv/wayland_pointer.c b/dlls/winewayland.drv/wayland_pointer.c
-index 0c190a9a..6c604f7e 100644
+index 6c545acb8e1..ce072bcdf8f 100644
 --- a/dlls/winewayland.drv/wayland_pointer.c
 +++ b/dlls/winewayland.drv/wayland_pointer.c
-@@ -997,6 +997,8 @@ BOOL WAYLAND_SetCursorPos(INT x, INT y)
+@@ -996,7 +996,9 @@ BOOL WAYLAND_SetCursorPos(INT x, INT y)
+         pthread_mutex_unlock(&pointer->mutex);
          return FALSE;
      }
      pointer->pending_warp = TRUE;
@@ -21,7 +22,7 @@ index 0c190a9a..6c604f7e 100644
      pthread_mutex_unlock(&pointer->mutex);
  
      TRACE("warping to %d,%d\n", x, y);
-@@ -1022,6 +1024,11 @@ BOOL WAYLAND_ClipCursor(const RECT *clip, BOOL reset)
+@@ -1022,6 +1022,11 @@ BOOL WAYLAND_ClipCursor(const RECT *clip, BOOL reset)
      NtUserGetCursorPos(&cursor_pos);
      hwnd = NtUserGetForegroundWindow();
  
@@ -34,14 +35,15 @@ index 0c190a9a..6c604f7e 100644
      if ((surface = data->wayland_surface))
      {
 diff --git a/dlls/winewayland.drv/waylanddrv.h b/dlls/winewayland.drv/waylanddrv.h
-index 1cb525b2..55f58a66 100644
+index baef0fced44..611dc82ccab 100644
 --- a/dlls/winewayland.drv/waylanddrv.h
 +++ b/dlls/winewayland.drv/waylanddrv.h
-@@ -116,6 +116,7 @@ struct wayland_pointer
-     HWND constraint_hwnd;
+@@ -117,4 +117,5 @@ struct wayland_pointer
      BOOL relative_mode;
      BOOL pending_warp;
 +    POINT warp;
      uint32_t enter_serial;
      uint32_t button_serial;
-     struct wayland_cursor cursor;
+-- 
+2.55.0
+

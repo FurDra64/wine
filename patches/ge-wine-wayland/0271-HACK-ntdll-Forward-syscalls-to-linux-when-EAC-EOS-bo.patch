@@ -9,39 +9,38 @@ Subject: [PATCH 271/285] HACK: ntdll: Forward syscalls to linux when EAC (EOS)
  dlls/kernelbase/process.c       |  8 +++++++
  dlls/ntdll/unix/signal_x86_64.c | 37 +++++++++++++++++++++++++++++++++
  2 files changed, 45 insertions(+)
-
 diff --git a/dlls/kernelbase/process.c b/dlls/kernelbase/process.c
-index fe337dcfff8..e8c23c39f7a 100644
+index ae9a7d64..08fbd49e 100644
 --- a/dlls/kernelbase/process.c
 +++ b/dlls/kernelbase/process.c
-@@ -802,6 +802,9 @@ BOOL WINAPI DECLSPEC_HOTPATCH CreateProcessInternalW( HANDLE token, const WCHAR
-             sync_env_var_to_unix( new_env, "UPLAY_ARGUMENTS" );
-             sync_env_var_to_unix( new_env, "UPC_GAME_STARTER_RUNNING" );
+@@ -802,6 +802,9 @@ BOOL WINAPI DECLSPEC_HOTPATCH GetExitCodeProcess( HANDLE process, LPDWORD exit_c
+     PROCESS_BASIC_INFORMATION pbi;
  
+     status = NtQueryInformationProcess( process, ProcessBasicInformation, &pbi, sizeof(pbi), NULL );
 +            /* HACK: tell the sigsys handler that this is the EAC (EOS) dispatcher */
 +            __wine_set_unix_env("PROTON_SYSCALL_HACK", "1");
 +
-             p = app_name + wcslen( app_name );
-             while (p != app_name && *p != '/' && *p != '\\') --p;
-             if (p != app_name)
-@@ -959,6 +962,11 @@ BOOL WINAPI DECLSPEC_HOTPATCH CreateProcessInternalW( HANDLE token, const WCHAR
-     }
+     if (!status && exit_code) *exit_code = pbi.ExitStatus;
+     return set_ntstatus( status );
+ }
+@@ -959,6 +962,11 @@ BOOL WINAPI DECLSPEC_HOTPATCH GetProcessShutdownParameters( LPDWORD level, LPDWO
  
-  done:
+ 
+ /*********************************************************************
 +
 +    /* clean up the syscall hack env now that we are done using it */
 +    if (product_name && !strcmp( product_name, "Easy Anti-Cheat Bootstrapper (EOS)" ))
 +        __wine_set_unix_env("PROTON_SYSCALL_HACK", NULL);
 +
-     RtlDestroyProcessParameters( params );
-     if (tidy_cmdline != cmd_line) HeapFree( GetProcessHeap(), 0, tidy_cmdline );
-     HeapFree( GetProcessHeap(), 0, product_name );
+  *           GetProcessTimes   (kernelbase.@)
+  */
+ BOOL WINAPI DECLSPEC_HOTPATCH GetProcessTimes( HANDLE process, FILETIME *create, FILETIME *exit,
 diff --git a/dlls/ntdll/unix/signal_x86_64.c b/dlls/ntdll/unix/signal_x86_64.c
-index 3923e68e530..ac7cd771bd3 100644
+index f807caa4..4067a4b9 100644
 --- a/dlls/ntdll/unix/signal_x86_64.c
 +++ b/dlls/ntdll/unix/signal_x86_64.c
-@@ -2821,6 +2821,9 @@ static void usr1_handler( int signal, siginfo_t *siginfo, void *sigcontext )
- }
+@@ -2611,6 +2611,9 @@ static void usr1_handler( int signal, siginfo_t *siginfo, void *_sigcontext )
+ 
  
  #if defined(__APPLE__) || defined(__linux__)
 +
@@ -50,8 +49,8 @@ index 3923e68e530..ac7cd771bd3 100644
  /**********************************************************************
   *		sigsys_handler
   *
-@@ -2852,6 +2855,33 @@ static void sigsys_handler( int signal, siginfo_t *siginfo, void *sigcontext )
-         RIP_sig(ucontext) -= 2;
+@@ -2633,6 +2636,33 @@ static void sigsys_handler( int signal, siginfo_t *siginfo, void *_sigcontext )
+         RIP_sig(sigcontext) -= 2;  /* retry the syscall */
          return;
      }
 +
@@ -83,8 +82,8 @@ index 3923e68e530..ac7cd771bd3 100644
 +    }
  #endif
  
-     frame->rip = RIP_sig(ucontext) + 0xb;
-@@ -3073,6 +3103,7 @@ void signal_init_process(void)
+     frame->rip = RIP_sig(sigcontext) + 0xb;
+@@ -2859,6 +2889,7 @@ void signal_init_process( TEB *teb )
  #ifdef __linux__
      if (syscall_dispatch_enabled)
      {
@@ -92,7 +91,7 @@ index 3923e68e530..ac7cd771bd3 100644
          struct sigaction act;
  
          if (sigaction( SIGSYS, NULL, &act ) == -1)
-@@ -3085,6 +3116,12 @@ void signal_init_process(void)
+@@ -2871,6 +2902,12 @@ void signal_init_process( TEB *teb )
              WARN_(seh)( "could not find library containing signal restorer trampoline\n" );
              syscall_dispatch_enabled = FALSE;
          }
@@ -105,4 +104,3 @@ index 3923e68e530..ac7cd771bd3 100644
      }
  #endif
  
--- 

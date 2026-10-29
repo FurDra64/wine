@@ -13,9 +13,11 @@ When the non-event raw haptic path is selected, preserve the documented
 internal-speaker route, unmuted state, volume, and pre-gain on every native
 DualSense USB output report. Preserve unrelated microphone control bits.
 
+diff --git a/dlls/winebus.sys/main.c b/dlls/winebus.sys/main.c
+index 79d0759a..774fc076 100644
 --- a/dlls/winebus.sys/main.c
 +++ b/dlls/winebus.sys/main.c
-@@ -678,6 +678,44 @@ static void hidraw_enable_dualsense_usb_haptics(DEVICE_OBJECT *device)
+@@ -557,6 +557,44 @@ static void hidraw_enable_dualsense_usb_haptics(DEVICE_OBJECT *device)
          WARN("Failed to enable DualSense USB haptics mode on device %p: %#lx\n", device, io.Status);
  }
  
@@ -60,13 +62,11 @@ DualSense USB output report. Preserve unrelated microphone control bits.
  #ifdef __ASM_USE_FASTCALL_WRAPPER
  extern void * WINAPI wrap_fastcall_func1(void *func, const void *a);
  __ASM_STDCALL_FUNC(wrap_fastcall_func1, 8,
-@@ -2297,6 +2335,7 @@ static NTSTATUS WINAPI hid_internal_dispatch(DEVICE_OBJECT *device, IRP *irp)
-                 packet = &fixed_packet;
-             else if (hidraw_fixup_dualsense_usb_output_report(ext, packet, &fixed_packet, fixed_report))
+@@ -1833,6 +1871,7 @@ static NTSTATUS WINAPI hid_internal_dispatch(DEVICE_OBJECT *device, IRP *irp)
+             }
+             if (hidraw_fixup_dualsense_usb_output_report(ext, packet, &fixed_packet, fixed_report))
                  packet = &fixed_packet;
 +            hidraw_preserve_dualsense_usb_speaker_route(ext, packet);
              unix_device_set_output_report(device, packet, &irp->IoStatus);
              if (!irp->IoStatus.Status) hidraw_disable_report_fixups(device);
              break;
--- 
-2.55.0

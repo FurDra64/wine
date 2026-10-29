@@ -19,8 +19,8 @@ Pulse backend therefore receives a shared stream it can implement, but the
 application observes the exclusive event and buffer cadence it requested.
 
 ---
- dlls/mmdevapi/client.c | 29 ++++++++++++++++++-----------
- 1 file changed, 18 insertions(+), 11 deletions(-)
+ dlls/mmdevapi/client.c | 25 +++++++++++--------------
+ 1 file changed, 13 insertions(+), 12 deletions(-)
 
 --- a/dlls/mmdevapi/client.c
 +++ b/dlls/mmdevapi/client.c
@@ -56,15 +56,18 @@ application observes the exclusive event and buffer cadence it requested.
              } else if (*duration < 8 * *period)
                  *duration = 8 * *period; /* May grow above 2s. */
          }
-@@ -503,6 +504,7 @@
+@@ -377,7 +377,8 @@ static HRESULT stream_init(struct audio_client *client, const BOOLEAN force_def_period,
                             const WAVEFORMATEX *fmt, const GUID *sessionguid)
  {
      struct create_stream_params params;
 +    BOOL fake_exclusive;
      UINT32 i, channel_count;
      stream_handle stream;
+     BOOL compatible;
      WCHAR *name;
-@@ -516,6 +518,8 @@
+@@ -392,8 +392,10 @@
+     dump_fmt(fmt);
+ 
      if (mode != AUDCLNT_SHAREMODE_SHARED && mode != AUDCLNT_SHAREMODE_EXCLUSIVE)
          return E_INVALIDARG;
  
@@ -73,16 +76,16 @@ application observes the exclusive event and buffer cadence it requested.
      if (flags & ~(AUDCLNT_STREAMFLAGS_CROSSPROCESS |
                    AUDCLNT_STREAMFLAGS_LOOPBACK |
                    AUDCLNT_STREAMFLAGS_EVENTCALLBACK |
-@@ -532,7 +536,7 @@
-     if (flags & AUDCLNT_STREAMFLAGS_CROSSPROCESS)
-         FIXME("Cross-process sessions not supported\n");
+@@ -413,7 +413,7 @@
+     if (mode != AUDCLNT_SHAREMODE_SHARED && mode != AUDCLNT_SHAREMODE_EXCLUSIVE)
+         return E_INVALIDARG;
  
--    hr = validate_wfx(fmt, mode);
-+    hr = validate_wfx(fmt, fake_exclusive ? AUDCLNT_SHAREMODE_SHARED : mode);
- 
-     if (hr == S_FALSE)
-         hr = AUDCLNT_E_UNSUPPORTED_FORMAT;
-@@ -583,7 +587,8 @@
+-    if (mode == AUDCLNT_SHAREMODE_EXCLUSIVE) {
++    if (mode == AUDCLNT_SHAREMODE_EXCLUSIVE && !fake_exclusive) {
+         if (flags & AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM)
+             return E_INVALIDARG;
+
+@@ -483,7 +483,8 @@
          client->dataflow = eCapture;
      }
  
@@ -92,7 +95,7 @@ application observes the exclusive event and buffer cadence it requested.
          sessions_unlock();
          return params.result;
      }
-@@ -591,7 +596,7 @@
+@@ -488,7 +488,7 @@
      params.name = name   = get_application_name();
      params.device        = client->device_name;
      params.flow          = client->dataflow;

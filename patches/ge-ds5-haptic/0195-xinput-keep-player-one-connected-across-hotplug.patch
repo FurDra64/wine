@@ -44,7 +44,7 @@ diff --git a/dlls/xinput1_3/main.c b/dlls/xinput1_3/main.c
  
  DWORD WINAPI __wine_XInputGetDeviceVidPid(DWORD index, WORD *vendor_id, WORD *product_id);
  DWORD WINAPI __wine_XInputGetSonyProductId(DWORD index, WORD *product_id);
-@@ -150,6 +152,26 @@
+@@ -124,6 +124,26 @@
      return state->dwPacketNumber;
  }
  
@@ -71,7 +71,7 @@ diff --git a/dlls/xinput1_3/main.c b/dlls/xinput1_3/main.c
  static void check_value_caps(struct xinput_controller *controller, USHORT usage, HIDP_VALUE_CAPS *caps)
  {
      switch (usage)
-@@ -976,12 +998,17 @@
+@@ -828,12 +828,17 @@
  
  BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID reserved)
  {
@@ -89,30 +89,31 @@ diff --git a/dlls/xinput1_3/main.c b/dlls/xinput1_3/main.c
          DisableThreadLibraryCalls(inst);
          break;
      }
-@@ -1023,7 +1050,7 @@
+@@ -872,6 +872,6 @@
      EnterCriticalSection(&xinput_cs);
      if (!controllers[index].device) update_controller_list();
      if (!controllers[index].device)
 -        ret = ERROR_DEVICE_NOT_CONNECTED;
 +        ret = is_persistent_player1(index) ? ERROR_SUCCESS : ERROR_DEVICE_NOT_CONNECTED;
-     else if (WaitForSingleObject(steam_overlay_event, 0) == WAIT_OBJECT_0)
-         ret = ERROR_SUCCESS;
      else
-@@ -1057,6 +1084,13 @@
-     LeaveCriticalSection(&xinput_cs);
- 
- done:
+         ret = HID_set_state(&controllers[index], vibration);
+@@ -894,7 +894,15 @@ static DWORD xinput_get_state(DWORD index, XINPUT_STATE *state)
+     if (index >= XUSER_MAX_COUNT) return ERROR_BAD_ARGUMENTS;
++
 +    if (is_persistent_player1(index))
 +    {
 +        /* Keep the logical state separate: a placeholder must not hide device
 +         * removal from discovery or reset its packet number on reconnection. */
-+        get_persistent_state(state, WaitForSingleObject(steam_overlay_event, 0) == WAIT_OBJECT_0);
++        get_persistent_state(state, FALSE);
 +        return ERROR_SUCCESS;
 +    }
-     if (ret == ERROR_SUCCESS && WaitForSingleObject(steam_overlay_event, 0) == WAIT_OBJECT_0)
-         memset(state, 0, sizeof(*state));
-     return ret;
-@@ -1370,7 +1404,7 @@
+     if (get_current_state(index, state)) return ERROR_SUCCESS;
+ 
+     EnterCriticalSection(&xinput_cs);
+     update_controller_list();
+     ret = get_current_state(index, state) ? ERROR_SUCCESS : ERROR_DEVICE_NOT_CONNECTED;
+     LeaveCriticalSection(&xinput_cs);
+@@ -1163,7 +1163,7 @@
      if (index >= XUSER_MAX_COUNT || !render_guid || !capture_guid) return ERROR_BAD_ARGUMENTS;
  
      EnterCriticalSection(&xinput_cs);
@@ -121,7 +122,7 @@ diff --git a/dlls/xinput1_3/main.c b/dlls/xinput1_3/main.c
      LeaveCriticalSection(&xinput_cs);
  
      return ret;
-@@ -1386,7 +1420,7 @@
+@@ -1179,7 +1179,7 @@
      if (index >= XUSER_MAX_COUNT) return ERROR_BAD_ARGUMENTS;
  
      EnterCriticalSection(&xinput_cs);
@@ -130,44 +131,56 @@ diff --git a/dlls/xinput1_3/main.c b/dlls/xinput1_3/main.c
      LeaveCriticalSection(&xinput_cs);
  
      return ret;
-@@ -1409,11 +1443,17 @@
+@@ -1199,17 +1199,32 @@ DWORD WINAPI DECLSPEC_HOTPATCH XInputGetCapabilitiesEx(DWORD unk, DWORD index,
  
      EnterCriticalSection(&xinput_cs);
      if (!controllers[index].device) update_controller_list();
 -    if (!controllers[index].device)
 -        ret = ERROR_DEVICE_NOT_CONNECTED;
+-    else if (flags & XINPUT_FLAG_GAMEPAD && controllers[index].caps.SubType != XINPUT_DEVSUBTYPE_GAMEPAD)
+-        ret = ERROR_DEVICE_NOT_CONNECTED;
 -    else if (!HidD_GetAttributes(controllers[index].device, &attr))
+-        ret = ERROR_DEVICE_NOT_CONNECTED;
+-    else
+-    {
+-        caps->Capabilities = controllers[index].caps;
+-        caps->VendorId = attr.VendorID;
+-        caps->ProductId = attr.ProductID;
+-        caps->VersionNumber = attr.VersionNumber;
+-    }
 +    if (!controllers[index].device && is_persistent_player1(index))
 +    {
-+        memset(&attr, 0, sizeof(attr));
-+        attr.VendorID = 0x045e;
-+        attr.ProductID = 0x028e;
-+        attr.VersionNumber = 0x0114;
++        /* Report gamepad capabilities for the empty first slot, but do not
++         * invent a HID device. Real devices keep their existing routing. */
++        memset(caps, 0, sizeof(*caps));
++        caps->Capabilities.Type = XINPUT_DEVTYPE_GAMEPAD;
++        caps->Capabilities.SubType = XINPUT_DEVSUBTYPE_GAMEPAD;
++        caps->Capabilities.Flags = XINPUT_CAPS_FFB_SUPPORTED;
++        caps->Capabilities.Gamepad.wButtons = XINPUT_BUTTONS_ALL;
++        caps->Capabilities.Gamepad.bLeftTrigger = 0xff;
++        caps->Capabilities.Gamepad.bRightTrigger = 0xff;
++        caps->VendorId = 0x045e;
++        caps->ProductId = 0x028e;
++        caps->VersionNumber = 0x0114;
 +    }
-+    else if (!controllers[index].device || !HidD_GetAttributes(controllers[index].device, &attr))
-         ret = ERROR_DEVICE_NOT_CONNECTED;
--    else
-+
-+    if (ret == ERROR_SUCCESS)
-     {
-         memset(caps, 0, sizeof(*caps));
++    else if (!controllers[index].device)
++        ret = ERROR_DEVICE_NOT_CONNECTED;
++    else if (flags & XINPUT_FLAG_GAMEPAD && controllers[index].caps.SubType != XINPUT_DEVSUBTYPE_GAMEPAD)
++        ret = ERROR_DEVICE_NOT_CONNECTED;
++    else if (!HidD_GetAttributes(controllers[index].device, &attr))
++        ret = ERROR_DEVICE_NOT_CONNECTED;
++    else
++    {
++        caps->Capabilities = controllers[index].caps;
++        caps->VendorId = attr.VendorID;
++        caps->ProductId = attr.ProductID;
++        caps->VersionNumber = attr.VersionNumber;
++    }
  
-@@ -1427,6 +1467,11 @@
- #if XINPUT_VER >= 3
-         caps->Capabilities.Flags |= XINPUT_CAPS_VOICE_SUPPORTED;
- #endif
-+        if (!controllers[index].device)
-+        {
-+            caps->Capabilities.Type = XINPUT_DEVTYPE_GAMEPAD;
-+            caps->Capabilities.Flags = XINPUT_CAPS_FFB_SUPPORTED;
-+        }
- 
-         caps->Capabilities.Gamepad.wButtons = XINPUT_BUTTONS_ALL;
-         caps->Capabilities.Gamepad.bLeftTrigger = 0xff;
 diff --git a/dlls/xinput1_3/tests/xinput.c b/dlls/xinput1_3/tests/xinput.c
 --- a/dlls/xinput1_3/tests/xinput.c
 +++ b/dlls/xinput1_3/tests/xinput.c
-@@ -797,6 +797,79 @@
+@@ -796,6 +796,79 @@
      SetupDiDestroyDeviceInfoList(set);
  }
  
@@ -247,7 +260,7 @@ diff --git a/dlls/xinput1_3/tests/xinput.c b/dlls/xinput1_3/tests/xinput.c
  START_TEST(xinput)
  {
      struct
-@@ -839,6 +912,7 @@
+@@ -839,6 +839,7 @@
          if (!pXInputGetStateEx)
              pXInputGetStateEx = pXInputGetStateEx_Ordinal;
  

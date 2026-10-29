@@ -7,15 +7,14 @@ Subject: [PATCH 008/285] gitignore: Add compile_commands.json
 ---
  .gitignore | 1 +
  1 file changed, 1 insertion(+)
- create mode 100644 .gitignore
 
 diff --git a/.gitignore b/.gitignore
-new file mode 100644
-index 00000000000..9bf3746b2a2
---- /dev/null
+--- a/.gitignore
 +++ b/.gitignore
-@@ -0,0 +1 @@
+@@ -2,3 +2,4 @@
+ sync.log
+ *.orig
+ *.rej
 +compile_commands.json
--- 
+--
 2.55.0
-

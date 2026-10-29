@@ -5,17 +5,25 @@ Subject: [PATCH 06/11] mmdevapi: Add PROTON_MMDEV_FAKE_EXCLUSIVE envvar for
  faking exclusive audio device support.
 
 ---
- dlls/mmdevapi/client.c     | 25 ++++++++++++++++++++++++-
- dlls/winepulse.drv/pulse.c |  6 ++++--
- 2 files changed, 28 insertions(+), 3 deletions(-)
+ dlls/mmdevapi/client.c | 28 +++++++++++++++++++++++++++-
+ dlls/winepulse.drv/pulse.c | 6 ++++--
 
 diff --git a/dlls/mmdevapi/client.c b/dlls/mmdevapi/client.c
-index 92a33fede5e..71e0311d800 100644
 --- a/dlls/mmdevapi/client.c
 +++ b/dlls/mmdevapi/client.c
-@@ -50,6 +50,20 @@ extern HRESULT get_audio_session(const GUID *sessionguid, IMMDevice *device, UIN
-                                  struct audio_session **out);
- extern struct audio_session_wrapper *session_wrapper_create(struct audio_client *client);
+@@ -33,6 +33,9 @@
+ #include <wine/unixlib.h>
+ 
+ #include "mmdevapi_private.h"
++
++#include "windef.h"
++#include "winbase.h"
+ 
+ WINE_DEFAULT_DEBUG_CHANNEL(mmdevapi);
+ 
+@@ -714,6 +717,20 @@
+     return ref;
+ }
  
 +static BOOL device_fake_exclusive(void)
 +{
@@ -31,10 +39,10 @@ index 92a33fede5e..71e0311d800 100644
 +    return TRUE;
 +}
 +
- static HANDLE main_loop_thread;
- 
- void main_loop_stop(void)
-@@ -813,6 +827,9 @@ static HRESULT WINAPI client_Initialize(IAudioClient3 *iface, AUDCLNT_SHAREMODE
+ static HRESULT WINAPI client_Initialize(IAudioClient3 *iface, AUDCLNT_SHAREMODE mode, DWORD flags,
+                                  REFERENCE_TIME duration, REFERENCE_TIME period,
+                                  const WAVEFORMATEX *fmt, const GUID *sessionguid)
+@@ -724,6 +741,9 @@
                                                 wine_dbgstr_longlong(period), fmt,
                                                 debugstr_guid(sessionguid));
  
@@ -44,27 +52,27 @@ index 92a33fede5e..71e0311d800 100644
      return stream_init(This, TRUE, mode, flags, duration, period, fmt, sessionguid);
  }
  
-@@ -884,6 +901,7 @@ static HRESULT WINAPI client_IsFormatSupported(IAudioClient3 *iface, AUDCLNT_SHA
- {
+@@ -796,6 +816,7 @@
      struct audio_client *This = impl_from_IAudioClient3(iface);
      struct is_format_supported_params params;
+     BOOL compatible;
 +    BOOL fake_exclusive = FALSE;
      HRESULT hr;
  
      TRACE("(%p)->(%x, %p, %p)\n", This, mode, fmt, out);
-@@ -896,6 +914,11 @@ static HRESULT WINAPI client_IsFormatSupported(IAudioClient3 *iface, AUDCLNT_SHA
+@@ -810,6 +831,11 @@
  
-     dump_fmt(fmt);
- 
+     if (mode != AUDCLNT_SHAREMODE_SHARED && mode != AUDCLNT_SHAREMODE_EXCLUSIVE)
+         return E_INVALIDARG;
++
 +    if (mode == AUDCLNT_SHAREMODE_EXCLUSIVE && device_fake_exclusive()) {
 +        mode = AUDCLNT_SHAREMODE_SHARED;
 +        fake_exclusive = TRUE;
 +    }
-+
-     hr = validate_wfx(fmt, mode);
  
-     if (FAILED(hr))
-@@ -913,7 +936,7 @@ static HRESULT WINAPI client_IsFormatSupported(IAudioClient3 *iface, AUDCLNT_SHA
+     if (mode == AUDCLNT_SHAREMODE_EXCLUSIVE) {
+         compatible = TRUE;
+@@ -844,7 +870,7 @@
      }
  
      if (hr == S_FALSE) {
@@ -74,10 +82,9 @@ index 92a33fede5e..71e0311d800 100644
          } else {
              if (FAILED(hr = IAudioClient3_GetMixFormat(iface, out)))
 diff --git a/dlls/winepulse.drv/pulse.c b/dlls/winepulse.drv/pulse.c
-index 1b3473a2214..5c120a26e66 100644
 --- a/dlls/winepulse.drv/pulse.c
 +++ b/dlls/winepulse.drv/pulse.c
-@@ -2361,10 +2361,12 @@ static NTSTATUS pulse_is_format_supported(void *args)
+@@ -2081,10 +2081,12 @@
      struct is_format_supported_params *params = args;
  
      /* This driver does not support exclusive mode. */
@@ -92,6 +99,3 @@ index 1b3473a2214..5c120a26e66 100644
  
      return STATUS_SUCCESS;
  }
--- 
-2.54.0
-

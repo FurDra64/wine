@@ -29,9 +29,11 @@ marks both successful request types as delta-capable. Real hotplug and all
 other titles retain the existing notification path.
 ---
 
+diff --git a/dlls/mmdevapi/main.c b/dlls/mmdevapi/main.c
+index c99fe996..306984ce 100644
 --- a/dlls/mmdevapi/main.c
 +++ b/dlls/mmdevapi/main.c
-@@ -55,6 +55,31 @@
+@@ -54,6 +54,31 @@ static DriverFuncs midi_driver;
  
  const WCHAR drv_keyW[] = L"Software\\Wine\\Drivers";
  
@@ -63,7 +65,7 @@ other titles retain the existing notification path.
  static const char *get_priority_string(int prio)
  {
      switch(prio){
-@@ -137,9 +160,11 @@
+@@ -132,9 +157,11 @@ static BOOL enable_death_stranding_controller_effects(void)
      BYTE *callbacks[ARRAY_SIZE(callback_names)] = {0};
      IMAGE_NT_HEADERS *nt;
      IMAGE_SECTION_HEADER *section;
@@ -75,7 +77,7 @@ other titles retain the existing notification path.
      unsigned int i, k;
  
      if (GetEnvironmentVariableW(L"PROTON_DEATH_STRANDING_CONTROLLER_EFFECTS", value, ARRAY_SIZE(value)) != 1
-@@ -224,18 +249,90 @@
+@@ -219,18 +246,90 @@ static BOOL enable_death_stranding_controller_effects(void)
              || callbacks[1][10] != 0xc3)
          return FALSE;
  
@@ -175,7 +177,7 @@ other titles retain the existing notification path.
  static BOOL WINAPI init_driver(INIT_ONCE *once, void *param, void **context)
  {
      static WCHAR default_list[] = L"pulse,alsa,oss,coreaudio";
-@@ -246,7 +343,7 @@ static BOOL WINAPI init_driver(INIT_ONCE *once, void *param, void **context)
+@@ -240,7 +339,7 @@ static BOOL WINAPI init_driver(INIT_ONCE *once, void *param, void **context)
  
      if (GetEnvironmentVariableW(L"PROTON_DEATH_STRANDING_CONTROLLER_EFFECTS", reg_list, ARRAY_SIZE(reg_list))
              && !enable_death_stranding_controller_effects())
@@ -184,9 +186,11 @@ other titles retain the existing notification path.
  
      if(RegOpenKeyW(HKEY_CURRENT_USER, drv_keyW, &key) == ERROR_SUCCESS){
          DWORD size = sizeof(reg_list);
+diff --git a/dlls/mmdevapi/devenum.c b/dlls/mmdevapi/devenum.c
+index 72f84a2a..dc7087a3 100644
 --- a/dlls/mmdevapi/devenum.c
 +++ b/dlls/mmdevapi/devenum.c
-@@ -1830,7 +1830,7 @@
+@@ -1533,7 +1533,7 @@ static LONG dualsense_mono_render_add_pending;
  static LONG dualsense_mono_activation_serial;
  static enum dualsense_mono_model dualsense_mono_render_add_model;
  
@@ -195,7 +199,7 @@ other titles retain the existing notification path.
  {
      UINT i;
  
-@@ -1843,8 +1843,24 @@
+@@ -1546,8 +1546,24 @@ static void add_endpoints_from_params(struct get_endpoint_ids_params *params)
          device = MMDevice_Create(name, &guid, params->flow, DEVICE_STATE_ACTIVE, params->default_idx == i);
          if (device && params->flow == eRender && is_dualsense_mono_endpoint(device))
          {
@@ -222,7 +226,7 @@ other titles retain the existing notification path.
          }
      }
  }
-@@ -1985,7 +2001,7 @@
+@@ -1685,7 +1701,7 @@ static DWORD WINAPI update_thread_proc(void *user)
          }
  
          /* add devices only after removing devices */
@@ -231,7 +235,7 @@ other titles retain the existing notification path.
  
          if (params.flow == eRender)
          {
-@@ -2087,7 +2103,7 @@
+@@ -1787,7 +1803,7 @@ HRESULT load_driver_devices(EDataFlow flow)
  
      if (params.delta)
          need_update_thread = TRUE;
@@ -240,16 +244,16 @@ other titles retain the existing notification path.
  
  end:
      free(params.endpoints);
+diff --git a/dlls/mmdevapi/mmdevapi_private.h b/dlls/mmdevapi/mmdevapi_private.h
+index ba22ccf2..d7e1671a 100644
 --- a/dlls/mmdevapi/mmdevapi_private.h
 +++ b/dlls/mmdevapi/mmdevapi_private.h
-@@ -134,6 +134,8 @@
- extern HRESULT load_driver_devices(EDataFlow flow);
- extern BOOL auto_select_sony_audio_mode(IMMDevice *device, AUDCLNT_SHAREMODE mode,
-         const WAVEFORMATEX *format, unsigned int *probe_count);
+@@ -134,6 +134,8 @@ extern const WCHAR drv_keyW[];
+ 
+ extern HRESULT get_audio_session(const GUID *sessionguid, IMMDevice *device, UINT channels,
+ extern void stop_update_thread(void);
 +extern void death_stranding_controller_endpoint_seen(const WCHAR *id);
 +extern BOOL death_stranding_controller_output_hook_active(void);
- 
- extern void main_loop_stop(void);
- extern void stop_update_thread(void);
--- 
-2.55.0
+                                  struct audio_session **out);
+ extern HRESULT get_audio_session_wrapper(const GUID *guid, IMMDevice *device,
+                                          struct audio_session_wrapper **out);

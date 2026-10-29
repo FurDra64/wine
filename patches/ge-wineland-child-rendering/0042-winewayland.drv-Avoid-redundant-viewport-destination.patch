@@ -8,15 +8,15 @@ Cache the destination last applied to each wp_viewport and skip unchanged
 requests. Key the cache on the viewport object so recreated viewports
 still get their initial destination.
 ---
- dlls/winewayland.drv/wayland_surface.c | 21 ++++++++++++++++++---
+dlls/winewayland.drv/wayland_surface.c | 21 ++++++++++++++++++---
  dlls/winewayland.drv/waylanddrv.h      |  2 ++
  2 files changed, 20 insertions(+), 3 deletions(-)
 
 diff --git a/dlls/winewayland.drv/wayland_surface.c b/dlls/winewayland.drv/wayland_surface.c
-index 0b22c67d2f7..aff1a48b48a 100644
+index b32a43f7..8e8786eb 100644
 --- a/dlls/winewayland.drv/wayland_surface.c
 +++ b/dlls/winewayland.drv/wayland_surface.c
-@@ -1085,6 +1085,7 @@ void wayland_surface_destroy(struct wayland_surface *surface)
+@@ -362,6 +362,7 @@ void wayland_surface_destroy(struct wayland_surface *surface)
      {
          wp_viewport_destroy(surface->wp_viewport);
          surface->wp_viewport = NULL;
@@ -24,7 +24,7 @@ index 0b22c67d2f7..aff1a48b48a 100644
      }
  
      if (surface->wl_surface)
-@@ -2043,12 +2044,26 @@ static void wayland_surface_reconfigure_geometry(struct wayland_surface *surface
+@@ -761,12 +762,26 @@ static void wayland_surface_reconfigure_geometry(struct wayland_surface *surface
  static void wayland_surface_reconfigure_size(struct wayland_surface *surface,
                                               int width, int height)
  {
@@ -55,15 +55,15 @@ index 0b22c67d2f7..aff1a48b48a 100644
  
  /**********************************************************************
 diff --git a/dlls/winewayland.drv/waylanddrv.h b/dlls/winewayland.drv/waylanddrv.h
-index 38fa70ffc6e..6149677c7f0 100644
+index 1cb525b2..870e15db 100644
 --- a/dlls/winewayland.drv/waylanddrv.h
 +++ b/dlls/winewayland.drv/waylanddrv.h
-@@ -484,6 +484,8 @@ struct wayland_surface
+@@ -282,6 +282,8 @@ struct wayland_surface
  
      struct wl_surface *wl_surface;
      struct wp_viewport *wp_viewport;
 +    struct wp_viewport *configured_wp_viewport;
 +    int viewport_dest_width, viewport_dest_height;
      struct wp_fractional_scale_v1 *wp_fractional_scale_v1;
-     struct zwp_keyboard_shortcuts_inhibitor_v1* zwp_keyboard_shortcuts_inhibitor_v1;
      struct wayland_shm_buffer *small_icon_buffer;
+     struct wayland_shm_buffer *big_icon_buffer;

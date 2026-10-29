@@ -17,16 +17,16 @@ lookup, so only the image-count adjustment is added.
 
 Source: https://github.com/nanomatters/wine-salkim/commit/19d4bf0c51eb47fd1470a7017a24809bc570e09f
 ---
- dlls/win32u/vulkan.c | 12 ++++++++++++
+dlls/win32u/vulkan.c | 12 ++++++++++++
  1 file changed, 12 insertions(+)
 
 diff --git a/dlls/win32u/vulkan.c b/dlls/win32u/vulkan.c
-index 39d3e219781..4e4a27c9481 100644
+index 3265d746..5a7e0e94 100644
 --- a/dlls/win32u/vulkan.c
 +++ b/dlls/win32u/vulkan.c
-@@ -3812,6 +3812,18 @@ static VkResult win32u_vkCreateSwapchainKHR( VkDevice client_device, const VkSwa
-     create_info_host.imageExtent.width = max( create_info_host.imageExtent.width, capabilities.minImageExtent.width );
-     create_info_host.imageExtent.height = max( create_info_host.imageExtent.height, capabilities.minImageExtent.height );
+@@ -1906,6 +1906,18 @@ static VkResult win32u_vkCreateSwapchainKHR( VkDevice client_device, const VkSwa
+     else if (client_surface_set_color_space( surface->client, create_info->imageColorSpace ))
+         create_info_host.imageColorSpace = VK_COLOR_SPACE_PASS_THROUGH_EXT;
  
 +    /* DOOM Eternal and DOOM: The Dark Ages rely on an extra image to continue
 +     * acquiring while an earlier image is still pending presentation. Request
@@ -45,4 +45,3 @@ index 39d3e219781..4e4a27c9481 100644
       * Create the swapchain with VkSwapchainPresentScalingCreateInfoEXT to avoid this.
 -- 
 2.55.0
-

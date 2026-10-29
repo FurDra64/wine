@@ -8,14 +8,13 @@ Turns out even with all the IME improvements the IME implementations in games ar
 ---
  dlls/winewayland.drv/wayland.c | 12 ++++++++++++
  1 file changed, 12 insertions(+)
-
 diff --git a/dlls/winewayland.drv/wayland.c b/dlls/winewayland.drv/wayland.c
-index 28829b7150d..ad36bd20773 100644
+index 118ee2d6..40b22539 100644
 --- a/dlls/winewayland.drv/wayland.c
 +++ b/dlls/winewayland.drv/wayland.c
-@@ -146,6 +146,17 @@ static int wayland_disable_ssd(void)
-     return disabled;
- }
+@@ -86,6 +86,17 @@ static const struct wl_seat_listener seat_listener =
+     wl_seat_handle_name
+ };
  
 +static int wayland_use_ime(void)
 +{
@@ -31,7 +30,7 @@ index 28829b7150d..ad36bd20773 100644
  /**********************************************************************
   *          Registry handling
   */
-@@ -235,6 +246,7 @@ static void registry_handle_global(void *data, struct wl_registry *registry,
+@@ -175,6 +186,7 @@ static void registry_handle_global(void *data, struct wl_registry *registry,
      }
      else if (strcmp(interface, "zwp_text_input_manager_v3") == 0)
      {
@@ -39,6 +38,3 @@ index 28829b7150d..ad36bd20773 100644
          process_wayland.zwp_text_input_manager_v3 =
              wl_registry_bind(registry, id, &zwp_text_input_manager_v3_interface, 1);
          if (process_wayland.seat.wl_seat) wayland_text_input_init();
--- 
-2.55.0
-

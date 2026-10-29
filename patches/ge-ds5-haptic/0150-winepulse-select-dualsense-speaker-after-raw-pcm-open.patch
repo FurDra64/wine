@@ -22,23 +22,20 @@ channel so the existing game log reports whether the hidraw write succeeded.
 
 --- a/dlls/winepulse.drv/pulse.c
 +++ b/dlls/winepulse.drv/pulse.c
-@@ -29,11 +29,18 @@
- #include <stdlib.h>
- #include <stdint.h>
- #include <errno.h>
-+#include <fcntl.h>
+@@ -26,7 +26,15 @@
+ #include <stdarg.h>
  #include <pthread.h>
-+#include <stdio.h>
- #include <time.h>
++#include <fcntl.h>
  #include <math.h>
  #include <poll.h>
+ 
++#include <stdio.h>
 +#include <sys/ioctl.h>
 +#include <unistd.h>
- 
++
 +#ifdef HAVE_LINUX_HIDRAW_H
 +# include <linux/hidraw.h>
 +#endif
- #include <alsa/asoundlib.h>
  #include <pulse/pulseaudio.h>
  
 @@ -142,6 +149,7 @@

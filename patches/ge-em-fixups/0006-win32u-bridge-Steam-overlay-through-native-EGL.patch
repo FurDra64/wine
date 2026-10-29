@@ -1,47 +1,32 @@
 From: GE-Proton <noreply@localhost>
-Subject: [PATCH] win32u: bridge Steam overlay through native EGL
+Subject: [PATCH] winewayland: bridge Steam overlay through native EGL
 
 When Proton selects its Wine-Wayland overlay bridge, pass the Wayland display
 to lsteamclient's native overlay bridge and pump its private event queue before
 native OpenGL presents. Keep Wine's EGL dispatch bound directly to the EGL
 driver; Steam's GLX interposer must not receive the game's native EGL calls.
 
-Defer creation of the GLX presenter until the first real game swap, when the
-drawable's monitor-relative geometry is known. This lets Steam register a
-fully sized overlay surface immediately instead of first seeing a hidden 1x1
-placeholder.
+Defer creation of the overlay presenter until the first real game swap, when the
+drawable's geometry is known. This lets Steam register a fully sized overlay
+surface immediately instead of first seeing a hidden 1x1 placeholder.
 
-This does not modify winewayland.drv and does not translate OpenGL through
-Vulkan.
+Rebased onto the per-driver EGL model: the Wayland EGL platform is initialized
+by winewayland.drv (wayland_init_egl_platform) instead of win32u, so the bridge
+lives in wayland_drawable_swap. Geometry comes from the client surface's
+raw/virtual rects; the old win32u coordinate helpers and
+is_client_surface_window no longer exist.
 
---- a/dlls/win32u/opengl.c
-+++ b/dlls/win32u/opengl.c
-@@ -65,6 +65,12 @@ static struct wgl_pixel_format *pixel_formats;
- static UINT formats_count, onscreen_count;
- static char wgl_extensions[4096];
- 
-+#ifdef SONAME_LIBEGL
-+static void steam_overlay_opengl_dispatch( struct opengl_drawable *drawable );
-+#else
-+static void steam_overlay_opengl_dispatch( struct opengl_drawable *drawable ) {}
-+#endif
-+
- static BOOL has_extension( const char *list, const char *ext )
- {
-     size_t len = strlen( ext );
-@@ -180,5 +186,6 @@ static BOOL opengl_drawable_swap( struct opengl_drawable *drawable )
- {
-     if (!is_client_surface_window( drawable->client, 0 )) return FALSE;
-+    steam_overlay_opengl_dispatch( drawable );
-     client_surface_update( drawable->client );
-     return drawable->funcs->swap( drawable );
+
+diff --git a/dlls/winewayland.drv/opengl.c b/dlls/winewayland.drv/opengl.c
+index fb45cf1..da98bab 100644
+--- a/dlls/winewayland.drv/opengl.c
++++ b/dlls/winewayland.drv/opengl.c
+@@ -118,12 +118,88 @@ err:
+     return FALSE;
  }
-@@ -1449,6 +1456,82 @@ static const struct opengl_driver_funcs egldrv_funcs =
-     .p_make_current = egldrv_make_current,
- };
  
 +typedef void (*steam_overlay_opengl_attach_func)( void *display, int x, int y,
-+                                                   unsigned int width, unsigned int height );
++                                                  unsigned int width, unsigned int height );
 +typedef void (*steam_overlay_opengl_dispatch_func)( int, int, unsigned int, unsigned int );
 +static void *steam_overlay_opengl_handle;
 +static void *steam_overlay_opengl_display;
@@ -88,20 +73,18 @@ Vulkan.
 +
 +static void steam_overlay_opengl_dispatch( struct opengl_drawable *drawable )
 +{
-+    RECT rect, virtual_rect;
-+    HWND hwnd;
++    RECT rect;
 +    UINT width, height;
-+    UINT dpi;
 +
-+    if (!steam_overlay_opengl_dispatch_func_ptr ||
-+        !(hwnd = drawable->client->hwnd))
++    if (!steam_overlay_opengl_dispatch_func_ptr || !drawable->client)
 +        return;
 +
-+    dpi = get_thread_dpi();
-+    if (!get_client_rect_rel( hwnd, COORDS_SCREEN, &rect, dpi )) return;
-+    rect = map_rect_virt_to_raw( rect, dpi );
-+    virtual_rect = get_virtual_screen_rect( 0, MDT_RAW_DPI );
-+    OffsetRect( &rect, -virtual_rect.left, -virtual_rect.top );
++    /* Client rects are already in raw physical pixels (monitor_rect) or
++     * virtual pixels (virtual_rect), relative to the toplevel visible rect.
++     * Fullscreen games cover the toplevel, so this matches the old
++     * monitor-relative geometry where it matters. */
++    rect = drawable->client->raw ? drawable->client->monitor_rect
++                                 : drawable->client->virtual_rect;
 +    width = max( rect.right - rect.left, 1 );
 +    height = max( rect.bottom - rect.top, 1 );
 +
@@ -116,15 +99,22 @@ Vulkan.
 +    steam_overlay_opengl_dispatch_func_ptr( rect.left, rect.top, width, height );
 +}
 +
- static BOOL egl_init( const struct opengl_driver_funcs **driver_funcs )
+ static void wayland_init_egl_platform(struct egl_platform *platform)
  {
-     struct opengl_funcs *funcs = &display_funcs;
-@@ -1549,6 +1632,8 @@ static BOOL init_egl_platform( struct egl_platform *egl, const struct opengl_fun
-     egl->has_EGL_KHR_gl_texture_2D_image = has_extension( extensions, "EGL_KHR_gl_texture_2D_image" );
-     egl->has_EGL_KHR_image = has_extension( extensions, "EGL_KHR_image" );
-     egl->has_EGL_MESA_image_dma_buf_export = has_extension( extensions, "EGL_MESA_image_dma_buf_export" );
-+    if (egl->type == EGL_PLATFORM_WAYLAND_KHR && load_steam_overlay_opengl_bridge())
-+        steam_overlay_opengl_display = egl->native_display;
-     return TRUE;
+     platform->type = EGL_PLATFORM_WAYLAND_KHR;
+     platform->native_display = process_wayland.wl_display;
+     platform->force_pbuffer_formats = TRUE;
+     egl = platform;
++    if (load_steam_overlay_opengl_bridge())
++        steam_overlay_opengl_display = platform->native_display;
  }
+ 
+ static void wayland_drawable_flush(struct opengl_drawable *base, UINT flags)
+@@ -144,6 +220,7 @@ static BOOL wayland_drawable_swap(struct opengl_drawable *base)
+ {
+     struct wayland_gl_drawable *gl = impl_from_opengl_drawable(base);
+ 
++    steam_overlay_opengl_dispatch( base );
+     client_surface_present(base->client);
+     funcs->p_eglSwapBuffers(egl->display, gl->base.surface);
  

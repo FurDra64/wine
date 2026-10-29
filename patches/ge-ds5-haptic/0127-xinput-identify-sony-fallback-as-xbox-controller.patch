@@ -19,12 +19,13 @@ correctly. Native Sony HID devices are unaffected.
  1 file changed, 12 insertions(+), 2 deletions(-)
 
 diff --git a/dlls/xinput1_3/main.c b/dlls/xinput1_3/main.c
+index 5b8b7496..cd2c7336 100644
 --- a/dlls/xinput1_3/main.c
 +++ b/dlls/xinput1_3/main.c
-@@ -1255,9 +1255,19 @@ DWORD WINAPI DECLSPEC_HOTPATCH XInputGetCapabilitiesEx(DWORD unk, DWORD index,
-         caps->Capabilities.Vibration.wLeftMotorSpeed = 0xff;
-         caps->Capabilities.Vibration.wRightMotorSpeed = 0xff;
- 
+@@ -1207,9 +1207,19 @@ DWORD WINAPI DECLSPEC_HOTPATCH XInputGetCapabilitiesEx(DWORD unk, DWORD index, D
+     else
+     {
+         caps->Capabilities = controllers[index].caps;
 -        caps->VendorId = attr.VendorID;
 -        caps->ProductId = attr.ProductID;
          caps->VersionNumber = attr.VersionNumber;
@@ -40,8 +41,6 @@ diff --git a/dlls/xinput1_3/main.c b/dlls/xinput1_3/main.c
 +            caps->VendorId = attr.VendorID;
 +            caps->ProductId = attr.ProductID;
 +        }
+     }
  
-         /* CW-Bug-Id: #23185 Emulate Steam Input native hooks for native SDL */
-         if (attr.VendorID == 0x28de && attr.ProductID == 0x11ff)
--- 
-2.55.0
+     LeaveCriticalSection(&xinput_cs);

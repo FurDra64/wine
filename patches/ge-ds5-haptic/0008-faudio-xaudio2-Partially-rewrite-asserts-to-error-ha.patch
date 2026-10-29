@@ -5,15 +5,13 @@ Subject: [PATCH 08/11] faudio/xaudio2: Partially rewrite asserts to error
  handling to avoid crash when audio device in use is disconnected.
 
 ---
- dlls/xaudio2_7/xaudio_dll.c             |  14 +-
- libs/faudio/src/FAudio_platform_win32.c | 370 ++++++++++++++++--------
- 2 files changed, 264 insertions(+), 120 deletions(-)
+ dlls/xaudio2_7/xaudio_dll.c | 14 ++++++++++----
+ libs/faudio/src/FAudio_platform_win32.c | 407 ++++++++++++++++++++++++++++++++++++++++
 
 diff --git a/dlls/xaudio2_7/xaudio_dll.c b/dlls/xaudio2_7/xaudio_dll.c
-index 0cbb8187fa1..a8ee66ff61f 100644
 --- a/dlls/xaudio2_7/xaudio_dll.c
 +++ b/dlls/xaudio2_7/xaudio_dll.c
-@@ -1748,6 +1748,7 @@ static HRESULT WINAPI IXAudio2Impl_CreateMasteringVoice(IXAudio2 *iface,
+@@ -1748,6 +1748,7 @@
  {
      IXAudio2Impl *This = impl_from_IXAudio2(iface);
      FAudioEffectChain *chain;
@@ -21,7 +19,7 @@ index 0cbb8187fa1..a8ee66ff61f 100644
  
      TRACE("(%p)->(%p, %u, %u, 0x%x, %p)\n", This,
              ppMasteringVoice, inputChannels, inputSampleRate, flags, pEffectChain);
-@@ -1777,21 +1778,26 @@ static HRESULT WINAPI IXAudio2Impl_CreateMasteringVoice(IXAudio2 *iface,
+@@ -1777,21 +1778,26 @@
  #if XAUDIO2_VER >= 8
      TRACE("device id %s, category %#x\n", debugstr_w(deviceId), streamCategory);
  
@@ -53,7 +51,6 @@ index 0cbb8187fa1..a8ee66ff61f 100644
  
  static HRESULT WINAPI IXAudio2Impl_StartEngine(IXAudio2 *iface)
 diff --git a/libs/faudio/src/FAudio_platform_win32.c b/libs/faudio/src/FAudio_platform_win32.c
-index bf020e442c3..59d653317bb 100644
 --- a/libs/faudio/src/FAudio_platform_win32.c
 +++ b/libs/faudio/src/FAudio_platform_win32.c
 @@ -45,7 +45,7 @@
@@ -65,7 +62,7 @@ index bf020e442c3..59d653317bb 100644
  
  struct FAudioWin32PlatformData
  {
-@@ -164,35 +164,49 @@ static DWORD WINAPI FAudio_AudioClientThread(void *user)
+@@ -164,35 +164,49 @@
  		&IID_IAudioRenderClient,
  		(void **)&render_client
  	);
@@ -114,17 +111,18 @@ index bf020e442c3..59d653317bb 100644
  
  	hr = IAudioClient_Stop(args->client);
 -	FAudio_assert(!FAILED(hr) && "Failed to stop IAudioClient!");
+-
 +	if (FAILED(hr))
 +		/* Failed to stop IAudioClient! */
 +		goto fail_release;
- 
++
 +fail_release:
  	IAudioRenderClient_Release(render_client);
 +fail_free:
  	FAudio_free(args);
  	return 0;
  }
-@@ -409,10 +423,14 @@ void FAudio_PlatformInit(
+@@ -409,10 +423,14 @@
  	*platformDevice = NULL;
  
  	args = FAudio_malloc(sizeof(*args));
@@ -141,7 +139,7 @@ index bf020e442c3..59d653317bb 100644
  	FAudio_zero(data, sizeof(*data));
  
  	args->format.Format.wFormatTag = mixFormat->Format.wFormatTag;
-@@ -435,22 +453,19 @@ void FAudio_PlatformInit(
+@@ -435,22 +453,19 @@
  	}
  
  	audioEvent = CreateEventW(NULL, FALSE, FALSE, NULL);
@@ -172,7 +170,7 @@ index bf020e442c3..59d653317bb 100644
  
  	hr = IMMDevice_Activate(
  		device,
-@@ -459,7 +474,9 @@ void FAudio_PlatformInit(
+@@ -459,7 +474,9 @@
  		NULL,
  		(void **)&data->client
  	);
@@ -183,7 +181,7 @@ index bf020e442c3..59d653317bb 100644
  	IMMDevice_Release(device);
  
  	if (flags & FAUDIO_1024_QUANTUM) duration = 213333;
-@@ -474,10 +491,14 @@ void FAudio_PlatformInit(
+@@ -474,10 +491,14 @@
  		&args->format.Format,
  		&GUID_NULL
  	);
@@ -200,7 +198,7 @@ index bf020e442c3..59d653317bb 100644
  
  	mixFormat->Format.wFormatTag = args->format.Format.wFormatTag;
  	mixFormat->Format.nChannels = args->format.Format.nChannels;
-@@ -510,11 +531,29 @@ void FAudio_PlatformInit(
+@@ -510,10 +531,28 @@
  	else args->updateSize = args->format.Format.nSamplesPerSec / 100;
  
  	data->audioThread = CreateThread(NULL, 0, &FAudio_AudioClientThread, args, 0, NULL);
@@ -211,7 +209,7 @@ index bf020e442c3..59d653317bb 100644
  
  	*updateSize = args->updateSize;
  	*platformDevice = data;
- 	return;
++	return;
 +
 +fail_audio:
 +	IAudioClient_Release(data->client);
@@ -227,11 +225,10 @@ index bf020e442c3..59d653317bb 100644
 +	FAudio_free(args);
 +fail_release:
 +	FAudio_PlatformRelease();
-+	return;
+ 	return;
  }
  
- void FAudio_PlatformQuit(void* platformDevice)
-@@ -537,8 +576,7 @@ void FAudio_PlatformAddRef()
+@@ -537,8 +576,7 @@
  {
  	HRESULT hr;
  	EnterCriticalSection(&faudio_cs);
@@ -241,11 +238,13 @@ index bf020e442c3..59d653317bb 100644
  		init_hr = CoInitialize(NULL);
  		hr = CoCreateInstance(
  			&CLSID_MMDeviceEnumerator,
-@@ -547,19 +585,29 @@ void FAudio_PlatformAddRef()
+@@ -547,19 +585,29 @@
  			&IID_IMMDeviceEnumerator,
  			(void**)&device_enumerator
  		);
 -		FAudio_assert(!FAILED(hr) && "CoCreateInstance failed!");
+-	}
+-	else IMMDeviceEnumerator_AddRef(device_enumerator);
 +		if (FAILED(hr)) {
 +			/* CoCreateInstance failed! */
 +			device_enumerator = NULL;
@@ -254,8 +253,7 @@ index bf020e442c3..59d653317bb 100644
 +				init_hr = -1;
 +			}
 +		}
- 	}
--	else IMMDeviceEnumerator_AddRef(device_enumerator);
++	}
 +	else
 +		IMMDeviceEnumerator_AddRef(device_enumerator);
  	LeaveCriticalSection(&faudio_cs);
@@ -276,7 +274,7 @@ index bf020e442c3..59d653317bb 100644
  	}
  	LeaveCriticalSection(&faudio_cs);
  }
-@@ -567,7 +615,7 @@ void FAudio_PlatformRelease()
+@@ -567,7 +615,7 @@
  uint32_t FAudio_PlatformGetDeviceCount(void)
  {
  	IMMDeviceCollection *device_collection;
@@ -285,7 +283,7 @@ index bf020e442c3..59d653317bb 100644
  	HRESULT hr;
  
  	FAudio_PlatformAddRef();
-@@ -579,21 +627,19 @@ uint32_t FAudio_PlatformGetDeviceCount(void)
+@@ -579,21 +627,19 @@
  		&device_collection
  	);
  	if (FAILED(hr)) {
@@ -299,10 +297,12 @@ index bf020e442c3..59d653317bb 100644
 -		IMMDeviceCollection_Release(device_collection);
 -		FAudio_PlatformRelease();
 -		return 0;
+-	}
+-
 +		count = 0;
 +		goto fail_col_release;
- 	}
- 
++	}
++
 +fail_col_release:
  	IMMDeviceCollection_Release(device_collection);
 -
@@ -312,7 +312,7 @@ index bf020e442c3..59d653317bb 100644
  	return count;
  }
  
-@@ -604,9 +650,9 @@ uint32_t FAudio_PlatformGetDeviceDetails(
+@@ -604,9 +650,9 @@
  ) {
  	WAVEFORMATEX *format, *obtained;
  	WAVEFORMATEXTENSIBLE *ext;
@@ -324,7 +324,7 @@ index bf020e442c3..59d653317bb 100644
  	PROPVARIANT deviceName;
  	uint32_t count = 0;
  	uint32_t ret = 0;
-@@ -630,77 +676,82 @@ uint32_t FAudio_PlatformGetDeviceDetails(
+@@ -630,101 +676,97 @@
  		);
  		if (FAILED(hr))
  		{
@@ -363,12 +363,13 @@ index bf020e442c3..59d653317bb 100644
  	hr = FAudio_OpenDevice(index, deviceId, &device);
 -	FAudio_assert(!FAILED(hr) && "Failed to get audio endpoint!");
 -	if (!device)
-+	if (FAILED(hr))
- 	{
+-	{
 -		if (default_guid)
 -			CoTaskMemFree(default_guid);
 -		FAudio_PlatformRelease();
 -		return FAUDIO_E_INVALID_CALL;
++	if (FAILED(hr))
++	{
 +		/* Failed to get audio endpoint! */
 +		ret = FAUDIO_E_INVALID_CALL;
 +		goto fail_defguid;
@@ -401,58 +402,74 @@ index bf020e442c3..59d653317bb 100644
  	}
  
  	/* Set the Device Display Name */
- 	hr = IMMDevice_OpenPropertyStore(device, STGM_READ, &properties);
--	FAudio_assert(!FAILED(hr) && "Failed to open device property store!");
+-	if (FAILED(hr = IMMDevice_OpenPropertyStore(device, STGM_READ, &properties)))
+-	{
+-		IMMDevice_Release(device);
+-		return hr;
+-	}
+-	if (FAILED(hr = IPropertyStore_GetValue(properties, (PROPERTYKEY *)&DEVPKEY_Device_FriendlyName, &deviceName)))
+-	{
+-		IPropertyStore_Release(properties);
+-		IMMDevice_Release(device);
+-		return hr;
++	hr = IMMDevice_OpenPropertyStore(device, STGM_READ, &properties);
 +	if (FAILED(hr)) {
 +		/* Failed to open device property store! */
 +		ret = FAUDIO_E_INVALID_CALL;
 +		goto fail_propstore;
 +	}
- 	hr = IPropertyStore_GetValue(properties, (PROPERTYKEY*)&DEVPKEY_Device_FriendlyName, &deviceName);
--	FAudio_assert(!FAILED(hr) && "Failed to get audio device friendly name!");
++	hr = IPropertyStore_GetValue(properties, (PROPERTYKEY *)&DEVPKEY_Device_FriendlyName, &deviceName);
 +	if (FAILED(hr)) {
 +		/* Failed to get audio device friendly name! */
 +		ret = FAUDIO_E_INVALID_CALL;
 +		goto fail_propstore;
-+	}
+ 	}
  	lstrcpynW((LPWSTR)details->DisplayName, deviceName.pwszVal, ARRAYSIZE(details->DisplayName) - 1);
  	PropVariantClear(&deviceName);
  	IPropertyStore_Release(properties);
 +	properties = NULL;
  
  	/* Set the Device ID */
- 	hr = IMMDevice_GetId(device, &str);
--	FAudio_assert(!FAILED(hr) && "Failed to get audio endpoint id!");
+-	if (FAILED(hr = IMMDevice_GetId(device, &str)))
+-	{
+-		IMMDevice_Release(device);
+-		return hr;
++	hr = IMMDevice_GetId(device, &str);
 +	if (FAILED(hr)) {
 +		/* Failed to get audio endpoint id! */
 +		ret = FAUDIO_E_INVALID_CALL;
 +		goto fail_device;
-+	}
+ 	}
  	lstrcpynW((LPWSTR)details->DeviceID, str, ARRAYSIZE(details->DeviceID) - 1);
  	CoTaskMemFree(str);
  
-@@ -711,10 +762,18 @@ uint32_t FAudio_PlatformGetDeviceDetails(
- 		NULL,
- 		(void **)&client
- 	);
--	FAudio_assert(!FAILED(hr) && "Failed to activate audio client!");
+-	if (FAILED(hr = IMMDevice_Activate(device, &IID_IAudioClient, CLSCTX_ALL, NULL, (void **)&client)))
+-	{
+-		IMMDevice_Release(device);
+-		return hr;
+-	}
+-
+-	if (FAILED(hr = IAudioClient_GetMixFormat(client, &format)))
+-	{
+-		IAudioClient_Release(client);
+-		IMMDevice_Release(device);
+-		return hr;
++	hr = IMMDevice_Activate(device, &IID_IAudioClient, CLSCTX_ALL, NULL, (void **)&client);
 +	if (FAILED(hr)) {
 +		/* Failed to activate audio client! */
 +		ret = FAUDIO_E_INVALID_CALL;
 +		goto fail_device;
 +	}
- 
- 	hr = IAudioClient_GetMixFormat(client, &format);
--	FAudio_assert(!FAILED(hr) && "Failed to get audio client mix format!");
++
++	hr = IAudioClient_GetMixFormat(client, &format);
 +	if (FAILED(hr)) {
 +		/* Failed to get audio client mix format! */
 +		ret = FAUDIO_E_INVALID_CALL;
 +		goto fail_client;
-+	}
+ 	}
  
  	if (format->wFormatTag == WAVE_FORMAT_EXTENSIBLE)
- 	{
-@@ -728,9 +787,7 @@ uint32_t FAudio_PlatformGetDeviceDetails(
+@@ -739,9 +781,7 @@
  
  		hr = IAudioClient_IsFormatSupported(client, AUDCLNT_SHAREMODE_SHARED, format, &obtained);
  		if (FAILED(hr))
@@ -462,7 +479,7 @@ index bf020e442c3..59d653317bb 100644
  		else if (obtained)
  		{
  			CoTaskMemFree(format);
-@@ -758,18 +815,24 @@ uint32_t FAudio_PlatformGetDeviceDetails(
+@@ -769,18 +809,24 @@
  		);
  	}
  	else
@@ -494,7 +511,7 @@ index bf020e442c3..59d653317bb 100644
  	return ret;
  }
  
-@@ -1051,19 +1114,21 @@ static void XNA_SongSubmitBuffer(FAudioVoiceCallback *callback, void *pBufferCon
+@@ -1062,19 +1108,21 @@
  		NULL,
  		&sample
  	);
@@ -520,7 +537,7 @@ index bf020e442c3..59d653317bb 100644
  
  		hr = IMFMediaBuffer_Lock(
  			media_buffer,
-@@ -1071,20 +1136,31 @@ static void XNA_SongSubmitBuffer(FAudioVoiceCallback *callback, void *pBufferCon
+@@ -1082,20 +1130,31 @@
  			NULL,
  			&buffer_size
  		);
@@ -531,32 +548,33 @@ index bf020e442c3..59d653317bb 100644
  
  		if (songBufferSize < buffer_size)
  		{
--			songBufferSize = buffer_size;
- 			songBuffer = FAudio_realloc(songBuffer, songBufferSize);
--			FAudio_assert(songBuffer != NULL && "Failed to allocate song buffer!");
++			songBuffer = FAudio_realloc(songBuffer, songBufferSize);
 +			if (!songBuffer) {
 +				/* Failed to allocate song buffer! */
 +				songBufferSize = 0;
 +				goto fail_media_unlock;
 +			}
-+			songBufferSize = buffer_size;
+ 			songBufferSize = buffer_size;
+-			songBuffer = FAudio_realloc(songBuffer, songBufferSize);
+-			FAudio_assert(songBuffer != NULL && "Failed to allocate song buffer!");
  		}
  		FAudio_memcpy(songBuffer, buffer_ptr, buffer_size);
  
 +fail_media_unlock:
  		hr = IMFMediaBuffer_Unlock(media_buffer);
 -		FAudio_assert(!FAILED(hr) && "Failed to unlock buffer bytes!");
+-
 +		if (FAILED(hr))
 +			/* Failed to unlock buffer bytes! */
 +			goto fail_media_release;
- 
++
 +fail_media_release:
  		IMFMediaBuffer_Release(media_buffer);
 +fail_release:
  		IMFSample_Release(sample);
  	}
  
-@@ -1105,12 +1181,13 @@ static void XNA_SongSubmitBuffer(FAudioVoiceCallback *callback, void *pBufferCon
+@@ -1116,12 +1175,13 @@
  		);
  	}
  
@@ -571,7 +589,7 @@ index bf020e442c3..59d653317bb 100644
  	{
  		FAudioSourceVoice_Stop(songVoice, 0, 0);
  		FAudioVoice_DestroyVoice(songVoice);
-@@ -1121,19 +1198,22 @@ static void XNA_SongKill()
+@@ -1132,19 +1192,22 @@
  		IMFSourceReader_Release(activeSong);
  		activeSong = NULL;
  	}
@@ -601,7 +619,7 @@ index bf020e442c3..59d653317bb 100644
  
  	FAudioCreate(&songAudio, 0, FAUDIO_DEFAULT_PROCESSOR);
  	FAudio_CreateMasteringVoice(
-@@ -1150,9 +1230,18 @@ FAUDIOAPI void XNA_SongInit()
+@@ -1161,9 +1224,18 @@
  FAUDIOAPI void XNA_SongQuit()
  {
  	XNA_SongKill();
@@ -623,7 +641,7 @@ index bf020e442c3..59d653317bb 100644
  }
  
  FAUDIOAPI float XNA_PlaySong(const char *name)
-@@ -1172,63 +1261,95 @@ FAUDIOAPI float XNA_PlaySong(const char *name)
+@@ -1183,63 +1255,95 @@
  	MultiByteToWideChar(CP_UTF8, 0, name, -1, filename_w, MAX_PATH);
  
  	hr = MFCreateAttributes(&attributes, 1);
@@ -729,7 +747,7 @@ index bf020e442c3..59d653317bb 100644
  
  	hr = IMFSourceReader_GetPresentationAttribute(
  		activeSong,
-@@ -1236,10 +1357,17 @@ FAUDIOAPI float XNA_PlaySong(const char *name)
+@@ -1247,10 +1351,17 @@
  		&MF_PD_DURATION,
  		&var
  	);
@@ -751,18 +769,19 @@ index bf020e442c3..59d653317bb 100644
  
  	activeSongFormat.wFormatTag = FAUDIO_FORMAT_IEEE_FLOAT;
  	activeSongFormat.nChannels = channels;
-@@ -1262,11 +1390,21 @@ FAUDIOAPI float XNA_PlaySong(const char *name)
+@@ -1273,11 +1384,21 @@
  		NULL,
  		NULL
  	);
 -	FAudioVoice_SetVolume(songVoice, songVolume, 0);
 -	XNA_SongSubmitBuffer(NULL, NULL);
+-
+-	/* Finally. */
+-	FAudioSourceVoice_Start(songVoice, 0, 0);
 +	if (songVoice) {
 +		FAudioVoice_SetVolume(songVoice, songVolume, 0);
 +		XNA_SongSubmitBuffer(NULL, NULL);
- 
--	/* Finally. */
--	FAudioSourceVoice_Start(songVoice, 0, 0);
++
 +		/* Finally. */
 +		FAudioSourceVoice_Start(songVoice, 0, 0);
 +	}
@@ -777,6 +796,3 @@ index bf020e442c3..59d653317bb 100644
  	LOG_FUNC_EXIT(songAudio);
  	return (float)(duration / 10000000.);
  }
--- 
-2.54.0
-

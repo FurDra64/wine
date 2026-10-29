@@ -18,9 +18,10 @@ mapping.  This also lets winepulse retarget active raw effect streams once the
 new render node actually exists.
 ---
 diff --git a/dlls/winepulse.drv/pulse.c b/dlls/winepulse.drv/pulse.c
+index 5fc1580a..4f8f9aff 100644
 --- a/dlls/winepulse.drv/pulse.c
 +++ b/dlls/winepulse.drv/pulse.c
-@@ -241,6 +241,44 @@
+@@ -172,6 +172,44 @@ static BOOL device_list_has_dualsense_audio_device(struct list *devices)
      return FALSE;
  }
  
@@ -65,27 +66,27 @@ diff --git a/dlls/winepulse.drv/pulse.c b/dlls/winepulse.drv/pulse.c
  static NTSTATUS pulse_not_implemented(void *args)
  {
      return STATUS_SUCCESS;
-@@ -636,6 +674,7 @@
-     BOOL delta = params->delta;
-     BOOL find_dualsense_haptic_alsa = FALSE;
-     BOOL retarget_haptic = use_pipewire_dualsense_haptic_target();
-+    BOOL refresh_render_after_capture = FALSE;
-     char *dualsense_mono_target = NULL;
-     char *dualsense_haptic_target = NULL;
-     char *dualsense_haptic_alsa_path = NULL;
-@@ -760,6 +799,11 @@
-         pulse_get_endpoints(list_added, &endpoint, &offset, params->endpoints);
-         pulse_get_endpoints(list_removed, &endpoint, &offset, params->endpoints);
+@@ -567,6 +605,7 @@ static void silence_buffer(pa_sample_format_t format, BYTE *buffer, UINT32 bytes
  
+ static BOOL pulse_stream_valid(struct pulse_stream *stream)
+ {
++    BOOL refresh_render_after_capture = FALSE;
+     pa_stream_state_t state;
+ 
+     if (stream->dualsense_mono_registered)
+@@ -691,6 +730,11 @@ static WCHAR *get_device_name(const char *desc, pa_proplist *proplist)
+     WCHAR buf[MAX_DEVICE_NAME_LEN + 1];
+ 
+     /* For monitors of sinks; this does not seem to be localized in PA either */
 +        refresh_render_after_capture = params->flow == eCapture &&
 +                device_list_has_dualsense_audio_device(list_added) &&
 +                device_list_has_dualsense_audio_device(list_removed) &&
 +                device_list_has_missing_dualsense_render_profile(list_added);
 +
-         LIST_FOR_EACH_ENTRY_SAFE(dev, dev_next, list_added, PhysDevice, entry) {
-             if (params->flow == eRender && is_dualsense_speaker_sink(dev))
-             {
-@@ -792,6 +836,12 @@
+     static const WCHAR monitor_of[] = {'M','o','n','i','t','o','r',' ','o','f',' '};
+ 
+     size_t len = strlen(desc);
+@@ -767,6 +811,12 @@ static WCHAR *get_device_name(const char *desc, pa_proplist *proplist)
          }
          params->more_data = list_count(other_list_added) + list_count(other_list_removed)
                  || (g_phys_event_mask & other_event_mask);
@@ -96,12 +97,13 @@ diff --git a/dlls/winepulse.drv/pulse.c b/dlls/winepulse.drv/pulse.c
 +            params->more_data = TRUE;
 +        }
      }
-     else
-     {
+     name[len] = '\0';
+ 
 diff --git a/dlls/mmdevapi/devenum.c b/dlls/mmdevapi/devenum.c
+index 8ea12dc4..750fd2e5 100644
 --- a/dlls/mmdevapi/devenum.c
 +++ b/dlls/mmdevapi/devenum.c
-@@ -1967,6 +1967,8 @@
+@@ -1596,6 +1596,8 @@ static HRESULT set_format(MMDevice *dev)
  static LONG dualsense_mono_render_add_pending;
  static LONG dualsense_mono_activation_serial;
  static enum dualsense_mono_model dualsense_mono_render_add_model;
@@ -110,16 +112,16 @@ diff --git a/dlls/mmdevapi/devenum.c b/dlls/mmdevapi/devenum.c
  
  static void add_endpoints_from_params(struct get_endpoint_ids_params *params, BOOL hotplug)
  {
-@@ -1979,6 +1981,7 @@
-         const WCHAR *name = (WCHAR *)((char *)params->endpoints + params->endpoints[i].name);
+@@ -1608,6 +1610,7 @@ static void add_endpoints_from_params(struct get_endpoint_ids_params *params, BO
          const char *dev_name = (char *)params->endpoints + params->endpoints[i].device;
          get_device_guid(params->flow, dev_name, TRUE, &guid);
-+        promote_delayed_dualsense_profile_in_cache(&guid, dev_name, params->flow);
-         already_published = device_is_published(&guid, params->flow);
          device = MMDevice_Create(name, &guid, params->flow, DEVICE_STATE_ACTIVE, params->default_idx == i);
-         if (device && params->flow == eRender &&
-@@ -2035,6 +2038,42 @@
-     LeaveCriticalSection(&devices_cache_cs);
++        promote_delayed_dualsense_profile_in_cache(&guid, dev_name, params->flow);
+         if (device && params->flow == eRender && is_dualsense_mono_endpoint(device))
+         {
+             const GUID *id = &device->devguid;
+@@ -1632,6 +1635,42 @@ static void add_endpoints_from_params(struct get_endpoint_ids_params *params, BO
+     }
  }
  
 +static void promote_delayed_dualsense_profile_in_cache(const GUID *guid,

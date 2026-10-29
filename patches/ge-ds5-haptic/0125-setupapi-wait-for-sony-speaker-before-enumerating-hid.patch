@@ -22,12 +22,13 @@ not acquire persistent state or a retry loop.
  1 file changed, 69 insertions(+)
 
 diff --git a/dlls/setupapi/devinst.c b/dlls/setupapi/devinst.c
+index f572a8bb..47c4a44f 100644
 --- a/dlls/setupapi/devinst.c
 +++ b/dlls/setupapi/devinst.c
 @@ -2064,6 +2064,72 @@ static BOOL enable_mhwilds_usb_audio(void)
-     return env && env[0] == '1' && !env[1];
  }
  
+             skip_present_check = true;
 +static BOOL string_containsi(const WCHAR *string, const WCHAR *needle)
 +{
 +    size_t len = wcslen(needle);
@@ -94,25 +95,23 @@ diff --git a/dlls/setupapi/devinst.c b/dlls/setupapi/devinst.c
 +    CloseHandle(event);
 +}
 +
- static void SETUPDI_AddDeviceInterfaces(struct device *device, HKEY key,
-     const GUID *guid, DWORD flags)
- {
-@@ -2183,6 +2249,8 @@ static void SETUPDI_EnumerateMatchingInterfaces(HDEVINFO DeviceInfoSet,
-                         {
-                             WCHAR deviceClassStr[40];
+             break;
+         }
  
+@@ -2183,6 +2249,8 @@ static void SETUPDI_EnumerateDevices(HDEVINFO DeviceInfoSet, const GUID *class,
+         wcscat(enum_str2, L"\\");
+     }
+     enum_str_len = enum_str ? wcslen(enum_str2) : 0;
 +                            wait_for_sony_audio_endpoint(deviceKey, deviceInst);
 +
-                             len = sizeof(deviceClassStr);
-                             l = RegQueryValueExW(deviceKey, L"ClassGUID", NULL,
-                                     &dataType, (BYTE *)deviceClassStr, &len);
-@@ -2416,6 +2484,7 @@ static void SETUPDI_EnumerateMatchingDeviceInstances(struct DeviceInfoSet *set,
-                                     (!(flags & DIGCF_PRESENT) ||
-                                      is_device_instance_linked(subKey, interfacesKey, id)))
-                             {
+     for (WCHAR *id = ids; *id; id = id + wcslen(id) + 1)
+     {
+         DWORD size, phantom;
+@@ -2416,6 +2484,7 @@ BOOL WINAPI SetupDiCreateDeviceInterfaceW(HDEVINFO devinfo, SP_DEVINFO_DATA *dev
+         copy_device_iface_data(iface_data, iface);
+     }
+     return TRUE;
 +                                wait_for_sony_audio_endpoint(subKey, id);
-                                 create_device(set, &deviceClass, id, FALSE);
-                             }
+ }
  
--- 
-2.55.0
+ /***********************************************************************

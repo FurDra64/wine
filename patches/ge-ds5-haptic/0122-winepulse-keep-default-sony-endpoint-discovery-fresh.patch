@@ -18,28 +18,29 @@ the complete fresh endpoint set expected by the default hotplug path.
  1 file changed, 14 insertions(+)
 
 diff --git a/dlls/winepulse.drv/pulse.c b/dlls/winepulse.drv/pulse.c
+index 0546c4b5..01e49b46 100644
 --- a/dlls/winepulse.drv/pulse.c
 +++ b/dlls/winepulse.drv/pulse.c
-@@ -181,6 +181,7 @@ static pa_mainloop *pulse_ml;
- static pthread_mutex_t g_phys_mutex;
- static pthread_cond_t g_phys_cond = PTHREAD_COND_INITIALIZER;
- static unsigned int g_haptic_hotplug_generation;
-+static unsigned int g_dualsense_endpoint_generation;
- static unsigned int g_dualsense_mono_speaker_add_generation;
- static char *g_dualsense_mono_preferred_sink;
- static unsigned int g_phys_event_mask;
-@@ -1436,6 +1437,7 @@ static BOOL pulse_stream_dualsense_mono_format(const struct pulse_stream *stream
- 
- static BOOL pulse_set_endpoint_id(PhysDevice *dev)
+@@ -181,6 +181,7 @@ static int16_t float_to_s16(float sample)
  {
+     if (sample > 1.0f) sample = 1.0f;
+ static char *g_dualsense_mono_preferred_sink;
++static unsigned int g_dualsense_endpoint_generation;
+     else if (sample < -1.0f) sample = -1.0f;
+ 
+     return sample < 0.0f ? sample * 32768.0f : sample * 32767.0f;
+@@ -1436,6 +1437,7 @@ static HRESULT pulse_spec_from_waveformat(struct pulse_stream *stream, const WAV
+ static HRESULT pulse_stream_connect(struct pulse_stream *stream, const char *pulse_name, UINT32 period_bytes)
+ {
+     pa_stream_flags_t flags = PA_STREAM_START_CORKED | PA_STREAM_START_UNMUTED | PA_STREAM_ADJUST_LATENCY;
 +    unsigned int generation;
-     size_t len;
+     int ret;
+     char buffer[64];
+     static LONG number;
+@@ -1451,6 +1453,18 @@ static HRESULT pulse_stream_connect(struct pulse_stream *stream, const char *pul
+     }
  
-     if (is_dualsense_edge_speaker_sink(dev))
-@@ -1451,6 +1453,18 @@ static BOOL pulse_set_endpoint_id(PhysDevice *dev)
-             && strstr(dev->pulse_name, "Speaker__sink")))
-         return !!(dev->endpoint_id = strdup(dev->pulse_name));
- 
+     pa_stream_set_state_callback(stream->stream, pulse_stream_state, stream);
 +    if (!use_windows_sony_controller_names())
 +    {
 +        generation = ++g_dualsense_endpoint_generation;
@@ -52,8 +53,6 @@ diff --git a/dlls/winepulse.drv/pulse.c b/dlls/winepulse.drv/pulse.c
 +        return TRUE;
 +    }
 +
-     len = strlen(dev->pulse_name) + sizeof("#wine-sony-hotplug-") + 36;
-     if (!(dev->endpoint_id = malloc(len)))
-         return FALSE;
--- 
-2.55.0
+     pa_stream_set_buffer_attr_callback(stream->stream, pulse_attr_update, stream);
+     pa_stream_set_moved_callback(stream->stream, pulse_attr_update, stream);
+ 

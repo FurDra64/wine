@@ -11,9 +11,11 @@ a controller speaker-routing failure without dumping the audio itself.
 The scan is compiled into the trace path and therefore has no per-sample cost
 unless pulse tracing is enabled.
 
+diff --git a/dlls/winepulse.drv/pulse.c b/dlls/winepulse.drv/pulse.c
+index 01e49b46..b949dc32 100644
 --- a/dlls/winepulse.drv/pulse.c
 +++ b/dlls/winepulse.drv/pulse.c
-@@ -115,6 +115,8 @@ struct pulse_stream
+@@ -82,6 +82,8 @@ struct pulse_stream
      BYTE *local_buffer, *tmp_buffer, *peek_buffer;
      int16_t *haptic_buffer;
      SIZE_T haptic_buffer_frames;
@@ -21,11 +23,11 @@ unless pulse tracing is enabled.
 +    pa_usec_t haptic_channel_trace_time;
      pa_usec_t haptic_reconnect_time;
      pa_usec_t haptic_path_check_time;
-     unsigned int haptic_hotplug_generation;
-@@ -3191,6 +3193,43 @@ static void pulse_haptic_advance(struct pulse_stream *stream, UINT32 frames, UINT
-     stream->held_bytes -= min(stream->held_bytes, bytes);
+ static struct list dualsense_mono_streams = LIST_INIT(dualsense_mono_streams);
+@@ -3158,6 +3160,43 @@ static NTSTATUS pulse_wow64_process_attach(void *args)
  }
  
+ static NTSTATUS pulse_wow64_get_endpoint_ids(void *args)
 +static void pulse_haptic_trace_channels(struct pulse_stream *stream, const int16_t *samples,
 +        UINT32 frames)
 +{
@@ -63,17 +65,15 @@ unless pulse tracing is enabled.
 +    stream->haptic_channel_trace_time = now + 1000000;
 +}
 +
- static void pulse_haptic_write(struct pulse_stream *stream)
  {
-     snd_pcm_state_t state;
-@@ -3269,6 +3307,8 @@ static void pulse_haptic_write(struct pulse_stream *stream)
-     else
-         write_data = src;
- 
+     struct
+     {
+@@ -3236,6 +3275,8 @@ static NTSTATUS pulse_wow64_get_render_buffer(void *args)
+ {
+     struct
+     {
 +    pulse_haptic_trace_channels(stream, write_data, frames);
 +
-     written = snd_pcm_writei(stream->haptic_pcm, write_data, frames);
-     if (written < 0)
-     {
--- 
-2.55.0
+         stream_handle stream;
+         UINT32 frames;
+         HRESULT result;

@@ -8,21 +8,17 @@ Subject: [PATCH 201/285] winewayland: Unset XDG_ACTIVATION_TOKEN after reading
 ---
  dlls/winewayland.drv/waylanddrv_main.c | 3 +++
  1 file changed, 3 insertions(+)
-
 diff --git a/dlls/winewayland.drv/waylanddrv_main.c b/dlls/winewayland.drv/waylanddrv_main.c
-index 9fe3e2f2265..b7d1438df90 100644
+index 275a3907..11a2aa58 100644
 --- a/dlls/winewayland.drv/waylanddrv_main.c
 +++ b/dlls/winewayland.drv/waylanddrv_main.c
-@@ -105,6 +105,9 @@ static void wayland_init_activation_token(void)
-     else if ((env = getenv("DESKTOP_STARTUP_ID")))
-         process_activate_token = strdup(env);
+@@ -105,6 +105,9 @@ err:
+ }
  
+ static NTSTATUS waylanddrv_unix_read_events(void *arg)
 +    unsetenv("DESKTOP_STARTUP_ID");
 +    unsetenv("XDG_ACTIVATION_TOKEN");
 +
-     TRACE("activation token %s\n", debugstr_a(process_activate_token));
- }
- 
--- 
-2.55.0
-
+ {
+     while (wl_display_dispatch_queue(process_wayland.wl_display,
+                                      process_wayland.wl_event_queue) != -1)

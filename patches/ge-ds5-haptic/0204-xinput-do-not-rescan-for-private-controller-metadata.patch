@@ -25,10 +25,10 @@ the XInput worker has processed its own notification. No audio ordering,
 controller mapping or native Steam Input priority changes are needed.
 ---
 diff --git a/dlls/xinput1_3/main.c b/dlls/xinput1_3/main.c
-index 72d9b520..6ccc4110 100644
+index d66f460e..89bfd8c0 100644
 --- a/dlls/xinput1_3/main.c
 +++ b/dlls/xinput1_3/main.c
-@@ -1498,6 +1498,9 @@ DWORD WINAPI DECLSPEC_HOTPATCH XInputGetCapabilities(DWORD index, DWORD flags, X
+@@ -1156,6 +1156,9 @@ DWORD WINAPI DECLSPEC_HOTPATCH XInputGetCapabilities(DWORD index, DWORD flags, X
      return ret;
  }
  
@@ -38,7 +38,7 @@ index 72d9b520..6ccc4110 100644
  BOOL WINAPI __wine_XInputIsSonyFallback(const WCHAR *device_path)
  {
      BOOL available = FALSE;
-@@ -1507,8 +1510,6 @@ BOOL WINAPI __wine_XInputIsSonyFallback(const WCHAR *device_path)
+@@ -1165,8 +1168,6 @@ BOOL WINAPI __wine_XInputIsSonyFallback(const WCHAR *device_path)
      start_update_thread();
  
      EnterCriticalSection(&xinput_cs);
@@ -47,19 +47,19 @@ index 72d9b520..6ccc4110 100644
      if (find_opened_device(device_path, &index) && controllers[index].native_input_event)
          available = controller_available(&controllers[index]);
      LeaveCriticalSection(&xinput_cs);
-@@ -1527,7 +1528,6 @@ DWORD WINAPI __wine_XInputGetSonyProductId(DWORD index, WORD *product_id)
+@@ -1185,7 +1186,6 @@ DWORD WINAPI __wine_XInputGetSonyProductId(DWORD index, WORD *product_id)
      start_update_thread();
  
      EnterCriticalSection(&xinput_cs);
 -    if (!controllers[index].device) update_controller_list();
-     if (!controller_available(&controllers[index]))
+     if (!controllers[index].device)
          ret = ERROR_DEVICE_NOT_CONNECTED;
      else
-@@ -1549,7 +1549,6 @@ DWORD WINAPI __wine_XInputGetDeviceVidPid(DWORD index, WORD *vendor_id, WORD *pr
+@@ -1207,7 +1207,6 @@ DWORD WINAPI __wine_XInputGetDeviceVidPid(DWORD index, WORD *vendor_id, WORD *pr
      start_update_thread();
  
      EnterCriticalSection(&xinput_cs);
 -    if (!controllers[index].device) update_controller_list();
-     if (!controller_available(&controllers[index]))
+     if (!controllers[index].device)
          ret = ERROR_DEVICE_NOT_CONNECTED;
      else if (swscanf(controllers[index].device_path, L"\\\\?\\HID#VID_%04x&PID_%04x", &vid, &pid) != 2 &&

@@ -31,9 +31,10 @@ the existing forced flag still uses the companion path.
 
 ---
 diff --git a/dlls/dinput/joystick_hid.c b/dlls/dinput/joystick_hid.c
+index f5a82b35..a8c01906 100644
 --- a/dlls/dinput/joystick_hid.c
 +++ b/dlls/dinput/joystick_hid.c
-@@ -1067,6 +1067,27 @@ static void hid_joystick_destroy( IDirectInputDevice8W *iface )
+@@ -1022,6 +1022,27 @@ static void hid_joystick_destroy( IDirectInputDevice8W *iface )
      CloseHandle( impl->device );
  }
  
@@ -61,7 +62,7 @@ diff --git a/dlls/dinput/joystick_hid.c b/dlls/dinput/joystick_hid.c
  static HRESULT hid_joystick_get_property( IDirectInputDevice8W *iface, DWORD property,
                                            DIPROPHEADER *header, const DIDEVICEOBJECTINSTANCEW *instance )
  {
-@@ -1105,6 +1126,11 @@ static HRESULT hid_joystick_get_property( IDirectInputDevice8W *iface, DWORD pro
+@@ -1060,6 +1081,11 @@ static HRESULT hid_joystick_get_property( IDirectInputDevice8W *iface, DWORD pro
              value->dwData = MAKELONG( 0x045e, 0x028e );
              TRACE( "Reporting forced Sony XInput companion %s as Xbox 360.\n", debugstr_w(impl->device_path) );
          }
@@ -74,17 +75,18 @@ diff --git a/dlls/dinput/joystick_hid.c b/dlls/dinput/joystick_hid.c
      }
      case (DWORD_PTR)DIPROP_JOYSTICKID:
 diff --git a/dlls/xinput1_3/main.c b/dlls/xinput1_3/main.c
+index 9e2095f1..d66f460e 100644
 --- a/dlls/xinput1_3/main.c
 +++ b/dlls/xinput1_3/main.c
-@@ -139,6 +139,7 @@ static XINPUT_STATE persistent_state;
+@@ -139,6 +139,7 @@ static void check_value_caps(struct xinput_controller *controller, USHORT usage,
+     }
+ }
  
- DWORD WINAPI __wine_XInputGetDeviceVidPid(DWORD index, WORD *vendor_id, WORD *product_id);
- DWORD WINAPI __wine_XInputGetSonyProductId(DWORD index, WORD *product_id);
 +BOOL WINAPI __wine_XInputIsSonyFallback(const WCHAR *device_path);
- static USHORT sony_gamepad_product_id(const WCHAR *path);
- 
- static BOOL automatic_sony_enabled(void)
-@@ -1486,6 +1487,24 @@ DWORD WINAPI DECLSPEC_HOTPATCH XInputGetCapabilities(DWORD index, DWORD flags, X
+ static void check_waveform_caps(struct xinput_controller *controller, HANDLE device, PHIDP_PREPARSED_DATA preparsed,
+                                 HIDP_LINK_COLLECTION_NODE *collections, HIDP_VALUE_CAPS *caps)
+ {
+@@ -1155,6 +1156,24 @@ DWORD WINAPI DECLSPEC_HOTPATCH XInputGetCapabilities(DWORD index, DWORD flags, X
      return ret;
  }
  
@@ -110,6 +112,7 @@ diff --git a/dlls/xinput1_3/main.c b/dlls/xinput1_3/main.c
  {
      DWORD ret = ERROR_SUCCESS;
 diff --git a/dlls/xinput1_3/xinput1_3.spec b/dlls/xinput1_3/xinput1_3.spec
+index 132350f5..4cdedf10 100644
 --- a/dlls/xinput1_3/xinput1_3.spec
 +++ b/dlls/xinput1_3/xinput1_3.spec
 @@ -9,3 +9,4 @@

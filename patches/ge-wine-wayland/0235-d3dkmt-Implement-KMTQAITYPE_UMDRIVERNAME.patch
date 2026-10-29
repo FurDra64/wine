@@ -6,14 +6,13 @@ Subject: [PATCH 235/285] d3dkmt: Implement KMTQAITYPE_UMDRIVERNAME
 ---
  dlls/win32u/d3dkmt.c | 44 ++++++++++++++++++++++++++++++++++++++++++++
  1 file changed, 44 insertions(+)
-
 diff --git a/dlls/win32u/d3dkmt.c b/dlls/win32u/d3dkmt.c
-index 3e69cd3dc68..d8b69ceea21 100644
+index 11a2997d..acf91bd4 100644
 --- a/dlls/win32u/d3dkmt.c
 +++ b/dlls/win32u/d3dkmt.c
-@@ -705,6 +705,21 @@ typedef struct
-     } info[1];
- } AMDLargeDriverPrivate;
+@@ -707,6 +707,21 @@ NTSTATUS WINAPI NtGdiDdDDIEscape( const D3DKMT_ESCAPE *desc )
+     }
+ }
  
 +typedef enum _KMTUMDVERSION {
 +  KMTUMDVERSION_DX9,
@@ -31,11 +30,11 @@ index 3e69cd3dc68..d8b69ceea21 100644
 +} D3DKMT_UMDFILENAMEINFO;
 +
  /******************************************************************************
-  *           NtGdiDdDDIQueryAdapterInfo    (win32u.@)
+  *           NtGdiDdDDICloseAdapter    (win32u.@)
   */
-@@ -862,6 +877,35 @@ NTSTATUS WINAPI NtGdiDdDDIQueryAdapterInfo( D3DKMT_QUERYADAPTERINFO *desc )
-         FIXME("Unsupported KMTQAITYPE_UMDRIVERPRIVATE!\n");
-         return STATUS_NOT_IMPLEMENTED;
+@@ -838,6 +853,35 @@ NTSTATUS WINAPI NtGdiDdDDIQueryAdapterInfo( D3DKMT_QUERYADAPTERINFO *desc )
+         *value = KMT_DRIVERVERSION_WDDM_3_1;
+         return STATUS_SUCCESS;
      }
 +    case KMTQAITYPE_UMDRIVERNAME:
 +    {
@@ -69,6 +68,3 @@ index 3e69cd3dc68..d8b69ceea21 100644
      default:
      {
          FIXME( "type %d not handled.\n", desc->Type );
--- 
-2.55.0
-

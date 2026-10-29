@@ -9,12 +9,11 @@ Subject: [PATCH 192/285] winewayland: Introduce reference counting for
  dlls/winewayland.drv/wayland_output.c | 31 +++++++++++++++++++++------
  dlls/winewayland.drv/waylanddrv.h     |  8 ++++---
  3 files changed, 31 insertions(+), 10 deletions(-)
-
 diff --git a/dlls/winewayland.drv/wayland.c b/dlls/winewayland.drv/wayland.c
-index 7f866ed64a9..05e8f26a7c9 100644
+index 118ee2d6..daaf7026 100644
 --- a/dlls/winewayland.drv/wayland.c
 +++ b/dlls/winewayland.drv/wayland.c
-@@ -301,7 +301,7 @@ static void registry_handle_global_remove(void *data, struct wl_registry *regist
+@@ -253,7 +253,7 @@ static void registry_handle_global_remove(void *data, struct wl_registry *regist
          if (output->global_id == id)
          {
              TRACE("removing output->name=%s\n", output->current.name);
@@ -24,19 +23,19 @@ index 7f866ed64a9..05e8f26a7c9 100644
          }
      }
 diff --git a/dlls/winewayland.drv/wayland_output.c b/dlls/winewayland.drv/wayland_output.c
-index eb77cc89e45..2904af52cbc 100644
+index f76881a1..1715cfb7 100644
 --- a/dlls/winewayland.drv/wayland_output.c
 +++ b/dlls/winewayland.drv/wayland_output.c
-@@ -675,6 +675,8 @@ BOOL wayland_output_create(uint32_t id, uint32_t version)
-     if (process_wayland.wp_color_manager_v1)
-         wayland_output_use_image_description(output);
+@@ -343,6 +343,8 @@ BOOL wayland_output_create(uint32_t id, uint32_t version)
+     if (process_wayland.zxdg_output_manager_v1)
+         wayland_output_use_xdg_extension(output);
  
 +    output->ref = 1;
 +
      pthread_mutex_lock(&process_wayland.output_mutex);
      wl_list_insert(process_wayland.output_list.prev, &output->link);
      pthread_mutex_unlock(&process_wayland.output_mutex);
-@@ -682,7 +684,7 @@ BOOL wayland_output_create(uint32_t id, uint32_t version)
+@@ -350,7 +352,7 @@ BOOL wayland_output_create(uint32_t id, uint32_t version)
      return TRUE;
  
  err:
@@ -45,7 +44,7 @@ index eb77cc89e45..2904af52cbc 100644
      return FALSE;
  }
  
-@@ -693,16 +695,35 @@ static void wayland_output_state_deinit(struct wayland_output_state *state)
+@@ -361,24 +363,41 @@ static void wayland_output_state_deinit(struct wayland_output_state *state)
  }
  
  /**********************************************************************
@@ -83,8 +82,7 @@ index eb77cc89e45..2904af52cbc 100644
 +
      wayland_output_state_deinit(&output->pending);
      wayland_output_state_deinit(&output->current);
-     if (output->wp_color_management_output_v1)
-@@ -715,8 +736,6 @@ void wayland_output_destroy(struct wayland_output *output)
+     if (output->zxdg_output_v1)
          zxdg_output_v1_destroy(output->zxdg_output_v1);
      wl_output_destroy(output->wl_output);
      free(output);
@@ -94,11 +92,11 @@ index eb77cc89e45..2904af52cbc 100644
  
  /**********************************************************************
 diff --git a/dlls/winewayland.drv/waylanddrv.h b/dlls/winewayland.drv/waylanddrv.h
-index 00e87515dd5..28b8abcc596 100644
+index 1cb525b2..a86f5b16 100644
 --- a/dlls/winewayland.drv/waylanddrv.h
 +++ b/dlls/winewayland.drv/waylanddrv.h
-@@ -323,8 +323,8 @@ struct wayland_output
-     struct wp_color_management_output_v1 *wp_color_management_output_v1;
+@@ -226,8 +226,8 @@ struct wayland_output
+     struct zxdg_output_v1 *zxdg_output_v1;
      uint32_t global_id;
      unsigned int pending_flags;
 -    struct wayland_output_state pending;
@@ -108,7 +106,7 @@ index 00e87515dd5..28b8abcc596 100644
  };
  
  struct wayland_surface_config
-@@ -424,8 +424,10 @@ BOOL wayland_process_init(void);
+@@ -320,8 +320,10 @@ BOOL wayland_process_init(void);
   *          Wayland output
   */
  
@@ -118,8 +116,5 @@ index 00e87515dd5..28b8abcc596 100644
 +void wayland_output_release(struct wayland_output *output);
 +void wayland_output_remove(struct wayland_output *output);
  void wayland_output_use_xdg_extension(struct wayland_output *output);
- void wayland_output_use_image_description(struct wayland_output *output);
- struct wayland_output *wayland_output_for_rect(const RECT *rect);
--- 
-2.55.0
-
+ 
+ /**********************************************************************

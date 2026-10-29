@@ -7,20 +7,16 @@ Subject: [PATCH 177/285] winewayland: Treat 0x0 windows as roleless.
 ---
  dlls/winewayland.drv/window.c | 2 +-
  1 file changed, 1 insertion(+), 1 deletion(-)
-
 diff --git a/dlls/winewayland.drv/window.c b/dlls/winewayland.drv/window.c
-index 565cd4a7f0d..97c329d3306 100644
+index 270fdfb4..1c5e7146 100644
 --- a/dlls/winewayland.drv/window.c
 +++ b/dlls/winewayland.drv/window.c
-@@ -198,7 +198,7 @@ static BOOL wayland_win_data_create_wayland_surface(struct wayland_win_data *dat
-     if (!(surface = data->wayland_surface) || !surface->window.visible)
-         visible = visible && layer_set;
+@@ -185,7 +185,7 @@ static BOOL wayland_win_data_create_wayland_surface(struct wayland_win_data *dat
+     visible = ((NtUserGetWindowLongW(data->hwnd, GWL_STYLE) & WS_VISIBLE) == WS_VISIBLE) &&
+                (!(exstyle & WS_EX_LAYERED) || data->layered_attribs_set);
  
 -    if (!visible) role = WAYLAND_SURFACE_ROLE_NONE;
 +    if (!visible || IsRectEmpty(&data->rects.visible)) role = WAYLAND_SURFACE_ROLE_NONE;
-     else if (owner_surface) role = WAYLAND_SURFACE_ROLE_POPUP;
+     else if (owner_surface) role = WAYLAND_SURFACE_ROLE_SUBSURFACE;
      else role = WAYLAND_SURFACE_ROLE_TOPLEVEL;
  
--- 
-2.55.0
-

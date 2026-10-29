@@ -21,21 +21,22 @@ controller-effects mode.
  1 file changed, 85 insertions(+)
 
 diff --git a/dlls/winepulse.drv/pulse.c b/dlls/winepulse.drv/pulse.c
+index 4f8f9aff..a4ee44dd 100644
 --- a/dlls/winepulse.drv/pulse.c
 +++ b/dlls/winepulse.drv/pulse.c
-@@ -149,6 +149,8 @@ struct pulse_stream
-     unsigned int dualsense_mono_hotplug_generation;
-     BOOL dualsense_mono_registered;
-     BOOL dualsense_haptic_registered;
+@@ -149,6 +149,8 @@ static struct list g_phys_sources_removed = LIST_INIT(g_phys_sources_removed);
+ static unsigned int g_haptic_hotplug_generation;
+ /* separate list for holding removed devices that were just added */
+ /* to avoid race-condition/deadlock. */
 +    BOOL death_stranding_speaker_source;
 +    BOOL death_stranding_actuator_source;
-     BOOL speaker_route_selected;
- };
+ static struct list g_phys_added_removed = LIST_INIT(g_phys_added_removed);
  
-@@ -3343,6 +3345,86 @@ static HRESULT pulse_retarget_dualsense_haptic_stream_path(struct pulse_stream
-     return S_OK;
- }
- 
+ static pthread_mutex_t pulse_mutex;
+@@ -3343,6 +3345,86 @@ static NTSTATUS pulse_wow64_get_render_buffer(void *args)
+     params32->result = params.result;
+     *(unsigned int *)ULongToPtr(params32->data) = PtrToUlong(data);
+     return STATUS_SUCCESS;
 +static BOOL pulse_align_death_stranding_controller_stream(struct pulse_stream *stream,
 +        const int16_t *samples, UINT32 frames)
 +{
@@ -116,18 +117,16 @@ diff --git a/dlls/winepulse.drv/pulse.c b/dlls/winepulse.drv/pulse.c
 +    return FALSE;
 +}
 +
- static void pulse_retarget_dualsense_haptic_streams(const char *target)
- {
-     struct pulse_stream *stream, *next;
-@@ -3698,6 +3780,9 @@ static void pulse_haptic_write(struct pulse_stream *stream)
-             stream->speaker_route_selected = pulse_select_dualsense_usb_speaker();
-     }
+ }
  
+ static NTSTATUS pulse_wow64_get_capture_buffer(void *args)
+@@ -3698,6 +3780,9 @@ static NTSTATUS pulse_wow64_set_volumes(void *args)
+         PTR32 session_volumes;
+     } *params32 = args;
+     struct set_volumes_params params =
 +    if (pulse_align_death_stranding_controller_stream(stream, write_data, frames))
 +        return;
 +
-     pulse_haptic_trace_channels(stream, write_data, frames);
- 
-     written = snd_pcm_writei(stream->haptic_pcm, write_data, frames);
--- 
-2.55.0
+     {
+         .stream = params32->stream,
+         .master_volume = params32->master_volume,

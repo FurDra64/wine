@@ -8,13 +8,12 @@ Subject: [PATCH 146/285] win32u: Implement
 ---
  dlls/win32u/d3dkmt.c | 59 ++++++++++++++++++++++++++++++++++++++++++++
  1 file changed, 59 insertions(+)
-
 diff --git a/dlls/win32u/d3dkmt.c b/dlls/win32u/d3dkmt.c
-index a9c307c3211..0893c8c40fe 100644
+index 11a2997d..71f91353 100644
 --- a/dlls/win32u/d3dkmt.c
 +++ b/dlls/win32u/d3dkmt.c
-@@ -759,6 +759,65 @@ NTSTATUS WINAPI NtGdiDdDDIQueryAdapterInfo( D3DKMT_QUERYADAPTERINFO *desc )
- 
+@@ -838,6 +838,65 @@ NTSTATUS WINAPI NtGdiDdDDIQueryAdapterInfo( D3DKMT_QUERYADAPTERINFO *desc )
+         *value = KMT_DRIVERVERSION_WDDM_3_1;
          return STATUS_SUCCESS;
      }
 +    case KMTQAITYPE_UMDRIVERPRIVATE:
@@ -79,6 +78,3 @@ index a9c307c3211..0893c8c40fe 100644
      default:
      {
          FIXME( "type %d not handled.\n", desc->Type );
--- 
-2.55.0
-

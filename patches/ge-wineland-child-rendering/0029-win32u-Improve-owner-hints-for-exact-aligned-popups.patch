@@ -12,14 +12,14 @@ sample a point inside the popup and return the first root window behind
 it. This keeps ownership inference in win32u and gives drivers a stable
 owner hint.
 ---
- dlls/win32u/window.c | 34 ++++++++++++++++++++++++++++++++++
+dlls/win32u/window.c | 34 ++++++++++++++++++++++++++++++++++
  1 file changed, 34 insertions(+)
 
 diff --git a/dlls/win32u/window.c b/dlls/win32u/window.c
-index 0e19bd318dee3717933d887e0867ba7aaa2479de..6d04379ced0acaeecd90f98d3737c4c90ea411aa 100644
+index 4f0610c2..bd1e4ddb 100644
 --- a/dlls/win32u/window.c
 +++ b/dlls/win32u/window.c
-@@ -56,6 +56,8 @@ static void *client_objects[MAX_USER_HANDLES];
+@@ -57,6 +57,8 @@ static void *client_objects[MAX_USER_HANDLES];
  static volatile unsigned int startup_info_flags;
  static unsigned int startup_show_window;
  
@@ -28,9 +28,9 @@ index 0e19bd318dee3717933d887e0867ba7aaa2479de..6d04379ced0acaeecd90f98d3737c4c9
  static unsigned int set_startup_info_flags( unsigned int mask, unsigned int flags )
  {
      unsigned int prev, new;
-@@ -2564,6 +2566,14 @@ static BOOL apply_window_pos( HWND hwnd, HWND insert_after, UINT swp_flags, stru
-             owner_hint = NtUserWindowFromPoint(new_rects->window.left, new_rects->window.top - 1);
-             owner_hint = NtUserGetAncestor(owner_hint, GA_ROOT);
+@@ -2496,6 +2498,14 @@ static BOOL apply_window_pos( HWND hwnd, HWND insert_after, UINT swp_flags, stru
+             icon_small = get_window_icon_info( hwnd, ICON_SMALL, icon_small, &ii_small );
+             user_driver->pSetWindowIcons( hwnd, icon, &ii, icon_small, &ii_small );
          }
 +        if (!owner_hint || owner_hint == hwnd || owner_hint == NtUserGetDesktopWindow())
 +        {
@@ -41,9 +41,9 @@ index 0e19bd318dee3717933d887e0867ba7aaa2479de..6d04379ced0acaeecd90f98d3737c4c9
 +            owner_hint = window_from_point_excluding_root( hwnd, pt );
 +        }
  
-         user_driver->pWindowPosChanged( hwnd, insert_after, owner_hint, swp_flags, &monitor_rects,
-                                         get_driver_window_surface( new_surface, raw_dpi ) );
-@@ -2909,6 +2919,30 @@ static HWND *list_children_from_point( HWND hwnd, POINT pt, UINT dpi )
+         owner_hint = NtUserGetWindowRelative(hwnd, GW_OWNER);
+         /* fallback to any window that is right below our top left corner */
+@@ -2851,6 +2861,30 @@ static HWND *list_children_from_point( HWND hwnd, POINT pt, struct ratio dpi )
      return NULL;
  }
  

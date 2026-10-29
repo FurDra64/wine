@@ -24,18 +24,20 @@ main window. Do not synthesize removal, reset HID state, or map Sony to
 XInput. No overlay or display-driver behavior is changed.
 ---
 diff --git a/dlls/user32/Makefile.in b/dlls/user32/Makefile.in
+index 0d8a18fd..1b63dbdb 100644
 --- a/dlls/user32/Makefile.in
 +++ b/dlls/user32/Makefile.in
-@@ -3,7 +3,7 @@
+@@ -3,7 +3,7 @@ MODULE    = user32.dll
  IMPORTLIB = user32
  IMPORTS   = $(PNG_PE_LIBS) gdi32 sechost advapi32 kernelbase win32u uuid
  EXTRAINCL = $(PNG_PE_CFLAGS)
 -DELAYIMPORTS = imm32 combase
 +DELAYIMPORTS = imm32 combase setupapi
  
- SOURCES = \
- 	button.c \
+ VER_PRODUCTVERSION = 5,1,2600,2180
+ 
 diff --git a/dlls/user32/input.c b/dlls/user32/input.c
+index 051f4e48..8473d729 100644
 --- a/dlls/user32/input.c
 +++ b/dlls/user32/input.c
 @@ -26,6 +26,7 @@
@@ -46,8 +48,8 @@ diff --git a/dlls/user32/input.c b/dlls/user32/input.c
  #include "wine/debug.h"
  #include "wine/plugplay.h"
  
-@@ -606,6 +607,123 @@
-     return steam_input_devnotify(handle, flags, header, TRUE);
+@@ -515,6 +516,123 @@ static DWORD CALLBACK devnotify_window_callbackA(HANDLE handle, DWORD flags, DEV
+     return 0;
  }
  
 +static void *diablo_startup_notify;
@@ -170,7 +172,7 @@ diff --git a/dlls/user32/input.c b/dlls/user32/input.c
  static DWORD CALLBACK devnotify_service_callback(HANDLE handle, DWORD flags, DEV_BROADCAST_HDR *header)
  {
      FIXME("Support for service handles is not yet implemented!\n");
-@@ -659,13 +777,16 @@
+@@ -568,13 +686,16 @@ HDEVNOTIFY WINAPI RegisterDeviceNotificationW( HANDLE handle, void *filter, DWOR
      if (header->dbch_devicetype == DBT_DEVTYP_DEVICEINTERFACE)
      {
          DEV_BROADCAST_DEVICEINTERFACE_W iface = *(DEV_BROADCAST_DEVICEINTERFACE_W *)header;
@@ -188,7 +190,7 @@ diff --git a/dlls/user32/input.c b/dlls/user32/input.c
      }
      if (header->dbch_devicetype == DBT_DEVTYP_HANDLE)
          return I_ScRegisterDeviceNotification( handle, header, callback );
-@@ -682,6 +803,7 @@
+@@ -591,6 +712,7 @@ BOOL WINAPI UnregisterDeviceNotification( HDEVNOTIFY handle )
  {
      TRACE("%p\n", handle);
  
@@ -196,4 +198,3 @@ diff --git a/dlls/user32/input.c b/dlls/user32/input.c
      return I_ScUnregisterDeviceNotification( handle );
  }
  
-

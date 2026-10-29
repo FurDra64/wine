@@ -40,7 +40,7 @@ established Sony controller paths unchanged.
      unsigned int haptic_channel_peak[4];
      pa_usec_t haptic_channel_trace_time;
      pa_usec_t haptic_reconnect_time;
-@@ -884,6 +888,12 @@
+@@ -388,5 +388,11 @@
      pulse_broadcast();
  }
  
@@ -51,7 +51,6 @@ established Sony controller paths unchanged.
 +}
 +
  static void pulse_attr_update(pa_stream *s, void *user) {
-     struct pulse_stream *stream = user;
      const pa_buffer_attr *attr = pa_stream_get_buffer_attr(s);
 @@ -2469,6 +2479,100 @@
      return pulse_stream_connect_timeout(stream, pulse_name, NULL, period_bytes, 5000, FALSE);
