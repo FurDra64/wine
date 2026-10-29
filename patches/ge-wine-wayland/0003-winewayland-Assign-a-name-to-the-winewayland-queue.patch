@@ -8,22 +8,20 @@ Subject: [PATCH 003/285] winewayland: Assign a name to the winewayland queue.
  1 file changed, 5 insertions(+)
 
 diff --git a/dlls/winewayland.drv/wayland.c b/dlls/winewayland.drv/wayland.c
-index acc340d98c7..4208eff32d9 100644
+index 118ee2d6..81e282a4 100644
 --- a/dlls/winewayland.drv/wayland.c
 +++ b/dlls/winewayland.drv/wayland.c
-@@ -255,7 +255,12 @@ BOOL wayland_process_init(void)
- 
-     TRACE("wl_display=%p\n", process_wayland.wl_display);
- 
+@@ -296,8 +296,13 @@ BOOL wayland_process_init(void)
+ #if (WAYLAND_VERSION_MAJOR == 1 && WAYLAND_VERSION_MINOR >= 23)
+     if (!(process_wayland.wl_event_queue =
+           wl_display_create_queue_with_name(process_wayland.wl_display, process_name ? process_name : "winewayland")))
++#else
 +#if (WAYLAND_VERSION_MAJOR == 1 && WAYLAND_VERSION_MINOR >= 23)
 +    if (!(process_wayland.wl_event_queue =
 +          wl_display_create_queue_with_name(process_wayland.wl_display, "winewayland")))
-+#else
+ #else
      if (!(process_wayland.wl_event_queue = wl_display_create_queue(process_wayland.wl_display)))
 +#endif
+ #endif
      {
          ERR("Failed to create event queue\n");
-         return FALSE;
--- 
-2.55.0
-

@@ -15,10 +15,10 @@ Proton specific
  create mode 100644 dlls/winewayland.drv/xdg-toplevel-tag-v1.xml
 
 diff --git a/dlls/winewayland.drv/Makefile.in b/dlls/winewayland.drv/Makefile.in
-index eabe00efd7d..b1267d3f28b 100644
+index cc4409c5..e88f327d 100644
 --- a/dlls/winewayland.drv/Makefile.in
 +++ b/dlls/winewayland.drv/Makefile.in
-@@ -32,4 +32,5 @@ SOURCES = \
+@@ -34,4 +34,5 @@ SOURCES = \
  	wlr-data-control-unstable-v1.xml \
  	xdg-output-unstable-v1.xml \
  	xdg-shell.xml \
@@ -26,12 +26,12 @@ index eabe00efd7d..b1267d3f28b 100644
 +	xdg-toplevel-icon-v1.xml \
 +	xdg-toplevel-tag-v1.xml
 diff --git a/dlls/winewayland.drv/wayland.c b/dlls/winewayland.drv/wayland.c
-index 18f8575b2ee..4609400edbc 100644
+index 4b5f0db0..26a9b57b 100644
 --- a/dlls/winewayland.drv/wayland.c
 +++ b/dlls/winewayland.drv/wayland.c
-@@ -219,6 +219,11 @@ static void registry_handle_global(void *data, struct wl_registry *registry,
-         process_wayland.wp_fractional_scale_manager_v1 =
-             wl_registry_bind(registry, id, &wp_fractional_scale_manager_v1_interface, 1);
+@@ -276,6 +276,11 @@ static void registry_handle_global_remove(void *data, struct wl_registry *regist
+         seat->global_id = 0;
+         pthread_mutex_unlock(&seat->mutex);
      }
 +    else if (strcmp(interface, "xdg_toplevel_tag_manager_v1") == 0)
 +    {
@@ -40,10 +40,10 @@ index 18f8575b2ee..4609400edbc 100644
 +    }
  }
  
- static void registry_handle_global_remove(void *data, struct wl_registry *registry,
-@@ -363,6 +368,9 @@ BOOL wayland_process_init(void)
-     if (!process_wayland.wp_fractional_scale_manager_v1)
-         ERR("Wayland compositor doesn't support wp_fractional_scale_manager_v1 (fractional scaling will be broken)\n");
+ static const struct wl_registry_listener registry_listener = {
+@@ -395,6 +400,9 @@ BOOL wayland_process_init(void)
+     if (process_wayland.wp_color_manager_v1) color_management_init();
+     else WARN("Wayland compositor doesn't support wp_color_manager_v1 (color management will be broken)\n");
  
 +    if (!process_wayland.xdg_toplevel_tag_manager_v1)
 +        WARN("Wayland compositor doesn't support optional xdg_toplevel_tag_manager_v1!\n");
@@ -52,10 +52,10 @@ index 18f8575b2ee..4609400edbc 100644
  
      return TRUE;
 diff --git a/dlls/winewayland.drv/wayland_surface.c b/dlls/winewayland.drv/wayland_surface.c
-index 8ff087a7cb1..728ea3893c8 100644
+index 8181820f..b22c133c 100644
 --- a/dlls/winewayland.drv/wayland_surface.c
 +++ b/dlls/winewayland.drv/wayland_surface.c
-@@ -423,6 +423,18 @@ void wayland_surface_make_toplevel(struct wayland_surface *surface)
+@@ -440,6 +440,18 @@ void wayland_surface_make_toplevel(struct wayland_surface *surface)
      if (process_name)
          xdg_toplevel_set_app_id(surface->xdg_toplevel, process_name);
  
@@ -75,7 +75,7 @@ index 8ff087a7cb1..728ea3893c8 100644
          text[0] = 0;
      wayland_surface_set_title(surface, text);
 diff --git a/dlls/winewayland.drv/waylanddrv.h b/dlls/winewayland.drv/waylanddrv.h
-index 92294951da7..196f454c514 100644
+index 2376c266..76d9036d 100644
 --- a/dlls/winewayland.drv/waylanddrv.h
 +++ b/dlls/winewayland.drv/waylanddrv.h
 @@ -42,6 +42,7 @@
@@ -83,20 +83,20 @@ index 92294951da7..196f454c514 100644
  #include "alpha-modifier-v1-client-protocol.h"
  #include "fractional-scale-v1-client-protocol.h"
 +#include "xdg-toplevel-tag-v1-client-protocol.h"
+ #include "color-management-v1-client-protocol.h"
  
  #include "windef.h"
- #include "winbase.h"
 @@ -200,6 +201,7 @@ struct wayland
-     struct wp_cursor_shape_manager_v1 *wp_cursor_shape_manager_v1;
-     struct wp_pointer_warp_v1 *wp_pointer_warp_v1;
-     struct wp_alpha_modifier_v1 *wp_alpha_modifier_v1;
-+    struct xdg_toplevel_tag_manager_v1 *xdg_toplevel_tag_manager_v1;
-     struct wayland_seat seat;
      struct wayland_keyboard keyboard;
      struct wayland_pointer pointer;
+     struct wayland_text_input text_input;
++    struct xdg_toplevel_tag_manager_v1 *xdg_toplevel_tag_manager_v1;
+     struct wayland_data_device data_device;
+ #ifdef WL_FIXES_ACK_GLOBAL_REMOVE
+     struct wl_fixes *wl_fixes;
 diff --git a/dlls/winewayland.drv/xdg-toplevel-tag-v1.xml b/dlls/winewayland.drv/xdg-toplevel-tag-v1.xml
 new file mode 100644
-index 00000000000..5e20bdf45f8
+index 00000000..5e20bdf4
 --- /dev/null
 +++ b/dlls/winewayland.drv/xdg-toplevel-tag-v1.xml
 @@ -0,0 +1,85 @@
@@ -185,6 +185,3 @@ index 00000000000..5e20bdf45f8
 +  </interface>
 +
 +</protocol>
--- 
-2.55.0
-

@@ -15,10 +15,10 @@ Subject: [PATCH 122/285] HACK: winewayland: Implement shortcut inhibitor.
  create mode 100644 dlls/winewayland.drv/keyboard-shortcuts-inhibit-unstable-v1.xml
 
 diff --git a/dlls/winewayland.drv/Makefile.in b/dlls/winewayland.drv/Makefile.in
-index 3c15cb445d6..b45582ea797 100644
+index 80fb6b77..38f26629 100644
 --- a/dlls/winewayland.drv/Makefile.in
 +++ b/dlls/winewayland.drv/Makefile.in
-@@ -13,6 +13,7 @@ SOURCES = \
+@@ -15,6 +15,7 @@ SOURCES = \
  	dllmain.c \
  	fractional-scale-v1.xml \
  	ext-data-control-v1.xml \
@@ -28,7 +28,7 @@ index 3c15cb445d6..b45582ea797 100644
  	pointer-warp-v1.xml \
 diff --git a/dlls/winewayland.drv/keyboard-shortcuts-inhibit-unstable-v1.xml b/dlls/winewayland.drv/keyboard-shortcuts-inhibit-unstable-v1.xml
 new file mode 100644
-index 00000000000..27748764d83
+index 00000000..27748764
 --- /dev/null
 +++ b/dlls/winewayland.drv/keyboard-shortcuts-inhibit-unstable-v1.xml
 @@ -0,0 +1,143 @@
@@ -176,10 +176,10 @@ index 00000000000..27748764d83
 +  </interface>
 +</protocol>
 diff --git a/dlls/winewayland.drv/wayland.c b/dlls/winewayland.drv/wayland.c
-index 0698dcfaf33..7c2a31ead09 100644
+index a6ded432..a1d0684d 100644
 --- a/dlls/winewayland.drv/wayland.c
 +++ b/dlls/winewayland.drv/wayland.c
-@@ -268,6 +268,11 @@ static void registry_handle_global(void *data, struct wl_registry *registry,
+@@ -291,6 +291,11 @@ static void registry_handle_global_remove(void *data, struct wl_registry *regist
          process_wayland.xdg_activation_v1 =
              wl_registry_bind(registry, id, &xdg_activation_v1_interface, 1);
      }
@@ -190,15 +190,15 @@ index 0698dcfaf33..7c2a31ead09 100644
 +    }
  }
  
- static void registry_handle_global_remove(void *data, struct wl_registry *registry,
+ static const struct wl_registry_listener registry_listener = {
 diff --git a/dlls/winewayland.drv/wayland_surface.c b/dlls/winewayland.drv/wayland_surface.c
-index 041e2358977..b57c46f0d69 100644
+index 4445d880..658eb00f 100644
 --- a/dlls/winewayland.drv/wayland_surface.c
 +++ b/dlls/winewayland.drv/wayland_surface.c
-@@ -666,6 +666,13 @@ void wayland_surface_clear_role(struct wayland_surface *surface)
-             surface->xdg_toplevel_icon = NULL;
-         }
+@@ -666,6 +666,13 @@ void wayland_surface_attach_shm(struct wayland_surface *surface,
+ }
  
+ /**********************************************************************
 +        if (surface->zwp_keyboard_shortcuts_inhibitor_v1)
 +        {
 +            zwp_keyboard_shortcuts_inhibitor_v1_destroy(
@@ -206,10 +206,10 @@ index 041e2358977..b57c46f0d69 100644
 +            surface->zwp_keyboard_shortcuts_inhibitor_v1 = NULL;
 +        }
 +
-         if (surface->zxdg_toplevel_decoration_v1)
-         {
-             zxdg_toplevel_decoration_v1_destroy(surface->zxdg_toplevel_decoration_v1);
-@@ -1768,3 +1775,42 @@ void wayland_surface_activate(struct wayland_surface *surface)
+  *          wayland_surface_config_is_compatible
+  *
+  * Checks whether a wayland_surface_config object is compatible with the
+@@ -1707,3 +1714,42 @@ void wayland_surface_activate(struct wayland_surface *surface)
          xdg_activation_token_v1_commit(token);
      }
  }
@@ -253,26 +253,26 @@ index 041e2358977..b57c46f0d69 100644
 +    }
 +}
 diff --git a/dlls/winewayland.drv/waylanddrv.h b/dlls/winewayland.drv/waylanddrv.h
-index 5c2bbc22d1a..b3ced1979bf 100644
+index 1fd3c23e..7e3ebc43 100644
 --- a/dlls/winewayland.drv/waylanddrv.h
 +++ b/dlls/winewayland.drv/waylanddrv.h
-@@ -52,6 +52,7 @@ struct xkb_compose_table;
- #include "xdg-decoration-unstable-v1-client-protocol.h"
+@@ -46,6 +46,7 @@
+ #include "content-type-v1-client-protocol.h"
  #include "color-management-v1-client-protocol.h"
  #include "xdg-activation-v1-client-protocol.h"
 +#include "keyboard-shortcuts-inhibit-unstable-v1-client-protocol.h"
  
  #include "windef.h"
  #include "winbase.h"
-@@ -238,6 +239,7 @@ struct wayland
-     struct zxdg_decoration_manager_v1 *zxdg_decoration_manager_v1;
+@@ -200,6 +201,7 @@ struct wayland
+     struct wp_alpha_modifier_v1 *wp_alpha_modifier_v1;
      struct wp_color_manager_v1 *wp_color_manager_v1;
      struct xdg_activation_v1 *xdg_activation_v1;
 +    struct zwp_keyboard_shortcuts_inhibit_manager_v1* zwp_keyboard_shortcuts_inhibit_manager_v1;
      struct wayland_seat seat;
      struct wayland_keyboard keyboard;
      struct wayland_pointer pointer;
-@@ -359,6 +361,7 @@ struct wayland_surface
+@@ -304,6 +306,7 @@ struct wayland_surface
      struct wl_surface *wl_surface;
      struct wp_viewport *wp_viewport;
      struct wp_fractional_scale_v1 *wp_fractional_scale_v1;
@@ -280,7 +280,7 @@ index 5c2bbc22d1a..b3ced1979bf 100644
      struct wayland_shm_buffer *small_icon_buffer;
      struct wayland_shm_buffer *big_icon_buffer;
  
-@@ -437,6 +440,7 @@ void wayland_surface_assign_icon(struct wayland_surface *surface);
+@@ -377,6 +380,7 @@ void wayland_surface_assign_icon(struct wayland_surface *surface);
  void wayland_surface_set_icon_buffer(struct wayland_surface *surface, UINT type, const ICONINFO *ii);
  void wayland_surface_set_opacity(struct wayland_surface *surface, BYTE alpha, UINT flags);
  void wayland_surface_activate(struct wayland_surface *surface);
@@ -289,18 +289,18 @@ index 5c2bbc22d1a..b3ced1979bf 100644
  static inline BOOL wayland_surface_is_toplevel(struct wayland_surface *surface)
  {
 diff --git a/dlls/winewayland.drv/window.c b/dlls/winewayland.drv/window.c
-index fcaaf0ad759..50ff85eecf0 100644
+index 7b93821f..dc460409 100644
 --- a/dlls/winewayland.drv/window.c
 +++ b/dlls/winewayland.drv/window.c
-@@ -280,6 +280,7 @@ static void wayland_surface_update_state_toplevel(struct wayland_surface *surfac
-             (surface->current.state & WAYLAND_SURFACE_CONFIG_STATE_FULLSCREEN))
+@@ -274,6 +274,7 @@ static void wayland_surface_update_state_toplevel(struct wayland_surface *surfac
+             !surface->window.minimized)
          {
              xdg_toplevel_unset_fullscreen(surface->xdg_toplevel);
 +            wayland_surface_shortcut_control(surface, FALSE);
              surface->requested_output = NULL;
          }
  
-@@ -309,6 +310,7 @@ static void wayland_surface_update_state_toplevel(struct wayland_surface *surfac
+@@ -303,6 +304,7 @@ static void wayland_surface_update_state_toplevel(struct wayland_surface *surfac
              }
  
              xdg_toplevel_set_fullscreen(surface->xdg_toplevel, output);
@@ -308,6 +308,3 @@ index fcaaf0ad759..50ff85eecf0 100644
              surface->requested_output = output;
  
              skip_fullscreen:
--- 
-2.55.0
-

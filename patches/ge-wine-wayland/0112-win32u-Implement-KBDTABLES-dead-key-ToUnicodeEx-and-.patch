@@ -10,10 +10,10 @@ Subject: [PATCH 112/285] win32u: Implement KBDTABLES dead key ToUnicodeEx and
  2 files changed, 48 insertions(+), 9 deletions(-)
 
 diff --git a/dlls/win32u/input.c b/dlls/win32u/input.c
-index e8713e45e81..69c135d2265 100644
+index 622affd5..34b63d28 100644
 --- a/dlls/win32u/input.c
 +++ b/dlls/win32u/input.c
-@@ -503,12 +503,13 @@ static WORD kbd_tables_wchar_to_vkey( const KBDTABLES *tables, WCHAR wch )
+@@ -516,12 +516,13 @@ static WORD kbd_tables_wchar_to_vkey( const KBDTABLES *tables, WCHAR wch )
      return wch >= 0x0080 ? -1 : 0;
  }
  
@@ -28,7 +28,7 @@ index e8713e45e81..69c135d2265 100644
      alt = state[VK_MENU] & 0x80;
      ctrl = state[VK_CONTROL] & 0x80;
      caps = state[VK_CAPITAL] & 1;
-@@ -535,8 +536,9 @@ static WCHAR kbd_tables_vkey_to_wchar( const KBDTABLES *tables, UINT vkey, const
+@@ -548,8 +549,9 @@ static WCHAR kbd_tables_vkey_to_wchar( const KBDTABLES *tables, UINT vkey, const
               * The entry corresponds to the mapping when Caps Lock is on, and a second entry follows it
               * with the mapping when Caps Lock is off.
               */
@@ -40,7 +40,7 @@ index e8713e45e81..69c135d2265 100644
              return entry->wch[mod];
          }
      }
-@@ -1246,7 +1248,11 @@ INT WINAPI NtUserGetKeyNameText( LONG lparam, WCHAR *buffer, INT size )
+@@ -1365,7 +1367,11 @@ INT WINAPI NtUserGetKeyNameText( LONG lparam, WCHAR *buffer, INT size )
      INT code = ((lparam >> 16) & 0x1ff), vkey, len;
      HKL layout = NtUserGetKeyboardLayout( 0 );
      const KBDTABLES *kbd_tables;
@@ -52,7 +52,7 @@ index e8713e45e81..69c135d2265 100644
  
      TRACE_(keyboard)( "lparam %#x, buffer %p, size %d.\n", lparam, buffer, size );
  
-@@ -1255,10 +1261,10 @@ INT WINAPI NtUserGetKeyNameText( LONG lparam, WCHAR *buffer, INT size )
+@@ -1374,10 +1380,10 @@ INT WINAPI NtUserGetKeyNameText( LONG lparam, WCHAR *buffer, INT size )
  
      if (!(kbd_tables = user_driver->pKbdLayerDescriptor( layout ))) kbd_tables = &kbdus_tables;
  
@@ -65,7 +65,7 @@ index e8713e45e81..69c135d2265 100644
          switch ((vkey = vsc2vk[code] & 0xff))
          {
          case VK_RSHIFT:
-@@ -1274,7 +1280,18 @@ INT WINAPI NtUserGetKeyNameText( LONG lparam, WCHAR *buffer, INT size )
+@@ -1393,7 +1399,18 @@ INT WINAPI NtUserGetKeyNameText( LONG lparam, WCHAR *buffer, INT size )
      else key_name = kbd_tables->pKeyNamesExt;
      while (key_name->vsc && key_name->vsc != (BYTE)code) key_name++;
  
@@ -85,7 +85,7 @@ index e8713e45e81..69c135d2265 100644
      {
          len = min( size - 1, wcslen( key_name->pwsz ) );
          memcpy( buffer, key_name->pwsz, len * sizeof(WCHAR) );
-@@ -1299,7 +1316,10 @@ INT WINAPI NtUserGetKeyNameText( LONG lparam, WCHAR *buffer, INT size )
+@@ -1418,7 +1435,10 @@ INT WINAPI NtUserGetKeyNameText( LONG lparam, WCHAR *buffer, INT size )
  INT WINAPI NtUserToUnicodeEx( UINT virt, UINT scan, const BYTE *state,
                                WCHAR *str, int size, UINT flags, HKL layout )
  {
@@ -96,7 +96,7 @@ index e8713e45e81..69c135d2265 100644
      INT len;
  
      TRACE_(keyboard)( "virt %#x, scan %#x, state %p, str %p, size %d, flags %#x, layout %p.\n",
-@@ -1310,16 +1330,34 @@ INT WINAPI NtUserToUnicodeEx( UINT virt, UINT scan, const BYTE *state,
+@@ -1429,16 +1449,34 @@ INT WINAPI NtUserToUnicodeEx( UINT virt, UINT scan, const BYTE *state,
  
      if (!(kbd_tables = user_driver->pKbdLayerDescriptor( layout ))) kbd_tables = &kbdus_tables;
      if (scan & 0x8000) str[0] = 0; /* key up */
@@ -135,17 +135,14 @@ index e8713e45e81..69c135d2265 100644
  
  /**********************************************************************
 diff --git a/dlls/win32u/ntuser_private.h b/dlls/win32u/ntuser_private.h
-index 67cbe230195..e02e484900e 100644
+index 3a9dfa2f..2df30cd7 100644
 --- a/dlls/win32u/ntuser_private.h
 +++ b/dlls/win32u/ntuser_private.h
 @@ -131,6 +131,7 @@ struct user_thread_info
-     HKL                           kbd_layout;             /* Current keyboard layout */
-     UINT                          kbd_layout_id;          /* Current keyboard layout ID */
-     struct hardware_msg_data     *rawinput;               /* Current rawinput message data */
+     DWORD                         clipping_reset;         /* time when clipping was last reset */
+     struct session_thread_data   *session_data;           /* shared session thread data */
+     struct mouse_tracking_info   *mouse_tracking_info;    /* NtUserTrackMouseEvent handling */
 +    WCHAR                         kbd_deadkey;            /* Current keyboard dead key */
-     struct touchinput_thread_data *touchinput;            /* touch input thread local buffer */
-     UINT                          spy_indent;             /* Current spy indent */
-     BOOL                          clipping_cursor;        /* thread is currently clipping */
--- 
-2.55.0
-
+     struct opengl_thread_data    *opengl_data;            /* OpenGL private thread data */
+     struct list                   known_pointers;         /* list of known pointers */
+ };

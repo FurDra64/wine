@@ -48,7 +48,7 @@ diff --git a/dlls/winex11.drv/x11drv.h b/dlls/winex11.drv/x11drv.h
 index 9436f35e1ca..4efb27c8742 100644
 --- a/dlls/winex11.drv/x11drv.h
 +++ b/dlls/winex11.drv/x11drv.h
-@@ -796,6 +796,10 @@ extern void xinerama_init( unsigned int width, unsigned int height );
+@@ -787,5 +787,9 @@ extern void xinerama_init( unsigned int width, unsigned int height );
  extern void init_recursive_mutex( pthread_mutex_t *mutex );
  extern void init_icm_profile(void);
  
@@ -58,7 +58,6 @@ index 9436f35e1ca..4efb27c8742 100644
 +
  #define DEPTH_COUNT 3
  extern const unsigned int *depths;
- extern RECT gamescope_screen_rect;
 diff --git a/dlls/winex11.drv/x11drv_main.c b/dlls/winex11.drv/x11drv_main.c
 index 61ef459966a..6d31cf89d06 100644
 --- a/dlls/winex11.drv/x11drv_main.c

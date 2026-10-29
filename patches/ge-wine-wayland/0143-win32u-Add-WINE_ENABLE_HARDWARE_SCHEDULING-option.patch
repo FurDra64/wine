@@ -9,12 +9,12 @@ Subject: [PATCH 143/285] win32u: Add WINE_ENABLE_HARDWARE_SCHEDULING option.
  1 file changed, 8 insertions(+)
 
 diff --git a/dlls/win32u/d3dkmt.c b/dlls/win32u/d3dkmt.c
-index 38f7a53c3fb..a9c307c3211 100644
+index 11a2997d..9c9df2da 100644
 --- a/dlls/win32u/d3dkmt.c
 +++ b/dlls/win32u/d3dkmt.c
-@@ -748,6 +748,14 @@ NTSTATUS WINAPI NtGdiDdDDIQueryAdapterInfo( D3DKMT_QUERYADAPTERINFO *desc )
-             data->HwSchSupported = 1;
-             data->HwSchEnabledByDefault = 1;
+@@ -911,6 +911,14 @@ NTSTATUS WINAPI NtGdiDdDDIQueryVideoMemoryInfo( D3DKMT_QUERYVIDEOMEMORYINFO *des
+                 desc->CurrentUsage += min( budget.heapBudget[i], budget.heapUsage[i] );
+             }
          }
 +        /* on multi GPU systems nvidia streamline may not properly detect hardware scheduling support.
 +         * However, enabling it by default for all configurations may be risky. */
@@ -25,8 +25,5 @@ index 38f7a53c3fb..a9c307c3211 100644
 +            data->HwSchEnabledByDefault = 1;
 +        }
  
+         desc->AvailableForReservation = desc->Budget / 2;
          return STATUS_SUCCESS;
-     }
--- 
-2.55.0
-

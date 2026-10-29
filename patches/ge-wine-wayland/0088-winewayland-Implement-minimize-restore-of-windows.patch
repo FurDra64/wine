@@ -11,10 +11,10 @@ Subject: [PATCH 088/285] winewayland: Implement minimize & restore of windows.
  3 files changed, 54 insertions(+), 5 deletions(-)
 
 diff --git a/dlls/winewayland.drv/wayland_keyboard.c b/dlls/winewayland.drv/wayland_keyboard.c
-index 648b7f9cc2f..c3b3368fb3f 100644
+index 5154e03c..ecc839e1 100644
 --- a/dlls/winewayland.drv/wayland_keyboard.c
 +++ b/dlls/winewayland.drv/wayland_keyboard.c
-@@ -771,15 +771,22 @@ static void keyboard_handle_enter(void *private, struct wl_keyboard *wl_keyboard
+@@ -816,15 +816,22 @@ static void keyboard_handle_enter(void *private, struct wl_keyboard *wl_keyboard
           * foreground window when both the old and new foreground windows
           * are in the same non-current thread. */
          if (surface->window.managed)
@@ -39,7 +39,7 @@ index 648b7f9cc2f..c3b3368fb3f 100644
      struct wayland_keyboard *keyboard = &process_wayland.keyboard;
      HWND hwnd;
  
-@@ -801,7 +808,25 @@ static void keyboard_handle_leave(void *data, struct wl_keyboard *wl_keyboard,
+@@ -846,7 +853,25 @@ static void keyboard_handle_leave(void *data, struct wl_keyboard *wl_keyboard,
       * and for any key repetition to stop. */
      release_all_keys(hwnd);
  
@@ -67,24 +67,24 @@ index 648b7f9cc2f..c3b3368fb3f 100644
  
  static void send_right_control(HWND hwnd, uint32_t state)
 diff --git a/dlls/winewayland.drv/waylanddrv.h b/dlls/winewayland.drv/waylanddrv.h
-index 31a29bace7e..8ca9e47ee86 100644
+index 47ab8ab5..39971822 100644
 --- a/dlls/winewayland.drv/waylanddrv.h
 +++ b/dlls/winewayland.drv/waylanddrv.h
-@@ -267,6 +267,7 @@ struct wayland_window_config
-     BOOL visible;
+@@ -262,6 +262,7 @@ struct wayland_window_config
      BOOL managed;
+     BOOL minimized;
      BOOL resizeable;
 +    BOOL minimized;
  };
  
  struct wayland_client_surface
 diff --git a/dlls/winewayland.drv/window.c b/dlls/winewayland.drv/window.c
-index f900f2f94b7..22dbe6469b1 100644
+index 9857f1af..78dbf806 100644
 --- a/dlls/winewayland.drv/window.c
 +++ b/dlls/winewayland.drv/window.c
-@@ -147,8 +147,14 @@ static void wayland_win_data_get_config(struct wayland_win_data *data,
+@@ -145,8 +145,14 @@ static void wayland_win_data_get_config(struct wayland_win_data *data,
  
-     TRACE("window=%s style=%#x\n", wine_dbgstr_rect(&conf->rect), style);
+     conf->minimized = !!(style & WS_MINIMIZE);
  
 +    conf->minimized = FALSE;
 +
@@ -98,9 +98,9 @@ index f900f2f94b7..22dbe6469b1 100644
      {
          if ((style & WS_MAXIMIZE) && (style & WS_CAPTION) == WS_CAPTION)
              window_state |= WAYLAND_SURFACE_CONFIG_STATE_MAXIMIZED;
-@@ -308,6 +314,10 @@ static void wayland_surface_update_state_toplevel(struct wayland_surface *surfac
-             skip_fullscreen:
-             pthread_mutex_unlock(&process_wayland.output_mutex);
+@@ -306,6 +312,10 @@ static void wayland_surface_update_state_toplevel(struct wayland_surface *surfac
+         {
+             xdg_toplevel_set_minimized(surface->xdg_toplevel);
          }
 +        if (surface->window.minimized)
 +        {
@@ -109,7 +109,7 @@ index f900f2f94b7..22dbe6469b1 100644
      }
      else
      {
-@@ -636,8 +646,21 @@ LRESULT WAYLAND_WindowMessage(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
+@@ -653,8 +663,21 @@ LRESULT WAYLAND_WindowMessage(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
          wayland_configure_window(hwnd);
          return 0;
      case WM_WAYLAND_SET_FOREGROUND:
@@ -132,6 +132,3 @@ index f900f2f94b7..22dbe6469b1 100644
      default:
          FIXME("got window msg %x hwnd %p wp %lx lp %lx\n", msg, hwnd, (long)wp, lp);
          return 0;
--- 
-2.55.0
-

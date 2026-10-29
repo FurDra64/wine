@@ -10,19 +10,16 @@ Subject: [PATCH 085/285] win32u: Avoid re-inserting the same client surface
  1 file changed, 3 insertions(+)
 
 diff --git a/dlls/win32u/window.c b/dlls/win32u/window.c
-index a8f40bc98dd..6afa988f001 100644
+index d3edb9e0..582cb6f9 100644
 --- a/dlls/win32u/window.c
 +++ b/dlls/win32u/window.c
-@@ -384,6 +384,9 @@ void add_window_client_surface( HWND hwnd, struct client_surface *surface )
- {
-     pthread_mutex_lock( &surfaces_lock );
- 
+@@ -384,6 +384,9 @@ void update_client_surfaces( HWND hwnd )
+     LIST_FOR_EACH_ENTRY_SAFE( surface, next, &client_surfaces, struct client_surface, entry )
+     {
+         if (NtUserGetAncestor( surface->hwnd, GA_ROOT ) != hwnd) continue;
 +    /* due to client surface reuse, this element may already be in the list */
 +    if (!list_empty( &surface->entry )) list_remove( &surface->entry );
 +
-     surface->hwnd = hwnd;
-     list_add_tail( &client_surfaces, &surface->entry );
-     surface->funcs->update( surface );
--- 
-2.55.0
-
+         client_surface_update_locked( surface );
+     }
+ 

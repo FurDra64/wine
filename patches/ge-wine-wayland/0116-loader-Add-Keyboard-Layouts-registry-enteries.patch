@@ -9,7 +9,7 @@ Signed-off-by: Alistair Leslie-Hughes <leslie_alistair@hotmail.com>
  1 file changed, 206 insertions(+)
 
 diff --git a/loader/wine.inf.in b/loader/wine.inf.in
-index c8245e61aec..285f65f2081 100644
+index 9288b580..fc3437da 100644
 --- a/loader/wine.inf.in
 +++ b/loader/wine.inf.in
 @@ -64,6 +64,7 @@ AddReg=\
@@ -19,8 +19,8 @@ index c8245e61aec..285f65f2081 100644
 +    KeyboardLayouts,\
      MCI,\
      Misc,\
-     NVIDIANGX, \
-@@ -683,6 +684,211 @@ HKCU,Software\Microsoft\Windows\Shell\Associations\UrlAssociations\ftp\UserChoic
+     OLE,\
+@@ -646,6 +647,211 @@ HKCU,Software\Microsoft\Windows\Shell\Associations\UrlAssociations\ftp\UserChoic
  HKCU,Software\Microsoft\Windows\Shell\Associations\UrlAssociations\http\UserChoice,"ProgId",,"http"
  HKCU,Software\Microsoft\Windows\Shell\Associations\UrlAssociations\https\UserChoice,"ProgId",,"https"
  
@@ -232,6 +232,3 @@ index c8245e61aec..285f65f2081 100644
  [OLE]
  HKLM,"Software\Microsoft\OLE","EnableDCOM",,"Y"
  HKLM,"Software\Microsoft\OLE","EnableRemoteConnect",,"N"
--- 
-2.55.0
-

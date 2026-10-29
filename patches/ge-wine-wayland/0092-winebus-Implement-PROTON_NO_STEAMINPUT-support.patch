@@ -9,12 +9,12 @@ Subject: [PATCH 092/285] winebus: Implement PROTON_NO_STEAMINPUT support.
  1 file changed, 7 insertions(+)
 
 diff --git a/dlls/winebus.sys/bus_udev.c b/dlls/winebus.sys/bus_udev.c
-index dfebb239ec4..f977b365a3b 100644
+index 21b51276..715f629c 100644
 --- a/dlls/winebus.sys/bus_udev.c
 +++ b/dlls/winebus.sys/bus_udev.c
-@@ -1758,6 +1758,13 @@ static void udev_add_device(struct udev_device *dev, int fd)
- 
-     if (desc.vid == 0x28de && desc.pid == 0x11ff && !strcmp(subsystem, "input"))
+@@ -1758,6 +1758,13 @@ static void process_monitor_event(struct udev_monitor *monitor)
+         ERR("event for udev device %s does not have any action!\n", syspath);
+     else if (!devnode)
      {
 +        const char *env = getenv("PROTON_NO_STEAMINPUT");
 +        if (env && !strcmp(env, "1"))
@@ -23,9 +23,6 @@ index dfebb239ec4..f977b365a3b 100644
 +            close(fd);
 +            return;
 +        }
-         TRACE("evdev %s: detected steam input virtual controller\n", debugstr_a(devnode));
-         fixup_steaminput_vidpid( &desc );
-         desc.is_gamepad = TRUE;
--- 
-2.55.0
-
+         /* Pretty normal case, not all devices have associated
+          * devnodes. For example root input devices do not, but
+          * related/child mouse and event devices do.

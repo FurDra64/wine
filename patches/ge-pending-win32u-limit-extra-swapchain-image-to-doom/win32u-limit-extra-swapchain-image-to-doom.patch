@@ -29,10 +29,10 @@ follow-up must be applied after wineland-child-rendering/0083.
 diff --git a/dlls/win32u/vulkan.c b/dlls/win32u/vulkan.c
 --- a/dlls/win32u/vulkan.c
 +++ b/dlls/win32u/vulkan.c
-@@ -4288,6 +4288,20 @@
-     return VK_SUCCESS;
+@@ -1869,6 +1869,20 @@ static BOOL is_color_space_supported( struct vulkan_physical_device *physical_de
+     return i < format_count;
  }
- 
+
 +static BOOL needs_extra_swapchain_image(void)
 +{
 +    static const WCHAR doom_eternalW[] =
@@ -50,11 +50,8 @@ diff --git a/dlls/win32u/vulkan.c b/dlls/win32u/vulkan.c
  static VkResult win32u_vkCreateSwapchainKHR( VkDevice client_device, const VkSwapchainCreateInfoKHR *create_info,
                                               const VkAllocationCallbacks *allocator, VkSwapchainKHR *ret )
  {
-@@ -4328,10 +4342,9 @@ static VkResult win32u_vkCreateSwapchainKHR( VkDevice client_device, const VkSwapcha
-     create_info_host.imageExtent.width = max( create_info_host.imageExtent.width, capabilities.minImageExtent.width );
-     create_info_host.imageExtent.height = max( create_info_host.imageExtent.height, capabilities.minImageExtent.height );
- 
--    /* DOOM Eternal and DOOM: The Dark Ages rely on an extra image to continue
+@@ -1936,7 +1950,7 @@ static VkResult win32u_vkCreateSwapchainKHR( VkDevice client_device, const VkSwa
+     /* DOOM Eternal and DOOM: The Dark Ages rely on an extra image to continue
 -     * acquiring while an earlier image is still pending presentation. Request
 -     * one when the application asks for exactly the surface minimum. */
 -    if (capabilities.minImageCount < UINT32_MAX &&
@@ -64,3 +61,5 @@ diff --git a/dlls/win32u/vulkan.c b/dlls/win32u/vulkan.c
          create_info_host.minImageCount == capabilities.minImageCount &&
          (!capabilities.maxImageCount || capabilities.minImageCount < capabilities.maxImageCount))
      {
+--
+2.54.0

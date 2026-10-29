@@ -13,10 +13,10 @@ Subject: [PATCH 080/285] winewayland: Put fullscreen windows on associated
  4 files changed, 97 insertions(+), 15 deletions(-)
 
 diff --git a/dlls/winewayland.drv/display.c b/dlls/winewayland.drv/display.c
-index 9ed85671745..7bd49d00a7b 100644
+index 1d46d64d..645a6055 100644
 --- a/dlls/winewayland.drv/display.c
 +++ b/dlls/winewayland.drv/display.c
-@@ -266,31 +266,86 @@ static void wayland_add_device_modes(const struct gdi_device_manager *device_man
+@@ -265,31 +265,86 @@ static void wayland_add_device_modes(const struct gdi_device_manager *device_man
      free(modes);
  }
  
@@ -116,24 +116,24 @@ index 9ed85671745..7bd49d00a7b 100644
      /* Populate GDI devices. */
      wayland_add_device_gpu(device_manager, param);
 diff --git a/dlls/winewayland.drv/wayland_surface.c b/dlls/winewayland.drv/wayland_surface.c
-index 76fe21af293..aa14e45f3fc 100644
+index 46c0f0b4..8b8579e9 100644
 --- a/dlls/winewayland.drv/wayland_surface.c
 +++ b/dlls/winewayland.drv/wayland_surface.c
-@@ -605,6 +605,8 @@ void wayland_surface_clear_role(struct wayland_surface *surface)
+@@ -575,6 +575,8 @@ void wayland_surface_clear_role(struct wayland_surface *surface)
              xdg_surface_destroy(surface->xdg_surface);
              surface->xdg_surface = NULL;
          }
 +
 +        surface->requested_output = NULL;
          break;
-     }
  
+     case WAYLAND_SURFACE_ROLE_SUBSURFACE:
 diff --git a/dlls/winewayland.drv/waylanddrv.h b/dlls/winewayland.drv/waylanddrv.h
-index 9264108aa8a..f0d99046ebe 100644
+index f8c02109..47ab8ab5 100644
 --- a/dlls/winewayland.drv/waylanddrv.h
 +++ b/dlls/winewayland.drv/waylanddrv.h
-@@ -308,6 +308,7 @@ struct wayland_surface
-         {
+@@ -309,6 +309,7 @@ struct wayland_surface
+             struct xdg_surface *xdg_surface;
              struct xdg_toplevel *xdg_toplevel;
              struct xdg_toplevel_icon_v1 *xdg_toplevel_icon;
 +            struct wl_output *requested_output;
@@ -149,10 +149,10 @@ index 9264108aa8a..f0d99046ebe 100644
  /**********************************************************************
   *          Wayland surface
 diff --git a/dlls/winewayland.drv/window.c b/dlls/winewayland.drv/window.c
-index 5969c5e7fc1..fcaa7d43553 100644
+index 6af4b129..9857f1af 100644
 --- a/dlls/winewayland.drv/window.c
 +++ b/dlls/winewayland.drv/window.c
-@@ -241,6 +241,7 @@ static BOOL wayland_win_data_create_wayland_surface(struct wayland_win_data *dat
+@@ -239,6 +239,7 @@ static BOOL wayland_win_data_create_wayland_surface(struct wayland_win_data *dat
  
  static void wayland_surface_update_state_toplevel(struct wayland_surface *surface)
  {
@@ -160,15 +160,15 @@ index 5969c5e7fc1..fcaa7d43553 100644
      BOOL processing_config = surface->processing.serial &&
                               !surface->processing.processed;
  
-@@ -264,6 +265,7 @@ static void wayland_surface_update_state_toplevel(struct wayland_surface *surfac
-             (surface->current.state & WAYLAND_SURFACE_CONFIG_STATE_FULLSCREEN))
+@@ -267,6 +268,7 @@ static void wayland_surface_update_state_toplevel(struct wayland_surface *surfac
+             !surface->window.minimized)
          {
              xdg_toplevel_unset_fullscreen(surface->xdg_toplevel);
 +            surface->requested_output = NULL;
          }
  
          if ((surface->window.state & WAYLAND_SURFACE_CONFIG_STATE_MAXIMIZED) &&
-@@ -271,10 +273,31 @@ static void wayland_surface_update_state_toplevel(struct wayland_surface *surfac
+@@ -274,10 +276,31 @@ static void wayland_surface_update_state_toplevel(struct wayland_surface *surfac
          {
              xdg_toplevel_set_maximized(surface->xdg_toplevel);
          }
@@ -201,8 +201,5 @@ index 5969c5e7fc1..fcaa7d43553 100644
 +            skip_fullscreen:
 +            pthread_mutex_unlock(&process_wayland.output_mutex);
          }
-     }
-     else
--- 
-2.55.0
-
+         if (surface->window.minimized)
+         {

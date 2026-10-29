@@ -9,10 +9,10 @@ Subject: [PATCH 081/285] HACK: win32u: Implement window move hack
  1 file changed, 63 insertions(+), 1 deletion(-)
 
 diff --git a/dlls/win32u/window.c b/dlls/win32u/window.c
-index 4b08f9592fa..a8f40bc98dd 100644
+index 4f0610c2..d3edb9e0 100644
 --- a/dlls/win32u/window.c
 +++ b/dlls/win32u/window.c
-@@ -2216,6 +2216,19 @@ static BOOL is_fullscreen( const MONITORINFO *info, const RECT *rect )
+@@ -2318,6 +2318,19 @@ static BOOL is_fullscreen( const MONITORINFO *info, const RECT *rect )
             rect->top <= info->rcMonitor.top && rect->bottom >= info->rcMonitor.bottom;
  }
  
@@ -32,9 +32,9 @@ index 4b08f9592fa..a8f40bc98dd 100644
  /***********************************************************************
   *           apply_window_pos
   *
-@@ -2229,12 +2242,61 @@ static BOOL apply_window_pos( HWND hwnd, HWND insert_after, UINT swp_flags, stru
+@@ -2331,12 +2344,61 @@ static BOOL apply_window_pos( HWND hwnd, HWND insert_after, UINT swp_flags, stru
      HWND owner_hint, surface_win = 0, toplevel;
-     UINT raw_dpi, monitor_dpi, dpi = get_thread_dpi();
+     struct ratio raw_dpi, dpi = get_thread_dpi();
      BOOL ret, is_layered, is_child, need_icons = FALSE;
 -    struct window_rects old_rects;
 +    struct window_rects old_rects, adjusted;
@@ -95,6 +95,3 @@ index 4b08f9592fa..a8f40bc98dd 100644
      toplevel = NtUserGetAncestor( hwnd, GA_ROOT );
      is_layered = new_surface && new_surface->alpha_mask;
      is_child = toplevel && toplevel != hwnd;
--- 
-2.55.0
-

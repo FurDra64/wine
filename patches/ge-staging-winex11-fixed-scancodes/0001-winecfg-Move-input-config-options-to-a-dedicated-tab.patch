@@ -228,9 +228,8 @@ index d4fedff5afb1064c4d885d1bba1268e56ec8a312..b83234470c154fbbd6485dd3d169b875
  /* hack for the property sheet control  */
  void set_window_title(HWND dialog);
  
-@@ -87,6 +90,7 @@ INT_PTR CALLBACK AudioDlgProc (HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lPara
+@@ -87,5 +90,6 @@ INT_PTR CALLBACK AudioDlgProc (HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lPara
  INT_PTR CALLBACK ThemeDlgProc (HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lParam);
- INT_PTR CALLBACK StagingDlgProc (HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lParam);
  INT_PTR CALLBACK AboutDlgProc (HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lParam);
 +INT_PTR CALLBACK InputDlgProc (HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lParam);
  
@@ -240,9 +239,8 @@ diff --git a/programs/winecfg/winecfg.rc b/programs/winecfg/winecfg.rc
 index 460000c6b873c283ea4cfe36857208adc47abca2..f993e5eec899739797ecfaf811f9ad663aa42019 100644
 --- a/programs/winecfg/winecfg.rc
 +++ b/programs/winecfg/winecfg.rc
-@@ -40,6 +40,7 @@ BEGIN
+@@ -40,5 +40,6 @@ BEGIN
      IDS_TAB_AUDIO           "Audio"
-     IDS_TAB_STAGING         "Staging"
      IDS_TAB_ABOUT           "About"
 +    IDS_TAB_INPUT           "Input"
      IDS_WINECFG_TITLE       "Wine configuration"
@@ -285,8 +283,8 @@ index 460000c6b873c283ea4cfe36857208adc47abca2..f993e5eec899739797ecfaf811f9ad66
  END
  
  IDD_DLLCFG DIALOG  0, 0, 260, 220
-@@ -334,6 +334,14 @@ BEGIN
-     CONTROL     "Enable &GTK3 Theming",IDC_ENABLE_GTK3,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,16,100,230,8
+@@ -321,4 +321,12 @@ IDD_DESKTOP_INTEGRATION DIALOG  0, 0, 260, 220
+     PUSHBUTTON      "B&rowse...",IDC_BROWSE_SFPATH,195,195,50,13,WS_DISABLED
  END
  
 +IDD_INPUT_CONFIG DIALOG  0, 0, 260, 220

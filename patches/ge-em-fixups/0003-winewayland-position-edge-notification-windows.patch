@@ -10,16 +10,15 @@ them. Keep notification layers independent from the single tray-menu layer and
 do not give them keyboard focus.
 
 ---
- dlls/winewayland.drv/wayland_surface.c | 39 ++++++++++++-----
- dlls/winewayland.drv/waylanddrv.h      |  3 +-
- dlls/winewayland.drv/window.c          | 60 ++++++++++++++++++++++++--
- 3 files changed, 87 insertions(+), 15 deletions(-)
-
+ dlls/winewayland.drv/wayland_surface.c | 45 ++++++++++++++++++++---------
+ dlls/winewayland.drv/waylanddrv.h      |  5 +++-
+ dlls/winewayland.drv/window.c          | 52 +++++++++++++++++++++++++++++++---
+ 3 files changed, 83 insertions(+), 19 deletions(-)
 diff --git a/dlls/winewayland.drv/wayland_surface.c b/dlls/winewayland.drv/wayland_surface.c
-index 35553691060..ea79141f120 100644
+index 8f15d09..4db3194 100644
 --- a/dlls/winewayland.drv/wayland_surface.c
 +++ b/dlls/winewayland.drv/wayland_surface.c
-@@ -1178,8 +1178,20 @@ static void zwlr_layer_surface_v1_handle_configure(void *private,
+@@ -258,8 +258,20 @@ static void zwlr_layer_surface_v1_handle_configure(void *private,
  static void zwlr_layer_surface_v1_handle_closed(void *private,
                                                  struct zwlr_layer_surface_v1 *layer_surface)
  {
@@ -42,7 +41,18 @@ index 35553691060..ea79141f120 100644
  }
  
  static const struct zwlr_layer_surface_v1_listener zwlr_layer_surface_v1_listener =
-@@ -1872,16 +1884,18 @@ static void wayland_surface_update_layer_config(struct wayland_surface *surface,
+@@ -541,8 +553,8 @@ err:
+     ERR("Failed to assign subsurface role to wayland surface\n");
+ }
+ 
+-static struct wl_output *layer_surface_get_output(const RECT *rect, RECT *output_rect,
+-                                                  double *output_scale)
++struct wl_output *wayland_output_for_rect(const RECT *rect, RECT *physical_rect,
++                                          double *output_scale)
+ {
+     struct wayland_output *output;
+     struct output_info *info, *best_info = NULL;
+@@ -635,16 +647,18 @@ static void wayland_surface_update_layer_config(struct wayland_surface *surface,
      zwlr_layer_surface_v1_set_exclusive_zone(surface->zwlr_layer_surface_v1, -1);
      zwlr_layer_surface_v1_set_keyboard_interactivity(
          surface->zwlr_layer_surface_v1,
@@ -65,9 +75,12 @@ index 35553691060..ea79141f120 100644
  {
      struct wl_output *output;
      double initial_scale;
-@@ -1892,13 +1906,14 @@ void wayland_surface_make_layer(struct wayland_surface *surface, const RECT *rec
+@@ -653,15 +667,16 @@ void wayland_surface_make_layer(struct wayland_surface *surface, const RECT *rec
+     TRACE("surface=%p rect=%s\n", surface, wine_dbgstr_rect(rect));
+ 
      assert(!surface->role || surface->role == WAYLAND_SURFACE_ROLE_LAYER);
-     output = layer_surface_get_output(rect, &output_rect, &initial_scale);
+-    output = layer_surface_get_output(rect, &output_rect, &initial_scale);
++    output = wayland_output_for_rect(rect, &output_rect, &initial_scale);
  
 -    if (surface->zwlr_layer_surface_v1 && surface->layer_output != output)
 +    if (surface->zwlr_layer_surface_v1 &&
@@ -82,7 +95,7 @@ index 35553691060..ea79141f120 100644
          wl_surface_commit(surface->wl_surface);
          wl_display_flush(process_wayland.wl_display);
          return;
-@@ -1907,11 +1922,12 @@ void wayland_surface_make_layer(struct wayland_surface *surface, const RECT *rec
+@@ -670,11 +685,12 @@ void wayland_surface_make_layer(struct wayland_surface *surface, const RECT *rec
      wayland_surface_clear_role(surface);
      surface->role = WAYLAND_SURFACE_ROLE_LAYER;
      surface->layer_output = output;
@@ -96,7 +109,7 @@ index 35553691060..ea79141f120 100644
      if (!surface->zwlr_layer_surface_v1) goto err;
  
      zwlr_layer_surface_v1_add_listener(surface->zwlr_layer_surface_v1,
-@@ -1919,7 +1935,7 @@ void wayland_surface_make_layer(struct wayland_surface *surface, const RECT *rec
+@@ -682,7 +698,7 @@ void wayland_surface_make_layer(struct wayland_surface *surface, const RECT *rec
                                         surface->hwnd);
      wayland_surface_init_fractional_scale(surface, initial_scale);
      wayland_surface_update_layer_config(surface, rect, &output_rect);
@@ -105,7 +118,7 @@ index 35553691060..ea79141f120 100644
  
      wl_surface_commit(surface->wl_surface);
      wl_display_flush(process_wayland.wl_display);
-@@ -2016,13 +2032,14 @@ void wayland_surface_clear_role(struct wayland_surface *surface)
+@@ -751,13 +767,14 @@ void wayland_surface_clear_role(struct wayland_surface *surface)
          break;
  
      case WAYLAND_SURFACE_ROLE_LAYER:
@@ -119,51 +132,62 @@ index 35553691060..ea79141f120 100644
          surface->layer_output = NULL;
 +        surface->layer_menu = FALSE;
          break;
+     }
  
-     case WAYLAND_SURFACE_ROLE_SUBSURFACE:
 diff --git a/dlls/winewayland.drv/waylanddrv.h b/dlls/winewayland.drv/waylanddrv.h
-index 6149677c7f0..5289c11df6e 100644
+index 283f187..3a63e23 100644
 --- a/dlls/winewayland.drv/waylanddrv.h
 +++ b/dlls/winewayland.drv/waylanddrv.h
-@@ -520,6 +520,7 @@ struct wayland_surface
-         {
-             struct zwlr_layer_surface_v1 *zwlr_layer_surface_v1;
-             struct wl_output *layer_output;
-+            BOOL layer_menu;
-         };
-     };
+@@ -307,6 +307,7 @@ struct wayland_surface
      struct wp_alpha_modifier_surface_v1 *wp_alpha_modifier_surface_v1;
-@@ -578,7 +579,7 @@ void wayland_surface_make_subsurface(struct wayland_surface *surface,
+     struct zwlr_layer_surface_v1 *zwlr_layer_surface_v1;
+     struct wl_output *layer_output;
++    BOOL layer_menu;
+ 
+     struct wayland_surface_config pending, requested, processing, current;
+     BOOL resizing;
+@@ -336,6 +337,8 @@ struct output_info
+ };
+ 
+ void output_info_array_arrange_physical_coords(struct wl_array *output_info_array);
++struct wl_output *wayland_output_for_rect(const RECT *rect, RECT *physical_rect,
++                                           double *output_scale);
+ 
+ /**********************************************************************
+  *          Wayland surface
+@@ -349,7 +352,7 @@ void wayland_surface_destroy(struct wayland_surface *surface);
+ void wayland_surface_make_toplevel(struct wayland_surface *surface);
+ void wayland_surface_make_subsurface(struct wayland_surface *surface,
                                       struct wayland_surface *parent);
- void wayland_surface_make_popup(struct wayland_surface *surface,
-                                 struct wayland_surface *owner);
 -void wayland_surface_make_layer(struct wayland_surface *surface, const RECT *rect);
 +void wayland_surface_make_layer(struct wayland_surface *surface, const RECT *rect, BOOL menu);
  void wayland_surface_clear_role(struct wayland_surface *surface);
  void wayland_surface_attach_shm(struct wayland_surface *surface,
                                  struct wayland_shm_buffer *shm_buffer,
 diff --git a/dlls/winewayland.drv/window.c b/dlls/winewayland.drv/window.c
-index 5c32a49e7ae..504e12442b7 100644
+index e4270ec..1170ead 100644
 --- a/dlls/winewayland.drv/window.c
 +++ b/dlls/winewayland.drv/window.c
-@@ -291,6 +291,7 @@ static BOOL wayland_win_data_create_wayland_surface(struct wayland_win_data *dat
-                                                     struct wayland_surface *toplevel_surface,
+@@ -178,7 +178,8 @@ static void reapply_cursor_clipping(void)
+ 
+ static BOOL wayland_win_data_create_wayland_surface(struct wayland_win_data *data,
                                                      struct wayland_surface *owner_surface,
-                                                     BOOL use_layer_shell,
-+                                                    BOOL layer_menu,
-                                                     struct window_surface *window_surface,
-                                                     UINT swp_flags,
-                                                     BOOL has_menu_popup_owner)
-@@ -381,7 +382,7 @@ static BOOL wayland_win_data_create_wayland_surface(struct wayland_win_data *dat
-         wayland_surface_make_popup(surface, owner_surface);
+-                                                    BOOL use_layer_shell)
++                                                    BOOL use_layer_shell,
++                                                    BOOL layer_menu)
+ {
+     struct wayland_surface *surface;
+     enum wayland_surface_role role;
+@@ -226,7 +227,7 @@ static BOOL wayland_win_data_create_wayland_surface(struct wayland_win_data *dat
+         wayland_surface_clear_role(surface);
          break;
      case WAYLAND_SURFACE_ROLE_LAYER:
 -        wayland_surface_make_layer(surface, &data->rects.window);
 +        wayland_surface_make_layer(surface, &data->rects.window, layer_menu);
          break;
-     case WAYLAND_SURFACE_ROLE_SUBSURFACE:
-         wayland_surface_make_subsurface(surface, toplevel_surface);
-@@ -767,6 +768,56 @@ static BOOL is_window_managed(HWND hwnd, HWND menu_popup_owner, UINT swp_flags,
+     case WAYLAND_SURFACE_ROLE_TOPLEVEL:
+         wayland_surface_make_toplevel(surface);
+@@ -501,6 +502,45 @@ static BOOL is_window_managed(HWND hwnd, UINT swp_flags, BOOL fullscreen)
      return FALSE;
  }
  
@@ -171,10 +195,9 @@ index 5c32a49e7ae..504e12442b7 100644
 +                                   const struct window_rects *rects)
 +{
 +    const DWORD required_ex_style = WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_TOPMOST;
-+    struct wayland_output *output;
-+    const struct wayland_output_state *state;
-+    int width, height, output_width, output_height;
 +    RECT rect = rects->window, output_rect;
++    double output_scale;
++    int width, height, output_width, output_height;
 +    DWORD style, ex_style;
 +    BOOL at_edge;
 +
@@ -191,19 +214,10 @@ index 5c32a49e7ae..504e12442b7 100644
 +    height = rect.bottom - rect.top;
 +    if (width <= 0 || height <= 0) return FALSE;
 +
-+    if (!(output = wayland_output_for_rect(&rect))) return FALSE;
-+    state = &output->current;
-+    if (!state->current_mode)
-+    {
-+        wayland_output_release(output);
-+        return FALSE;
-+    }
-+
-+    SetRect(&output_rect, state->physical_x, state->physical_y,
-+            state->physical_x + state->current_mode->width,
-+            state->physical_y + state->current_mode->height);
++    if (!wayland_output_for_rect(&rect, &output_rect, &output_scale)) return FALSE;
 +    output_width = output_rect.right - output_rect.left;
 +    output_height = output_rect.bottom - output_rect.top;
++    if (output_width <= 0 || output_height <= 0) return FALSE;
 +
 +    /* Desktop notification windows are small, borderless surfaces deliberately
 +     * placed against an output edge. This excludes centered overlays, splash
@@ -212,7 +226,6 @@ index 5c32a49e7ae..504e12442b7 100644
 +              abs(rect.right - output_rect.right) <= 64 ||
 +              abs(rect.top - output_rect.top) <= 64 ||
 +              abs(rect.bottom - output_rect.bottom) <= 64;
-+    wayland_output_release(output);
 +
 +    return at_edge && width <= output_width / 2 && height <= output_height / 2;
 +}
@@ -220,31 +233,32 @@ index 5c32a49e7ae..504e12442b7 100644
  /***********************************************************************
   *           WAYLAND_DestroyWindow
   */
-@@ -808,6 +859,7 @@ void WAYLAND_WindowPosChanged(HWND hwnd, HWND insert_after, HWND owner_hint, UIN
-     struct wayland_win_data *data, *toplevel_data, *owner_data;
+@@ -541,6 +581,7 @@ void WAYLAND_WindowPosChanged(HWND hwnd, HWND insert_after, HWND owner_hint, UIN
+     struct wayland_win_data *data, *owner_data;
      BOOL managed, fullscreen = swp_flags & WINE_SWP_FULLSCREEN;
      BOOL tray_menu = swp_flags & WINE_SWP_TRAY_MENU;
 +    BOOL notification = FALSE;
      BOOL use_layer_shell = FALSE;
  
-     /* Get the managed state with win_data unlocked, as is_window_managed
-@@ -815,7 +867,9 @@ void WAYLAND_WindowPosChanged(HWND hwnd, HWND insert_after, HWND owner_hint, UIN
+     TRACE("hwnd %p new_rects %s after %p flags %08x\n", hwnd, debugstr_window_rects(new_rects), insert_after, swp_flags);
+@@ -549,7 +590,9 @@ void WAYLAND_WindowPosChanged(HWND hwnd, HWND insert_after, HWND owner_hint, UIN
+      * may need to query win_data information about other HWNDs and thus
       * acquire the lock itself internally. */
-     menu_popup_owner = wayland_is_menu_popup_candidate(hwnd) ? get_menu_popup_owner(hwnd, owner_hint) : NULL;
-     managed = is_window_managed(hwnd, menu_popup_owner, swp_flags, fullscreen);
+     if (!(managed = is_window_managed(hwnd, swp_flags, fullscreen)) && surface) owner = owner_hint;
 -    if (tray_menu && surface && process_wayland.zwlr_layer_shell_v1)
 +    if (!tray_menu && surface && process_wayland.zwlr_layer_shell_v1)
 +        notification = is_notification_window(hwnd, swp_flags, new_rects);
 +    if ((tray_menu || notification) && surface && process_wayland.zwlr_layer_shell_v1)
      {
          managed = FALSE;
-         toplevel = NULL;
-@@ -883,7 +937,7 @@ void WAYLAND_WindowPosChanged(HWND hwnd, HWND insert_after, HWND owner_hint, UIN
+         owner = NULL;
+@@ -573,7 +616,8 @@ void WAYLAND_WindowPosChanged(HWND hwnd, HWND insert_after, HWND owner_hint, UIN
+             data->wayland_surface = NULL;
          }
      }
-     else if (wayland_win_data_create_wayland_surface(data, toplevel_surface, owner_surface,
--                                                     use_layer_shell, surface, swp_flags,
-+                                                     use_layer_shell, tray_menu, surface, swp_flags,
-                                                      menu_popup_owner != NULL))
+-    else if (wayland_win_data_create_wayland_surface(data, owner_surface, use_layer_shell))
++    else if (wayland_win_data_create_wayland_surface(data, owner_surface, use_layer_shell,
++                                                            tray_menu))
      {
          wayland_win_data_update_wayland_state(data);
+     }

@@ -8,18 +8,15 @@ Subject: [PATCH 016/285] winewayland: Fix missing wayland_win_data_release.
  1 file changed, 2 insertions(+)
 
 diff --git a/dlls/winewayland.drv/wayland_surface.c b/dlls/winewayland.drv/wayland_surface.c
-index 4a7dfbb042c..1d100a1f304 100644
+index b32a43f7..8181820f 100644
 --- a/dlls/winewayland.drv/wayland_surface.c
 +++ b/dlls/winewayland.drv/wayland_surface.c
-@@ -170,6 +170,8 @@ void wp_fractional_scale_handle_scale(void* user_data,
-         surface->processing.processed = TRUE;
-     }
- 
+@@ -170,6 +170,8 @@ static const struct xdg_surface_listener xdg_surface_listener =
+ static void xdg_toplevel_handle_configure(void *private,
+                                           struct xdg_toplevel *xdg_toplevel,
+                                           int32_t width, int32_t height,
 +    wayland_win_data_release(data);
 +
-     NtUserExposeWindowSurface(hwnd, 0, NULL, 0);
- }
- 
--- 
-2.55.0
-
+                                           struct wl_array *states)
+ {
+     struct wayland_surface *surface;

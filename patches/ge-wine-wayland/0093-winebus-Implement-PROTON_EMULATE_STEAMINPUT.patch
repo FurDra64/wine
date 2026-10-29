@@ -9,10 +9,10 @@ Subject: [PATCH 093/285] winebus: Implement PROTON_EMULATE_STEAMINPUT.
  1 file changed, 14 insertions(+)
 
 diff --git a/dlls/winebus.sys/bus_sdl.c b/dlls/winebus.sys/bus_sdl.c
-index fbea0cb00b9..cc778c4523d 100644
+index 9225efbc..7555490f 100644
 --- a/dlls/winebus.sys/bus_sdl.c
 +++ b/dlls/winebus.sys/bus_sdl.c
-@@ -944,6 +944,12 @@ BOOL is_sdl_ignored_device(WORD vid, WORD pid)
+@@ -926,6 +926,12 @@ static BOOL set_report_from_controller_event(struct sdl_device *impl, SDL_Event
      return FALSE;
  }
  
@@ -25,8 +25,8 @@ index fbea0cb00b9..cc778c4523d 100644
  static void sdl_add_device(unsigned int index)
  {
      struct device_desc desc =
-@@ -1000,6 +1006,14 @@ static void sdl_add_device(unsigned int index)
-         return;
+@@ -975,6 +981,14 @@ static void sdl_add_device(unsigned int index)
+         desc.version = 0;
      }
  
 +    if (is_emulating_steaminput())
@@ -40,6 +40,3 @@ index fbea0cb00b9..cc778c4523d 100644
      if (pSDL_JoystickGetSerial && (sdl_serial = pSDL_JoystickGetSerial(joystick)))
          ntdll_umbstowcs(sdl_serial, strlen(sdl_serial) + 1, desc.serialnumber, ARRAY_SIZE(desc.serialnumber));
  
--- 
-2.55.0
-

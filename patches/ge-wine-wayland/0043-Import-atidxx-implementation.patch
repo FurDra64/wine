@@ -19,20 +19,20 @@ Subject: [PATCH 043/285] Import atidxx implementation
  create mode 100644 dlls/atidxx64/main.c
 
 diff --git a/configure.ac b/configure.ac
-index 7434ef9323b..40ab42f5c37 100644
+index 91225fd0..c83b2dbc 100644
 --- a/configure.ac
 +++ b/configure.ac
-@@ -2538,6 +2538,7 @@ WINE_CONFIG_MAKEFILE(dlls/apphelp/tests)
- WINE_CONFIG_MAKEFILE(dlls/appwiz.cpl)
- WINE_CONFIG_MAKEFILE(dlls/appxdeploymentclient)
- WINE_CONFIG_MAKEFILE(dlls/atiadlxx)
+@@ -2538,6 +2538,7 @@ WINE_CONFIG_MAKEFILE(dlls/d3dcompiler_46)
+ WINE_CONFIG_MAKEFILE(dlls/d3dcompiler_46/tests)
+ WINE_CONFIG_MAKEFILE(dlls/d3dcompiler_47)
+ WINE_CONFIG_MAKEFILE(dlls/d3dcompiler_47/tests)
 +WINE_CONFIG_MAKEFILE(dlls/atidxx64)
- WINE_CONFIG_MAKEFILE(dlls/atl)
- WINE_CONFIG_MAKEFILE(dlls/atl/tests)
- WINE_CONFIG_MAKEFILE(dlls/atl100)
+ WINE_CONFIG_MAKEFILE(dlls/d3dim)
+ WINE_CONFIG_MAKEFILE(dlls/d3dim700)
+ WINE_CONFIG_MAKEFILE(dlls/d3drm)
 diff --git a/dlls/atidxx64/Makefile.in b/dlls/atidxx64/Makefile.in
 new file mode 100644
-index 00000000000..e4c1d2875c8
+index 00000000..e4c1d287
 --- /dev/null
 +++ b/dlls/atidxx64/Makefile.in
 @@ -0,0 +1,9 @@
@@ -47,7 +47,7 @@ index 00000000000..e4c1d2875c8
 +	dxvk_interfaces.idl
 diff --git a/dlls/atidxx64/atidxx.h b/dlls/atidxx64/atidxx.h
 new file mode 100644
-index 00000000000..9a152206919
+index 00000000..9a152206
 --- /dev/null
 +++ b/dlls/atidxx64/atidxx.h
 @@ -0,0 +1,141 @@
@@ -194,7 +194,7 @@ index 00000000000..9a152206919
 +#endif
 diff --git a/dlls/atidxx64/atidxx64.spec b/dlls/atidxx64/atidxx64.spec
 new file mode 100644
-index 00000000000..4012dcb0303
+index 00000000..4012dcb0
 --- /dev/null
 +++ b/dlls/atidxx64/atidxx64.spec
 @@ -0,0 +1,17 @@
@@ -217,7 +217,7 @@ index 00000000000..4012dcb0303
 +@ stub AmdLiquidVrD3D11WrapDeviceContext
 diff --git a/dlls/atidxx64/dxvk_interfaces.idl b/dlls/atidxx64/dxvk_interfaces.idl
 new file mode 100644
-index 00000000000..9e405a32a06
+index 00000000..9e405a32
 --- /dev/null
 +++ b/dlls/atidxx64/dxvk_interfaces.idl
 @@ -0,0 +1,153 @@
@@ -376,7 +376,7 @@ index 00000000000..9e405a32a06
 +}
 diff --git a/dlls/atidxx64/main.c b/dlls/atidxx64/main.c
 new file mode 100644
-index 00000000000..de38ad36a6c
+index 00000000..de38ad36
 --- /dev/null
 +++ b/dlls/atidxx64/main.c
 @@ -0,0 +1,698 @@
@@ -1078,6 +1078,3 @@ index 00000000000..de38ad36a6c
 +
 +    return S_OK;
 +}
--- 
-2.55.0
-
