@@ -26,17 +26,13 @@ termination behavior. This does not skip process detach or force an exit.
 diff --git a/dlls/ntdll/unix/process.c b/dlls/ntdll/unix/process.c
 --- a/dlls/ntdll/unix/process.c
 +++ b/dlls/ntdll/unix/process.c
-@@ -967,6 +967,7 @@ LONG terminate_process_exit_code;
+@@ -965,14 +965,18 @@ NTSTATUS WINAPI NtTerminateProcess( HANDLE handle, LONG exit_code )
   */
  NTSTATUS WINAPI NtTerminateProcess( HANDLE handle, LONG exit_code )
  {
 +    sigset_t sigset;
      unsigned int ret;
      BOOL self;
- 
-@@ -983,11 +984,14 @@ NTSTATUS WINAPI NtTerminateProcess( HANDLE handle, LONG exit_code )
-         terminate_process_exit_code = exit_code;
-     }
  
 +    /* Do not dispatch APCs after killing the other threads until process_exiting
 +     * is set: they may need a mutex left locked by one of those threads. */
@@ -50,11 +46,13 @@ diff --git a/dlls/ntdll/unix/process.c b/dlls/ntdll/unix/process.c
          self = reply->self;
      }
      SERVER_END_REQ;
-@@ -999,6 +1003,7 @@ NTSTATUS WINAPI NtTerminateProcess( HANDLE handle, LONG exit_code )
+@@ -979,8 +983,9 @@ NTSTATUS WINAPI NtTerminateProcess( HANDLE handle, LONG exit_code )
+     if (self)
+     {
+         if (!handle) process_exiting = TRUE;
          else if (process_exiting) exit_process( exit_code );
          else abort_process( exit_code );
      }
 +    pthread_sigmask( SIG_SETMASK, &sigset, NULL );
      return ret;
  }
- 

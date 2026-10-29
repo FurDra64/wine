@@ -92,8 +92,8 @@ diff --git a/dlls/win32u/vulkan.c b/dlls/win32u/vulkan.c
          instance->obj.extensions.has_VK_KHR_get_surface_capabilities2 = 1;
          instance->obj.extensions.has_VK_EXT_surface_maintenance1 = 1;
      }
-@@ -1502,14 +1517,14 @@
-     if (next > str) add_device_extension( str, next - str, extensions );
+@@ -688,14 +688,14 @@
+     free( instance );
  }
  
 -static BOOL use_hades_present_modes( struct vulkan_physical_device *physical_device )

@@ -13,8 +13,9 @@ diff --git a/dlls/ntoskrnl.exe/ntoskrnl.c b/dlls/ntoskrnl.exe/ntoskrnl.c
 index 1fd13c75ad7..eae8e196abe 100644
 --- a/dlls/ntoskrnl.exe/ntoskrnl.c
 +++ b/dlls/ntoskrnl.exe/ntoskrnl.c
-@@ -4757,6 +4757,18 @@ PEB32 * WINAPI PsGetProcessWow64Process(PEPROCESS process)
-     return process->peb32;
+@@ -4698,6 +4698,18 @@ PVOID WINAPI PsGetProcessWow64Process(PEPROCESS process)
+     FIXME("stub: %p\n", process);
+     return NULL;
  }
  
 +/*********************************************************************

@@ -15,7 +15,7 @@ diff --git a/programs/wineboot/wineboot.c b/programs/wineboot/wineboot.c
 index 49c3609886c..7739fc8aab8 100644
 --- a/programs/wineboot/wineboot.c
 +++ b/programs/wineboot/wineboot.c
-@@ -1488,6 +1488,27 @@ static BOOL start_services_process(void)
+@@ -1495,6 +1495,27 @@ static BOOL start_services_process(void)
      return TRUE;
  }
  
@@ -40,13 +40,14 @@ index 49c3609886c..7739fc8aab8 100644
 +    CloseServiceHandle( scm );
 +}
 +
- static HANDLE start_rundll32( const WCHAR *inf_path, const WCHAR *install, WORD machine )
+ static void set_wait_dialog_text( HWND hwnd, HWND text, const WCHAR *string )
  {
-     WCHAR app[MAX_PATH + ARRAY_SIZE(L"\\rundll32.exe" )];
-@@ -1975,6 +1996,7 @@ int __cdecl main( int argc, char *argv[] )
+     RECT win_rect, old_rect, new_rect;
+@@ -1995,6 +1995,7 @@ int __cdecl main( int argc, char *argv[] )
      create_volatile_environment_registry_key();
      create_known_dlls();
      initialize_internet();
+     create_sqmclient_registry_key();
 +    if (init || (kill && !restart)) start_samss_service();
  
      ProcessRunKeys( HKEY_LOCAL_MACHINE, L"RunOnce", TRUE, TRUE );

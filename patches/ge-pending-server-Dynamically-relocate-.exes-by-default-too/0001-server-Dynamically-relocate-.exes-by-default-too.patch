@@ -13,7 +13,7 @@ diff --git a/dlls/ntdll/unix/virtual.c b/dlls/ntdll/unix/virtual.c
 index 781598fced1..c46d2255475 100644
 --- a/dlls/ntdll/unix/virtual.c
 +++ b/dlls/ntdll/unix/virtual.c
-@@ -3046,7 +3046,6 @@ static NTSTATUS virtual_map_image( HANDLE mapping, void **addr_ptr, SIZE_T *size
+@@ -3044,7 +3044,6 @@ static NTSTATUS virtual_map_image( HANDLE mapping, void **addr_ptr, SIZE_T *size
      }
  
      if (!pe_mapping->image.map_addr &&
@@ -34,7 +34,7 @@ index 69cd0a7451b..47dc5de2893 100644
          mapping->image.image_flags |= IMAGE_FLAGS_ImageDynamicallyRelocated;
  
      align_mask = max( mapping->image.alignment - 1, page_mask );
-@@ -1271,8 +1271,6 @@ static client_ptr_t assign_map_address( struct mapping *mapping )
+@@ -1268,8 +1268,6 @@ static client_ptr_t assign_map_address( struct mapping *mapping )
      struct addr_range *range = (mapping->image.base >> 32) ? &ranges64 : &ranges32;
      mem_size_t size = round_size( mapping->size, granularity_mask );
  
@@ -42,7 +42,8 @@ index 69cd0a7451b..47dc5de2893 100644
 -
      if ((ret = get_fd_map_address( mapping->fd ))) return ret;
  
-     size += granularity_mask + 1;  /* leave some free space between mappings */
+     for (i = 0; i < range->count; i++)
+     {
 -- 
 2.53.0
 

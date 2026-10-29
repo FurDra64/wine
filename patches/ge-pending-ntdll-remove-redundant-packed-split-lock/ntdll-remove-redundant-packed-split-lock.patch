@@ -123,9 +123,9 @@ index 2cc53c36bf5..27f677bf381 100644
 +#endif
 +}
 +
- 
+
  /***********************************************************************
- *           start_main_thread
+  *           start_main_thread
 @@ -1860,3 +1860,4 @@ static void start_main_thread(void)
      init_startup_info();
 +    patch_redundant_packed_split_lock();

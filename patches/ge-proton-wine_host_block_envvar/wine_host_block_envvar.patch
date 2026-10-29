@@ -2,7 +2,7 @@ diff --git a/dlls/ws2_32/protocol.c b/dlls/ws2_32/protocol.c
 index eef2c34b3e4..7d1c137ec7d 100644
 --- a/dlls/ws2_32/protocol.c
 +++ b/dlls/ws2_32/protocol.c
-@@ -184,6 +184,40 @@ static int dns_only_query( const char *node, const struct addrinfo *hints, struc
+@@ -184,27 +184,67 @@ static int dns_only_query( const char *node, const struct addrinfo *hints, struc
      return 0;
  }
  
@@ -41,9 +41,23 @@ index eef2c34b3e4..7d1c137ec7d 100644
 +}
 +
  /***********************************************************************
- *      getaddrinfo   (ws2_32.@)
-     static int eac_download_hack_enabled = -1;
-@@ -206,6 +206,12 @@ int WINAPI getaddrinfo( const char *node, const char *service,
+  *      getaddrinfo   (ws2_32.@)
+  */
+ int WINAPI getaddrinfo( const char *node, const char *service,
+                         const struct addrinfo *hints, struct addrinfo **info )
+ {
+     char *nodev6 = NULL, *fqdn = NULL;
+     int ret;
+ 
+     TRACE( "node %s, service %s, hints %p\n", debugstr_a(node), debugstr_a(service), hints );
+ 
+     *info = NULL;
+ 
+     if (!node && !service)
+     {
+         SetLastError( WSAHOST_NOT_FOUND );
+         return WSAHOST_NOT_FOUND;
+     }
  
      if (node)
      {

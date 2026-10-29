@@ -1,0 +1,107 @@
+name: build
+
+# Wine WOW64 ビルド検証 (合否のみ・成果物保存なし)。
+# ubuntu-24.04 で全 patchset 適用 → configure --enable-archs=i386,x86_64 → make。
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - 'patches/**'
+      - 'patches/series.conf'
+      - 'scripts/**'
+      - 'configure.ac'
+      - 'dlls/**'
+      - 'libs/**'
+      - 'loader/**'
+      - 'server/**'
+      - 'tools/**'
+  pull_request:
+    paths:
+      - 'patches/**'
+      - 'patches/series.conf'
+      - 'scripts/**'
+      - 'configure.ac'
+      - 'dlls/**'
+      - 'libs/**'
+      - 'loader/**'
+      - 'server/**'
+      - 'tools/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# 長時間ビルドの重複実行を防ぐ (upstream-sync とは別グループで競合なし)。
+concurrency:
+  group: build
+  cancel-in-progress: false
+
+jobs:
+  wow64:
+    name: WOW64 build (i386,x86_64)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Install build dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo apt-get install -y \
+            gcc-multilib g++-multilib mingw-w64 \
+            flex bison \
+            libx11-dev libx11-dev:i386 \
+            libfreetype-dev libfreetype-dev:i386 \
+            libxcursor-dev libxcursor-dev:i386 \
+            libxi-dev libxi-dev:i386 \
+            libxinerama-dev libxinerama-dev:i386 \
+            libxrandr-dev libxrandr-dev:i386 \
+            libxrender-dev libxrender-dev:i386 \
+            libxcomposite-dev libxcomposite-dev:i386 \
+            libgl-dev libgl-dev:i386 \
+            libosmesa6-dev libosmesa6-dev:i386 \
+            libdbus-1-dev libdbus-1-dev:i386 \
+            libgnutls28-dev libgnutls28-dev:i386 \
+            libncurses-dev libncurses-dev:i386 \
+            libpulse-dev libpulse-dev:i386 \
+            libudev-dev libudev-dev:i386 \
+            libvulkan-dev libvulkan-dev:i386 \
+            libunwind-dev libunwind-dev:i386 \
+            libkrb5-dev libkrb5-dev:i386 \
+            libsdl2-dev libsdl2-dev:i386 \
+            libcups2-dev libcups2-dev:i386 \
+            libgphoto2-dev libgphoto2-dev:i386 \
+            libsane-dev libsane-dev:i386 \
+            libgsm1-dev libgsm1-dev:i386 \
+            libtiff-dev libtiff-dev:i386 \
+            libjpeg-dev libjpeg-dev:i386 \
+            libpng-dev libpng-dev:i386 \
+            libfaudio-dev libfaudio-dev:i386 \
+            liblcms2-dev liblcms2-dev:i386 \
+            libmpg123-dev libmpg123-dev:i386 \
+            libopenal-dev libopenal-dev:i386 \
+            libodbc2 libodbc2:i386 unixodbc-dev unixodbc-dev:i386 \
+            libusb-1.0-0-dev libusb-1.0-0-dev:i386 \
+            libv4l-dev libv4l-dev:i386 \
+            libgstreamer1.0-dev libgstreamer1.0-dev:i386 \
+            libgstreamer-plugins-base1.0-dev libgstreamer-plugins-base1.0-dev:i386
+
+      - name: Apply all patchsets
+        shell: bash
+        run: bash scripts/apply-patches.sh --all
+
+      - name: Configure (WOW64)
+        shell: bash
+        run: ./configure --enable-archs=i386,x86_64
+
+      - name: Build
+        shell: bash
+        run: make -j"$(nproc)"

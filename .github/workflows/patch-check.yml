@@ -1,0 +1,58 @@
+name: patch-check
+
+# scripts/apply-patches.sh --check (dry-run) で全 patchset の適用可能性を検証。
+# ツリーは変更しない。失敗時はログを掲示する。
+
+on:
+  push:
+    paths:
+      - 'patches/**'
+      - 'patches/series.conf'
+      - 'scripts/**'
+  pull_request:
+    paths:
+      - 'patches/**'
+      - 'patches/series.conf'
+      - 'scripts/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: patch-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: apply-patches --check
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Dry-run all patchsets
+        shell: bash
+        run: |
+          set -o pipefail
+          bash scripts/apply-patches.sh --check 2>&1 | tee patch-check.log
+
+      - name: Show log on failure
+        if: failure()
+        shell: bash
+        run: |
+          echo '=== patch-check.log ==='
+          cat patch-check.log || true
+          echo '=== failed patchsets ==='
+          grep -E '^FAILED ' patch-check.log || true
+
+      - name: Upload log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: patch-check-log
+          path: patch-check.log
+          retention-days: 7

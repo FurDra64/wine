@@ -39,12 +39,13 @@ index 375aadc5b1d51e2549cd748046a3c11f2f96f838..92f1164a3ddabde968087f568d5dce23
  static struct d3dkmt_object **grow_handle_table(void)
  {
      size_t old_capacity = objects_end - objects, max_capacity = handle_to_index( D3DKMT_HANDLE_BIT - 1 );
-@@ -906,6 +920,98 @@ NTSTATUS WINAPI NtGdiDdDDIQueryAdapterInfo( D3DKMT_QUERYADAPTERINFO *desc )
- 
-         return STATUS_NOT_IMPLEMENTED;
+@@ -836,6 +850,101 @@ NTSTATUS WINAPI NtGdiDdDDIQueryAdapterInfo( D3DKMT_QUERYADAPTERINFO *desc )
+         *value = KMT_DRIVERVERSION_WDDM_3_1;
+         return STATUS_SUCCESS;
      }
 +    case KMTQAITYPE_ADAPTERTYPE:
 +    {
++        struct d3dkmt_adapter *adapter;
 +        struct vulkan_physical_device *physical_device;
 +        VkPhysicalDeviceProperties2KHR properties2;
 +        VkQueueFamilyProperties queue_families[32];
@@ -54,7 +55,7 @@ index 375aadc5b1d51e2549cd748046a3c11f2f96f838..92f1164a3ddabde968087f568d5dce23
 +        BOOL has_graphics_queue = FALSE;
 +        unsigned int i;
 +
-+        if (!(adapter = get_d3dkmt_object( desc->hAdapter, D3DKMT_ADAPTER ))) return STATUS_INVALID_PARAMETER;
++        if (!(adapter = get_d3dkmt_adapter( desc->hAdapter ))) return STATUS_INVALID_PARAMETER;
 +        if (!(physical_device = adapter->physical_device)) return STATUS_INVALID_PARAMETER;
 +        instance = physical_device->instance;
 +
@@ -88,12 +89,13 @@ index 375aadc5b1d51e2549cd748046a3c11f2f96f838..92f1164a3ddabde968087f568d5dce23
 +    case KMTQAITYPE_ADAPTERREGISTRYINFO:
 +    {
 +        VkPhysicalDeviceDriverPropertiesKHR driverProperties;
++        struct d3dkmt_adapter *adapter;
 +        struct vulkan_physical_device *physical_device;
 +        VkPhysicalDeviceProperties2KHR properties2;
 +        struct vulkan_instance *instance;
 +        D3DKMT_ADAPTERREGISTRYINFO *reg;
 +
-+        if (!(adapter = get_d3dkmt_object( desc->hAdapter, D3DKMT_ADAPTER ))) return STATUS_INVALID_PARAMETER;
++        if (!(adapter = get_d3dkmt_adapter( desc->hAdapter ))) return STATUS_INVALID_PARAMETER;
 +        if (!(physical_device = adapter->physical_device)) return STATUS_INVALID_PARAMETER;
 +        instance = physical_device->instance;
 +
@@ -122,10 +124,11 @@ index 375aadc5b1d51e2549cd748046a3c11f2f96f838..92f1164a3ddabde968087f568d5dce23
 +    case KMTQAITYPE_UMOPENGLINFO:
 +    {
 +        static const WCHAR opengl_dll[] = {'o','p','e','n','g','l','3','2','.','d','l','l',0};
++        struct d3dkmt_adapter *adapter;
 +        struct vulkan_physical_device *physical_device;
 +        D3DKMT_OPENGLINFO *gl_info;
 +
-+        if (!(adapter = get_d3dkmt_object( desc->hAdapter, D3DKMT_ADAPTER ))) return STATUS_INVALID_PARAMETER;
++        if (!(adapter = get_d3dkmt_adapter( desc->hAdapter ))) return STATUS_INVALID_PARAMETER;
 +        if (!(physical_device = adapter->physical_device)) return STATUS_INVALID_PARAMETER;
 +
 +        gl_info = desc->pPrivateDriverData;

@@ -55,7 +55,7 @@ diff --git a/dlls/ntdll/time.c b/dlls/ntdll/time.c
 index 105a6cf5bc8..06163f88117 100644
 --- a/dlls/ntdll/time.c
 +++ b/dlls/ntdll/time.c
-@@ -29,6 +29,10 @@
+@@ -29,7 +29,11 @@
  #include <string.h>
  #include <limits.h>
  #include <time.h>
@@ -65,7 +65,8 @@ index 105a6cf5bc8..06163f88117 100644
 +#endif
  
  #include "ntstatus.h"
- #define WIN32_NO_STATUS
+ #include "windef.h"
+ #include "winternl.h"
 @@ -377,11 +381,354 @@ LONGLONG WINAPI RtlGetSystemTimePrecise( void )
      return ret;
  }

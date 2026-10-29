@@ -27,9 +27,8 @@ index 112157b0dd702ffabb121502ec7ca3573069ba90..ebd1b33c1469cc63f3ec6fe1180eb69f
  #ifdef HAVE_SYS_PRCTL_H
  # include <sys/prctl.h>
  #endif
-@@ -88,6 +92,22 @@ WINE_DECLARE_DEBUG_CHANNEL(syscall);
- WINE_DECLARE_DEBUG_CHANNEL(client);
- WINE_DECLARE_DEBUG_CHANNEL(ftrace);
+@@ -84,5 +84,21 @@ WINE_DECLARE_DEBUG_CHANNEL(syscall);
+ WINE_DECLARE_DEBUG_CHANNEL(syscall);
  
 +/* just in case... */
 +#undef EXT2_IOC_GETFLAGS

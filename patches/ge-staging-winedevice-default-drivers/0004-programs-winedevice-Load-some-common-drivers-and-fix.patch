@@ -26,8 +26,9 @@ index 97e186b..6b6afeb 100644
  static void test_lookup_thread(void)
  {
      NTSTATUS status;
-@@ -2804,6 +2806,52 @@ static void test_default_security(void)
-     FltFreeSecurityDescriptor(sd);
+@@ -2861,7 +2861,53 @@
+     ok(!upper_device->Spare1, "Got Spare1 %#x.\n", upper_device->Spare1);
+     ok(!upper_device->Reserved, "Got Reserved %p.\n", upper_device->Reserved);
  }
  
 +static void test_default_modules(void)

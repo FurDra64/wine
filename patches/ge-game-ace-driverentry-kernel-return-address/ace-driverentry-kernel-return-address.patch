@@ -16,8 +16,7 @@ https://github.com/GloriousEggroll/proton-ge-custom/issues/847
 ---
 --- a/dlls/ntoskrnl.exe/instr.c
 +++ b/dlls/ntoskrnl.exe/instr.c
-@@ -29,6 +29,7 @@
- #define WIN32_NO_STATUS
+@@ -29,5 +29,6 @@
  #include "ddk/wdm.h"
  #include "excpt.h"
 +#include "rtlsupportapi.h"

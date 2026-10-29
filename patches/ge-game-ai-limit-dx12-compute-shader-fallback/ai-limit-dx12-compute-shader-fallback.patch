@@ -174,10 +174,10 @@ Issue: https://github.com/GloriousEggroll/proton-ge-custom/issues/736
  /*************************************************************************
   *              MODULE_InitDLL
   */
-@@ -1780,6 +1918,7 @@
+@@ -1688,6 +1832,7 @@
      /* Skip calls for modules loaded with special load flags */
  
-     if (wm->ldr.Flags & (LDR_DONT_RESOLVE_REFS | LDR_DONT_CALL_DLLMAIN)) return STATUS_SUCCESS;
+     if (wm->ldr.Flags & LDR_DONT_RESOLVE_REFS) return STATUS_SUCCESS;
 +    if (reason == DLL_PROCESS_ATTACH) patch_ai_limit_compute_shaders( wm );
      if (wm->ldr.TlsIndex == -1) call_tls_callbacks( wm->ldr.DllBase, reason );
      if (!entry) return STATUS_SUCCESS;

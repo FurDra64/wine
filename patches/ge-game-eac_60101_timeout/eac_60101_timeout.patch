@@ -45,15 +45,15 @@ index 3969c2bb898..da5308ea2a9 100644
  /***********************************************************************
   *           server_init_process
   *
-@@ -1685,6 +1710,8 @@ size_t server_init_process(void)
- 
-     set_thread_id( NtCurrentTeb(), pid, tid );
+@@ -1725,6 +1750,8 @@ void server_init_process( struct thread_data *data )
+     }
  
 +    create_eac_wine_pid( pid );
 +
      for (i = 0; i < supported_machines_count; i++)
-         if (supported_machines[i] == current_machine) return info_size;
+         if (supported_machines[i] == current_machine) return;
  
+     fatal_error( "wineserver doesn't support the %04x architecture\n", current_machine );
 diff --git a/dlls/ntdll/unix/thread.c b/dlls/ntdll/unix/thread.c
 index b7f424e1108..e075c51915c 100644
 --- a/dlls/ntdll/unix/thread.c

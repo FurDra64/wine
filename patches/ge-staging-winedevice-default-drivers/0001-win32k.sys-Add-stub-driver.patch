@@ -348,7 +348,7 @@ index 892078a4a96..0b54a829803 100644
 +11,,win32k.sys
  11,,winetest.exe,-
  ; themes
- 10,resources\themes\light,light.msstyles
+ 10,resources\themes\aero,aero.msstyles
 diff --git a/tools/make_specfiles b/tools/make_specfiles
 index 11677fa34af..e1384125e29 100755
 --- a/tools/make_specfiles

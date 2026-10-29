@@ -99,7 +99,7 @@ page protection and flush the instruction cache after the change.
   */
 @@ -1919,6 +1987,7 @@
  
-     if (wm->ldr.Flags & (LDR_DONT_RESOLVE_REFS | LDR_DONT_CALL_DLLMAIN)) return STATUS_SUCCESS;
+     if (wm->ldr.Flags & LDR_DONT_RESOLVE_REFS) return STATUS_SUCCESS;
      if (reason == DLL_PROCESS_ATTACH) patch_ai_limit_compute_shaders( wm );
 +    if (reason == DLL_PROCESS_ATTACH) patch_max_payne_cpu_detection( wm );
      if (wm->ldr.TlsIndex == -1) call_tls_callbacks( wm->ldr.DllBase, reason );

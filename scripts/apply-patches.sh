@@ -10,7 +10,7 @@
 set -euo pipefail
 
 DESTDIR=""
-BACKEND="patch"
+BACKEND="git-apply" # strict: no fuzz. `patch` backend kept as fallback (--backend patch).
 CHECK=0
 LIST_ONLY=0
 EXCLUDES=()
