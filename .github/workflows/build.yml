@@ -59,7 +59,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             gcc-multilib g++-multilib mingw-w64 \
-            flex bison autoconf automake libtool \
+            flex bison \
             libx11-dev libx11-dev:i386 \
             libfreetype-dev libfreetype-dev:i386 \
             libxcursor-dev libxcursor-dev:i386 \
@@ -99,11 +99,9 @@ jobs:
         shell: bash
         run: bash scripts/apply-patches.sh --all
 
-      - name: Regenerate build files (autoreconf + make_requests, same as GE prep)
+      - name: "Regenerate protocol headers (same as GE prep; autoreconf omitted: breaks top-level Makefile generation)"
         shell: bash
-        run: |
-          autoreconf -f
-          ./tools/make_requests
+        run: ./tools/make_requests
 
       - name: Configure (WOW64)
         shell: bash
