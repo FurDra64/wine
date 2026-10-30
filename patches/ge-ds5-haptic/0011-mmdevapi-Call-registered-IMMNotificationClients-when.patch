@@ -57,7 +57,7 @@ index f895681e94f..91a84b115f2 100644
 @@ -847,6 +873,8 @@ static MMDevice *MMDevice_Create(const WCHAR *name, GUID *id, EDataFlow flow, DW
      MMDevice *device, *cur = NULL;
      WCHAR guidstr[39];
-     PROPVARIANT device_path, container_id;
+     PROPVARIANT container_id;
 +    BOOL update_add = FALSE;
 +    BOOL update_state = FALSE;
      WCHAR friendly_name[FRIENDLY_NAME_MAX];
@@ -92,8 +92,7 @@ index f895681e94f..91a84b115f2 100644
  
      free(cur->drv_id);
      cur->drv_id = wcsdup(name);
-@@ -977,6 +1008,29 @@ static MMDevice *MMDevice_Create(const WCHAR *name, GUID *id, EDataFlow flow, DW
-     PropVariantClear(&device_path);
+@@ -977,5 +1008,28 @@ static MMDevice *MMDevice_Create(const WCHAR *name, GUID *id, EDataFlow flow, DW
      PropVariantClear(&container_id);
  
 +    if (state == DEVICE_STATE_ACTIVE)

@@ -23,7 +23,7 @@ index 11111111111..22222222222 100644
 +++ b/dlls/mmdevapi/devenum.c
 @@ -874,6 +874,7 @@ static MMDevice *MMDevice_Create(const WCHAR *name, GUID *id, EDataFlow flow, DW
      WCHAR guidstr[39];
-     PROPVARIANT device_path, container_id;
+     PROPVARIANT container_id;
      BOOL update_add = FALSE;
 +    BOOL update_readd = FALSE;
      BOOL update_state = FALSE;

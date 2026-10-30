@@ -11,13 +11,15 @@ Subject: [PATCH 06/11] mmdevapi: Add PROTON_MMDEV_FAKE_EXCLUSIVE envvar for
 diff --git a/dlls/mmdevapi/client.c b/dlls/mmdevapi/client.c
 --- a/dlls/mmdevapi/client.c
 +++ b/dlls/mmdevapi/client.c
-@@ -33,6 +33,9 @@
+@@ -33,6 +33,11 @@
  #include <wine/unixlib.h>
  
  #include "mmdevapi_private.h"
 +
 +#include "windef.h"
 +#include "winbase.h"
++
++static BOOL device_fake_exclusive(void);
  
  WINE_DEFAULT_DEBUG_CHANNEL(mmdevapi);
  

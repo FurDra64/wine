@@ -14,7 +14,7 @@ diff --git a/dlls/mmdevapi/devenum.c b/dlls/mmdevapi/devenum.c
  WINE_DEFAULT_DEBUG_CHANNEL(mmdevapi);
  
  DEFINE_GUID(GUID_NULL,0,0,0,0,0,0,0,0,0,0,0);
-+DEFINE_GUID(AM_KSCATEGORY_AUDIO, 0x6994ad04,0x93ef,0x11d0,0xa3,0xcc,0x00,0xa0,0xc9,0x22,0x31,0x96);
++#include "ksuuids.h"
  
  static HKEY key_render;
  static HKEY key_capture;
@@ -333,7 +333,7 @@ diff --git a/dlls/setupapi/devinst.c b/dlls/setupapi/devinst.c
  #include "initguid.h"
  #include "devpkey.h"
  #include "mmdeviceapi.h"
-+DEFINE_GUID(AM_KSCATEGORY_AUDIO, 0x6994ad04,0x93ef,0x11d0,0xa3,0xcc,0x00,0xa0,0xc9,0x22,0x31,0x96);
++#include "ksuuids.h"
  
  WINE_DEFAULT_DEBUG_CHANNEL(setupapi);
  

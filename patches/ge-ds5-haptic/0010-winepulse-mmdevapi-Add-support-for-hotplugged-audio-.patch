@@ -114,9 +114,8 @@ index a3a5ec3741f7f078b68416286d8c5ba6c323f2ae..207f2f09422e5e30e9446c9f96ece2e0
  }
  
  static HRESULT MMDevPropStore_OpenPropKey(const GUID *guid, DWORD flow, HKEY *propkey)
-@@ -956,6 +991,7 @@ static MMDevice *MMDevice_Create(const WCHAR *name, GUID *id, EDataFlow flow, DW
+@@ -956,5 +991,6 @@ static MMDevice *MMDevice_Create(const WCHAR *name, GUID *id, EDataFlow flow, DW
      PropVariantInit(&container_id);
-     dualsense_mono_endpoint = flow == eRender && is_dualsense_mono_endpoint_name(name);
  
 +    EnterCriticalSection(&device_list_cs);
      LIST_FOR_EACH_ENTRY(device, &device_list, MMDevice, entry)
@@ -641,7 +640,7 @@ index 617708e9cd527826673c6368cb4ba839cc44f473..438c72c3315411029417025ef3a1857a
  }
  
  /* copied from kernelbase */
-@@ -249,5 +249,11 @@ static NTSTATUS pulse_process_attach(void *args)
+@@ -249,5 +336,11 @@ static NTSTATUS pulse_process_attach(void *args)
      if (pthread_mutex_init(&pulse_mutex, &attr) != 0)
          pthread_mutex_init(&pulse_mutex, NULL);
  
@@ -653,7 +652,7 @@ index 617708e9cd527826673c6368cb4ba839cc44f473..438c72c3315411029417025ef3a1857a
 +
      return STATUS_SUCCESS;
  }
-@@ -263,6 +263,10 @@ static NTSTATUS pulse_process_detach(void *args)
+@@ -263,6 +356,10 @@ static NTSTATUS pulse_process_detach(void *args)
      if (pulse_ml)
          pa_mainloop_quit(pulse_ml, 0);
  
@@ -664,7 +663,7 @@ index 617708e9cd527826673c6368cb4ba839cc44f473..438c72c3315411029417025ef3a1857a
      return STATUS_SUCCESS;
  }
  
-@@ -269,8 +269,27 @@ static void pulse_main_loop_thread_cleanup(void *context)
+@@ -269,8 +366,27 @@ static void pulse_main_loop_thread_cleanup(void *context)
  {
      TRACE("Main loop thread is being aborted.\n");
 +    pulse_broadcast();
@@ -693,7 +692,7 @@ index 617708e9cd527826673c6368cb4ba839cc44f473..438c72c3315411029417025ef3a1857a
 +}
  
  static void pulse_main_loop(void *args)
-@@ -277,14 +277,21 @@ static void pulse_main_loop(void *args)
+@@ -277,14 +393,21 @@ static void pulse_main_loop(void *args)
      HANDLE event = args;
      int ret;
      pulse_lock();
@@ -718,7 +717,7 @@ index 617708e9cd527826673c6368cb4ba839cc44f473..438c72c3315411029417025ef3a1857a
      PsTerminateSystemThread( 0 );
  }
  
-@@ -321,64 +321,176 @@ static NTSTATUS pulse_get_endpoint_ids(void *args)
+@@ -321,64 +444,176 @@ static NTSTATUS pulse_get_endpoint_ids(void *args)
 -static NTSTATUS pulse_get_endpoint_ids(void *args)
 +static BOOL pulse_get_endpoints_size_needed(struct list *list, size_t *needed, unsigned int size)
  {
@@ -940,7 +939,7 @@ index 617708e9cd527826673c6368cb4ba839cc44f473..438c72c3315411029417025ef3a1857a
  }
  
  static void pulse_stream_state(pa_stream *s, void *user)
-@@ -493,46 +727,6 @@ static BOOL pulse_stream_valid(struct pulse_stream *stream)
+@@ -493,46 +728,6 @@ static BOOL pulse_stream_valid(struct pulse_stream *stream)
      return pa_stream_get_state(stream->stream) == PA_STREAM_READY;
  }
  
@@ -987,7 +986,7 @@ index 617708e9cd527826673c6368cb4ba839cc44f473..438c72c3315411029417025ef3a1857a
  static UINT pulse_channel_map_to_channel_mask(const pa_channel_map *map)
  {
      int i;
-@@ -591,59 +591,7 @@ static void fill_device_info(PhysDevice *dev, pa_proplist *p)
+@@ -591,59 +786,7 @@ static void fill_device_info(PhysDevice *dev, pa_proplist *p)
      if ((buffer = pa_proplist_gets(p, PA_PROP_DEVICE_PRODUCT_ID)))
          dev->product_id = strtol(buffer, NULL, 16);
  }
@@ -1047,7 +1046,7 @@ index 617708e9cd527826673c6368cb4ba839cc44f473..438c72c3315411029417025ef3a1857a
  /* For most hardware on Windows, users must choose a configuration with an even
   * number of channels (stereo, quad, 5.1, 7.1). Users can then disable
   * channels, but those channels are still reported to applications from
-@@ -1280,6 +1421,7 @@ static HRESULT get_device_period_helper(EDataFlow flow, const char *pulse_name,
+@@ -1280,6 +1423,7 @@ static HRESULT get_device_period_helper(EDataFlow flow, const char *pulse_name,
          return E_POINTER;
      }
  
@@ -1055,7 +1054,7 @@ index 617708e9cd527826673c6368cb4ba839cc44f473..438c72c3315411029417025ef3a1857a
      LIST_FOR_EACH_ENTRY(dev, list, PhysDevice, entry) {
          if (strcmp(pulse_name, dev->pulse_name))
              continue;
-@@ -1288,8 +1430,11 @@ static HRESULT get_device_period_helper(EDataFlow flow, const char *pulse_name,
+@@ -1288,8 +1432,11 @@ static HRESULT get_device_period_helper(EDataFlow flow, const char *pulse_name,
              *def = dev->def_period;
          if (min)
              *min = dev->min_period;
@@ -1067,7 +1066,7 @@ index 617708e9cd527826673c6368cb4ba839cc44f473..438c72c3315411029417025ef3a1857a
  
      return E_FAIL;
  }
-@@ -2585,15 +2730,17 @@ static NTSTATUS pulse_get_mix_format(void *args)
+@@ -2585,15 +2732,17 @@ static NTSTATUS pulse_get_mix_format(void *args)
      struct list *list = (params->flow == eRender) ? &g_phys_speakers : &g_phys_sources;
      PhysDevice *dev;
  
@@ -1086,7 +1085,7 @@ index 617708e9cd527826673c6368cb4ba839cc44f473..438c72c3315411029417025ef3a1857a
  
      params->result = E_FAIL;
      return STATUS_SUCCESS;
-@@ -2898,17 +3045,22 @@ static NTSTATUS pulse_get_prop_value(void *args)
+@@ -2898,17 +3047,22 @@ static NTSTATUS pulse_get_prop_value(void *args)
      struct list *list = (params->flow == eRender) ? &g_phys_speakers : &g_phys_sources;
      PhysDevice *dev;
  
@@ -1109,7 +1108,7 @@ index 617708e9cd527826673c6368cb4ba839cc44f473..438c72c3315411029417025ef3a1857a
                  params->result = S_OK;
                  return STATUS_SUCCESS;
              case 3:   /* PhysicalSpeakers */
-@@ -2508,16 +2508,20 @@ static NTSTATUS pulse_get_prop_value(void *args)
+@@ -2508,16 +2662,20 @@ static NTSTATUS pulse_get_prop_value(void *args)
                      goto fail;
                  params->value->vt = VT_UI4;
                  params->value->ulVal = dev->channel_mask;

@@ -40,3 +40,6 @@ Fail list (118): 0020,0027,0028,0035,0038,0039,0043,0047,0049,0052,0058,
 2026-10-30: 0160, 0161, 0199, 0204 moved here — they reference struct members
 (native_input_event, hid.sony_product_id) defined only by disabled MONO-stack
 patches (e.g. 0197). Re-enable together with that infra, or not at all.
+0003 (setupapi USB-audio HACK): deferred 2026-10-30. Only user of removed MMDevice_Register(); needs rebase onto MMDevice_Create. Symbols only consumed by disabled MONO patches.
+2026-10-31: 0029,0030,0031,0032,0034,0041,0042,0046,0051,0053,0059,0067,0068,0074,0076,0080,0090 moved here — dualsense-mono stack (is_dualsense_mono_*, device_path PROPVARIANT, skip_audioendpoint, remove_*_audioendpoint) whose definitions live in disabled 0003-era infra. Re-enable together with that infra.
+0026 split 2026-10-31: kept only the OnDeviceAdded/OnDeviceStateChanged dedup hunk (rebased onto 0011+0017 tree); dropped 0003-entangled helper-removal and MMDevice_Register signature hunks.
