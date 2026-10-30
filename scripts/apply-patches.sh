@@ -4,9 +4,14 @@
 #   scripts/apply-patches.sh [--destdir DIR] [--all] [-W NAME]...
 #                            [--check] [--backend patch|git-apply] [--list]
 #
-# Defaults: DESTDIR=repo root, backend=patch. Reads order from
-# patches/series.conf. Exits non-zero on first failure with a
-# machine-grepable line: "FAILED patchset=<name> file=<file>".
+# Defaults: DESTDIR=repo root, backend=git-apply (strict, no fuzz).
+# Reads order from patches/series.conf. Exits non-zero on first failure
+# with a machine-grepable line: "FAILED patchset=<name> file=<file>".
+#
+# NOTE (GE parity): several patchsets modify protocol.def / configure.ac /
+# new Makefile.in files. After a real (non---check) apply run, regenerate
+# build files before configuring, exactly like GE's protonprep does:
+#   autoreconf -f && ./tools/make_requests && ./configure ...
 set -euo pipefail
 
 DESTDIR=""
