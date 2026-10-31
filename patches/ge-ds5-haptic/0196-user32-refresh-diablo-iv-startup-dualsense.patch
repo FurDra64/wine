@@ -48,6 +48,11 @@ index 051f4e48..8473d729 100644
  #include "wine/debug.h"
  #include "wine/plugplay.h"
  
+@@ -32,3 +32,4 @@
+ WINE_DEFAULT_DEBUG_CHANNEL(win);
+ WINE_DECLARE_DEBUG_CHANNEL(keyboard);
++WINE_DECLARE_DEBUG_CHANNEL(rawinput);
+ 
 @@ -515,6 +516,123 @@ static DWORD CALLBACK devnotify_window_callbackA(HANDLE handle, DWORD flags, DEV
      return 0;
  }
