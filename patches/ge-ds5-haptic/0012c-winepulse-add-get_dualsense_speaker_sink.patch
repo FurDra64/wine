@@ -15,10 +15,14 @@ diff --git a/dlls/winepulse.drv/pulse.c b/dlls/winepulse.drv/pulse.c
 index 0000000000..1111111111 100644
 --- a/dlls/winepulse.drv/pulse.c
 +++ b/dlls/winepulse.drv/pulse.c
-@@ -155,6 +155,52 @@ static int pulse_cond_timedwait_ms(unsigned int timeout_ms)
+@@ -155,6 +155,56 @@ static int pulse_cond_timedwait_ms(unsigned int timeout_ms)
      return pthread_cond_timedwait(&pulse_cond, &pulse_mutex, &ts);
  }
  
++static BOOL is_dualsense_audio_device(const PhysDevice *dev);
++static BOOL pulse_stream_wait_until_not(pa_mainloop *ml, pa_stream *stream, pa_stream_state_t wait_state, const char *what);
++static void convert_channel_map(const pa_channel_map *pa_map, WAVEFORMATEXTENSIBLE *fmt);
++
 +static char *get_dualsense_speaker_sink(const char *preferred)
 +{
 +    static struct list *const lists[] = { &g_phys_speakers_added, &g_phys_speakers, NULL };
