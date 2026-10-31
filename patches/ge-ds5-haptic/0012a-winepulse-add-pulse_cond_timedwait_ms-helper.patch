@@ -1,0 +1,41 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: GE-Proton <git@localhost>
+Date: Fri, 31 Oct 2026 00:00:00 +0000
+Subject: [PATCH] winepulse: Add pulse_cond_timedwait_ms helper.
+
+Small pthread_cond_timedwait wrapper used by ds5 hotplug/haptic connect
+paths (0013, 0040). Duplicates ge-video-rework/0005 (currently disabled
+pending its own rebase); drop this copy when video re-enables.
+---
+ dlls/winepulse.drv/pulse.c | 16 ++++++++++++++++
+ 1 file changed, 16 insertions(+)
+
+diff --git a/dlls/winepulse.drv/pulse.c b/dlls/winepulse.drv/pulse.c
+index 0000000000..1111111111 100644
+--- a/dlls/winepulse.drv/pulse.c
++++ b/dlls/winepulse.drv/pulse.c
+@@ -139,6 +143,22 @@ static int pulse_cond_wait(void)
+     return pthread_cond_wait(&pulse_cond, &pulse_mutex);
+ }
+ 
++static int pulse_cond_timedwait_ms(unsigned int timeout_ms)
++{
++    struct timespec ts;
++
++    clock_gettime(CLOCK_REALTIME, &ts);
++    ts.tv_sec += timeout_ms / 1000;
++    ts.tv_nsec += (timeout_ms % 1000) * 1000000;
++    if (ts.tv_nsec >= 1000000000)
++    {
++        ts.tv_sec++;
++        ts.tv_nsec -= 1000000000;
++    }
++
++    return pthread_cond_timedwait(&pulse_cond, &pulse_mutex, &ts);
++}
++
+ static void pulse_broadcast(void)
+ {
+     pthread_cond_broadcast(&pulse_cond);
+--
+2.54.0
