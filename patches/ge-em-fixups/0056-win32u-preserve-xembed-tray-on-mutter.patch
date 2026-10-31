@@ -33,7 +33,7 @@ diff --git a/dlls/win32u/sni.c b/dlls/win32u/sni.c
 +    /* GNOME's AppIndicator host requires a D-Bus menu and already translates
 +     * double-clicks into Activate. Use explorer's XEmbed path on Mutter/X11;
 +     * our native-menu SNI backend cannot preserve those interactions there. */
-+    if (user_driver->pHasWindowManager( "Mutter" ))
++    if (user_driver->pHasWindowManager && user_driver->pHasWindowManager( "Mutter" ))
 +    {
 +        if (msg == NIM_ADD) TRACE( "using XEmbed tray instead of SNI on Mutter\n" );
 +        return -1;

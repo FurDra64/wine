@@ -1,0 +1,27 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: GE-Proton <git@localhost>
+Date: Fri, 31 Oct 2026 00:00:00 +0000
+Subject: [PATCH] win32u: Add pHasWindowManager user driver func.
+
+Backend-agnostic window-manager identity check used by SNI tray (Mutter)
+and display-topology (steamcompmgr) code. Newer upstream Wine carries this
+member; our base predates it, so provide it here until the base syncs.
+Drivers that do not implement it leave it NULL; callers must NULL-check.
+---
+ include/wine/gdi_driver.h | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/include/wine/gdi_driver.h b/include/wine/gdi_driver.h
+index 00000000000..11111111111 100644
+--- a/include/wine/gdi_driver.h
++++ b/include/wine/gdi_driver.h
+@@ -439,6 +439,7 @@ struct user_driver_funcs
+     BOOL    (*pCreateWindowSurface)(HWND,BOOL,const RECT *,struct window_surface**);
+     void    (*pMoveWindowBits)(HWND,const struct window_rects *,const struct window_rects *,const RECT *);
+     void    (*pWindowPosChanged)(HWND,HWND,HWND,UINT,const struct window_rects*,struct window_surface*);
++    BOOL    (*pHasWindowManager)(const char *name);
+     /* system parameters */
+     BOOL    (*pSystemParametersInfo)(UINT,UINT,void*,UINT);
+     /* wintab support */
+--
+2.54.0
