@@ -1,0 +1,74 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: GE-Proton <git@localhost>
+Date: Fri, 31 Oct 2026 00:00:00 +0000
+Subject: [PATCH] winepulse: Add get_dualsense_speaker_sink helper.
+
+Find the PulseAudio speaker sink for a DualSense controller, used by the
+0013 haptic fallback path when raw ALSA access is busy. Ported from
+disabled 0020 (needs no other disabled infra: g_phys_lock, speaker lists
+and is_dualsense_audio_device are all enabled).
+---
+ dlls/winepulse.drv/pulse.c | 37 +++++++++++++++++++++++++++++++++++++
+ 1 file changed, 37 insertions(+)
+
+diff --git a/dlls/winepulse.drv/pulse.c b/dlls/winepulse.drv/pulse.c
+index 0000000000..1111111111 100644
+--- a/dlls/winepulse.drv/pulse.c
++++ b/dlls/winepulse.drv/pulse.c
+@@ -155,6 +155,52 @@ static int pulse_cond_timedwait_ms(unsigned int timeout_ms)
+     return pthread_cond_timedwait(&pulse_cond, &pulse_mutex, &ts);
+ }
+ 
++static char *get_dualsense_speaker_sink(const char *preferred)
++{
++    static struct list *const lists[] = { &g_phys_speakers_added, &g_phys_speakers, NULL };
++    struct list *const *list;
++    PhysDevice *dev;
++    char *fallback = NULL, *direct_fallback = NULL;
++
++    g_phys_lock();
++    for (list = lists; *list; ++list)
++    {
++        LIST_FOR_EACH_ENTRY(dev, *list, PhysDevice, entry)
++        {
++            BOOL direct;
++
++            if (!is_dualsense_audio_device(dev))
++                continue;
++
++            direct = strstr(dev->pulse_name, "Direct__Direct__sink") || dev->raw_haptic_target;
++            if (preferred && !strcmp(preferred, dev->pulse_name) && !direct)
++            {
++                char *ret = strdup(dev->pulse_name);
++
++                g_phys_unlock();
++                free(fallback);
++                free(direct_fallback);
++                return ret;
++            }
++
++            if (!direct && (!fallback || strstr(dev->pulse_name, "Speaker__sink")))
++            {
++                free(fallback);
++                fallback = strdup(dev->pulse_name);
++            }
++            else if (direct && !direct_fallback)
++                direct_fallback = strdup(dev->pulse_name);
++        }
++    }
++    g_phys_unlock();
++    if (fallback)
++    {
++        free(direct_fallback);
++        return fallback;
++    }
++    return direct_fallback;
++}
++
+ static void pulse_broadcast(void)
+ {
+     pthread_cond_broadcast(&pulse_cond);
+-- 
+2.54.0
+-- 
+2.54.0

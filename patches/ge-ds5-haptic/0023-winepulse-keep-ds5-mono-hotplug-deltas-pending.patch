@@ -33,7 +33,7 @@ diff --git a/dlls/winepulse.drv/pulse.c b/dlls/winepulse.drv/pulse.c
  static struct list g_phys_sources = LIST_INIT(g_phys_sources);
  static struct list g_phys_speakers_added = LIST_INIT(g_phys_speakers_added);
 @@ -213,6 +229,22 @@
-     return pthread_cond_timedwait(&pulse_cond, &pulse_mutex, &ts);
+     return direct_fallback;
  }
  
 +static int g_phys_cond_timedwait_ms(unsigned int timeout_ms)

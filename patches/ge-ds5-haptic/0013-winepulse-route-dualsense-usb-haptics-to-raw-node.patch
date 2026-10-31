@@ -287,7 +287,7 @@ index 9a97f705..41bfe548 100644
  
      if (stream->dataflow == eRender) {
          pa_stream_set_underflow_callback(stream->stream, pulse_underflow_callback, stream);
-@@ -1377,13 +1487,513 @@ static HRESULT get_device_period_helper(EDataFlow flow, const char *pulse_name,
+@@ -1377,13 +1487,508 @@ static HRESULT get_device_period_helper(EDataFlow flow, const char *pulse_name,
      return E_FAIL;
  }
  
@@ -607,11 +607,6 @@ index 9a97f705..41bfe548 100644
 +        free(stream->haptic_alsa_path);
 +        stream->haptic_alsa_path = alsa_path;
 +    }
-+    else if ((alsa_path = get_dualsense_haptic_alsa_path(stream->device, stream)))
-+    {
-+        free(stream->haptic_alsa_path);
-+        stream->haptic_alsa_path = alsa_path;
-+    }
 +
 +    if (!stream->haptic_alsa_path || !stream->haptic_alsa_path[0])
 +        return AUDCLNT_E_ENDPOINT_CREATE_FAILED;
@@ -796,7 +791,7 @@ index 9a97f705..41bfe548 100644
      unsigned int i, bufsize_bytes;
      HRESULT hr;
 -    char *name;
-+    char *name, *haptic_target = NULL, *haptic_alsa_path = NULL;
++    char *name, *haptic_target = NULL, *haptic_alsa_path = NULL, *dualsense_speaker = NULL;
 +    const char *connect_device;
 +    BOOL haptic_candidate;
  
@@ -862,7 +857,7 @@ index 9a97f705..41bfe548 100644
      if (SUCCEEDED(hr)) {
          UINT32 unalign;
          const pa_buffer_attr *attr = pa_stream_get_buffer_attr(stream->stream);
-@@ -1492,9 +2146,12 @@ exit:
+@@ -1492,9 +2146,13 @@ exit:
              pa_stream_disconnect(stream->stream);
              pa_stream_unref(stream->stream);
          }
@@ -872,6 +867,7 @@ index 9a97f705..41bfe548 100644
  
 +    free(haptic_target);
 +    free(haptic_alsa_path);
++    free(dualsense_speaker);
      pulse_unlock();
      return STATUS_SUCCESS;
  }
