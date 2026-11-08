@@ -152,7 +152,7 @@ struct context_data
                  unsigned char regs[80]; } i386_regs;
         struct { struct { unsigned __int64 low, high; } fpregs[32]; } x86_64_regs;
         struct { unsigned __int64 d[32]; unsigned int fpscr; } arm_regs;
-        struct { struct { unsigned __int64 low, high; } q[32]; unsigned int fpcr, fpsr; } arm64_regs;
+        struct { struct { unsigned __int64 low, high; } q[16]; unsigned int fpcr, fpsr; } arm64_regs;
     } fp;
     union
     {
@@ -171,8 +171,9 @@ struct context_data
     } exec_space;
     union
     {
-        struct { struct { unsigned __int64 low, high; } ymm_high[16]; } regs;
-    } ymm;
+        struct { struct { unsigned __int64 low, high; } ymm_high[16]; } ymm_regs;
+        struct { struct { unsigned __int64 low, high; } q16[16]; } arm64_regs;
+    } vector;
     union
     {
         unsigned __int64 arm64_x18;
@@ -185,7 +186,7 @@ struct context_data
 #define SERVER_CTX_FLOATING_POINT     0x0008
 #define SERVER_CTX_DEBUG_REGISTERS    0x0010
 #define SERVER_CTX_EXTENDED_REGISTERS 0x0020
-#define SERVER_CTX_YMM_REGISTERS      0x0040
+#define SERVER_CTX_VECTOR_REGISTERS   0x0040
 #define SERVER_CTX_EXEC_SPACE         0x0080
 #define SERVER_CTX_TLS                0x0100
 
@@ -1263,7 +1264,7 @@ struct terminate_process_reply
 {
     struct reply_header __header;
     int          self;
-    char __pad_12[4];
+    int          exit_code;
 };
 
 
@@ -2022,6 +2023,23 @@ struct get_file_info_reply
 {
     struct reply_header __header;
     /* VARARG(data,bytes); */
+};
+
+
+struct set_file_info_request
+{
+    struct request_header __header;
+    obj_handle_t handle;
+    struct async_data async;
+    unsigned int info_class;
+    /* VARARG(data,bytes); */
+    char __pad_60[4];
+};
+struct set_file_info_reply
+{
+    struct reply_header __header;
+    obj_handle_t wait;
+    char __pad_12[4];
 };
 
 
@@ -3513,19 +3531,6 @@ struct create_named_pipe_reply
 #define NAMED_PIPE_MESSAGE_STREAM_READ  0x0002
 #define NAMED_PIPE_NONBLOCKING_MODE     0x0004
 #define NAMED_PIPE_SERVER_END           0x8000
-
-
-struct set_named_pipe_info_request
-{
-    struct request_header __header;
-    obj_handle_t   handle;
-    unsigned int   flags;
-    char __pad_20[4];
-};
-struct set_named_pipe_info_reply
-{
-    struct reply_header __header;
-};
 
 
 struct create_window_request
@@ -5150,25 +5155,6 @@ struct create_mailslot_reply
 
 
 
-struct set_mailslot_info_request
-{
-    struct request_header __header;
-    obj_handle_t   handle;
-    timeout_t      read_timeout;
-    unsigned int   flags;
-    char __pad_28[4];
-};
-struct set_mailslot_info_reply
-{
-    struct reply_header __header;
-    timeout_t      read_timeout;
-    unsigned int   max_msgsize;
-    char __pad_20[4];
-};
-#define MAILSLOT_SET_READ_TIMEOUT  1
-
-
-
 struct create_directory_request
 {
     struct request_header __header;
@@ -6106,7 +6092,8 @@ struct d3dkmt_object_create_request
     struct request_header __header;
     unsigned int        type;
     int                 fd;
-    unsigned int        value;
+    char __pad_20[4];
+    unsigned __int64    value;
     /* VARARG(runtime,bytes); */
 };
 struct d3dkmt_object_create_reply
@@ -6244,6 +6231,37 @@ struct d3dkmt_mutex_release_reply
 
 
 
+struct d3dkmt_sync_wait_request
+{
+    struct request_header __header;
+    d3dkmt_handle_t     sync;
+    unsigned int        fence_value;
+    obj_handle_t        wait_handle;
+    unsigned int        wait_status;
+    char __pad_28[4];
+};
+struct d3dkmt_sync_wait_reply
+{
+    struct reply_header __header;
+    obj_handle_t        wait_handle;
+    char __pad_12[4];
+};
+
+
+
+struct d3dkmt_sync_signal_request
+{
+    struct request_header __header;
+    d3dkmt_handle_t     sync;
+    unsigned __int64    fence_value;
+};
+struct d3dkmt_sync_signal_reply
+{
+    struct reply_header __header;
+};
+
+
+
 struct alpc_create_port_request
 {
     struct request_header __header;
@@ -6313,6 +6331,7 @@ enum request
     REQ_get_directory_cache_entry,
     REQ_flush,
     REQ_get_file_info,
+    REQ_set_file_info,
     REQ_get_volume_info,
     REQ_lock_file,
     REQ_unlock_file,
@@ -6403,7 +6422,6 @@ enum request
     REQ_ioctl,
     REQ_set_irp_result,
     REQ_create_named_pipe,
-    REQ_set_named_pipe_info,
     REQ_create_window,
     REQ_destroy_window,
     REQ_get_desktop_window,
@@ -6501,7 +6519,6 @@ enum request
     REQ_get_tcp_connections,
     REQ_get_udp_endpoints,
     REQ_create_mailslot,
-    REQ_set_mailslot_info,
     REQ_create_directory,
     REQ_open_directory,
     REQ_get_directory_entries,
@@ -6569,6 +6586,8 @@ enum request
     REQ_d3dkmt_object_open_name,
     REQ_d3dkmt_mutex_acquire,
     REQ_d3dkmt_mutex_release,
+    REQ_d3dkmt_sync_wait,
+    REQ_d3dkmt_sync_signal,
     REQ_alpc_create_port,
     REQ_NB_REQUESTS
 };
@@ -6629,6 +6648,7 @@ union generic_request
     struct get_directory_cache_entry_request get_directory_cache_entry_request;
     struct flush_request flush_request;
     struct get_file_info_request get_file_info_request;
+    struct set_file_info_request set_file_info_request;
     struct get_volume_info_request get_volume_info_request;
     struct lock_file_request lock_file_request;
     struct unlock_file_request unlock_file_request;
@@ -6719,7 +6739,6 @@ union generic_request
     struct ioctl_request ioctl_request;
     struct set_irp_result_request set_irp_result_request;
     struct create_named_pipe_request create_named_pipe_request;
-    struct set_named_pipe_info_request set_named_pipe_info_request;
     struct create_window_request create_window_request;
     struct destroy_window_request destroy_window_request;
     struct get_desktop_window_request get_desktop_window_request;
@@ -6817,7 +6836,6 @@ union generic_request
     struct get_tcp_connections_request get_tcp_connections_request;
     struct get_udp_endpoints_request get_udp_endpoints_request;
     struct create_mailslot_request create_mailslot_request;
-    struct set_mailslot_info_request set_mailslot_info_request;
     struct create_directory_request create_directory_request;
     struct open_directory_request open_directory_request;
     struct get_directory_entries_request get_directory_entries_request;
@@ -6885,6 +6903,8 @@ union generic_request
     struct d3dkmt_object_open_name_request d3dkmt_object_open_name_request;
     struct d3dkmt_mutex_acquire_request d3dkmt_mutex_acquire_request;
     struct d3dkmt_mutex_release_request d3dkmt_mutex_release_request;
+    struct d3dkmt_sync_wait_request d3dkmt_sync_wait_request;
+    struct d3dkmt_sync_signal_request d3dkmt_sync_signal_request;
     struct alpc_create_port_request alpc_create_port_request;
 };
 union generic_reply
@@ -6943,6 +6963,7 @@ union generic_reply
     struct get_directory_cache_entry_reply get_directory_cache_entry_reply;
     struct flush_reply flush_reply;
     struct get_file_info_reply get_file_info_reply;
+    struct set_file_info_reply set_file_info_reply;
     struct get_volume_info_reply get_volume_info_reply;
     struct lock_file_reply lock_file_reply;
     struct unlock_file_reply unlock_file_reply;
@@ -7033,7 +7054,6 @@ union generic_reply
     struct ioctl_reply ioctl_reply;
     struct set_irp_result_reply set_irp_result_reply;
     struct create_named_pipe_reply create_named_pipe_reply;
-    struct set_named_pipe_info_reply set_named_pipe_info_reply;
     struct create_window_reply create_window_reply;
     struct destroy_window_reply destroy_window_reply;
     struct get_desktop_window_reply get_desktop_window_reply;
@@ -7131,7 +7151,6 @@ union generic_reply
     struct get_tcp_connections_reply get_tcp_connections_reply;
     struct get_udp_endpoints_reply get_udp_endpoints_reply;
     struct create_mailslot_reply create_mailslot_reply;
-    struct set_mailslot_info_reply set_mailslot_info_reply;
     struct create_directory_reply create_directory_reply;
     struct open_directory_reply open_directory_reply;
     struct get_directory_entries_reply get_directory_entries_reply;
@@ -7199,9 +7218,11 @@ union generic_reply
     struct d3dkmt_object_open_name_reply d3dkmt_object_open_name_reply;
     struct d3dkmt_mutex_acquire_reply d3dkmt_mutex_acquire_reply;
     struct d3dkmt_mutex_release_reply d3dkmt_mutex_release_reply;
+    struct d3dkmt_sync_wait_reply d3dkmt_sync_wait_reply;
+    struct d3dkmt_sync_signal_reply d3dkmt_sync_signal_reply;
     struct alpc_create_port_reply alpc_create_port_reply;
 };
 
-#define SERVER_PROTOCOL_VERSION 968
+#define SERVER_PROTOCOL_VERSION 976
 
 #endif /* __WINE_WINE_SERVER_PROTOCOL_H */
