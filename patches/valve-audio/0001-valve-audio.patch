@@ -1,0 +1,1857 @@
+diff --git a/dlls/audioses/Makefile.in b/dlls/audioses/Makefile.in
+new file mode 100644
+index 0000000000000000000000000000000000000000..370949ea4fedc27b3a5cceea7481b89245db3ad9
+--- /dev/null
++++ b/dlls/audioses/Makefile.in
+@@ -0,0 +1 @@
++MODULE    = audioses.dll
+diff --git a/dlls/audioses/audioses.spec b/dlls/audioses/audioses.spec
+new file mode 100644
+index 0000000000000000000000000000000000000000..a1884e532433759490a255f23cfa35badc630b1b
+--- /dev/null
++++ b/dlls/audioses/audioses.spec
+@@ -0,0 +1,11 @@
++# @ stub AUDIOSES_1
++# @ stub AUDIOSES_2
++# @ stub AUDIOSES_3
++# @ stub AUDIOSES_4
++# @ stub AUDIOSES_5
++# @ stub DllCanUnloadNow
++# @ stub AUDIOSES_7
++# @ stub DllGetActivationFactory
++# @ stub DllGetClassObject
++# @ stub DllRegisterServer
++# @ stub DllUnregisterServer
+diff --git a/dlls/dmime/dmime_private.h b/dlls/dmime/dmime_private.h
+index 728db4f78002c8691f98e305964203776f176f75..888d6b2d1a22534185ad9a9cbf391bcdf081b55f 100644
+--- a/dlls/dmime/dmime_private.h
++++ b/dlls/dmime/dmime_private.h
+@@ -79,7 +79,7 @@ extern void set_audiopath_primary_dsound_buffer(IDirectMusicAudioPath*,IDirectSo
+ 
+ extern HRESULT segment_get_rt_length(IDirectMusicSegment *iface, REFERENCE_TIME *length);
+ 
+-extern HRESULT segment_state_create(IDirectMusicSegment *segment, MUSIC_TIME start_time,
++extern HRESULT segment_state_create(IDirectMusicSegment *segment, MUSIC_TIME start_time, DWORD segment_flags,
+         IDirectMusicPerformance8 *performance, IDirectMusicSegmentState **ret_iface);
+ extern HRESULT segment_state_play(IDirectMusicSegmentState *iface, IDirectMusicPerformance8 *performance);
+ extern HRESULT segment_state_tick(IDirectMusicSegmentState *iface, IDirectMusicPerformance8 *performance);
+diff --git a/dlls/dmime/performance.c b/dlls/dmime/performance.c
+index 43c5cfc1ef66732bc3fc52d5c4ed5eec23d151fe..49a61705386d013d0af65e88c528ff1bd459912f 100644
+--- a/dlls/dmime/performance.c
++++ b/dlls/dmime/performance.c
+@@ -1614,13 +1614,20 @@ static HRESULT WINAPI performance_PlaySegmentEx(IDirectMusicPerformance8 *iface,
+     if (FAILED(hr = IUnknown_QueryInterface(source, &IID_IDirectMusicSegment, (void **)&segment)))
+         return hr;
+ 
++    if (primary && SUCCEEDED(hr = IDirectMusicPerformance8_GetSegmentState(iface, &state, start_time)))
++    {
++        if (FAILED(hr = IDirectMusicPerformance_Stop(&This->IDirectMusicPerformance8_iface, NULL, state, start_time, 0)))
++            ERR("Failed to stop current previous segment, hr %#lx\n", hr);
++        IDirectMusicSegmentState_Release(state);
++    }
++
+     EnterCriticalSection(&This->safe);
+ 
+     if (primary) performance_set_primary_segment(This, segment);
+     if (control) performance_set_control_segment(This, segment);
+ 
+     if ((!(music_time = start_time) && FAILED(hr = IDirectMusicPerformance8_GetTime(iface, NULL, &music_time)))
+-            || FAILED(hr = segment_state_create(segment, music_time, iface, &state)))
++            || FAILED(hr = segment_state_create(segment, music_time, segment_flags, iface, &state)))
+     {
+         if (primary) performance_set_primary_segment(This, NULL);
+         if (control) performance_set_control_segment(This, NULL);
+diff --git a/dlls/dmime/segmentstate.c b/dlls/dmime/segmentstate.c
+index 457666a89485b8cb806738c625537f68a57b8e0f..d1bf966ff41422ff29ce964585d99e8fa94c82b2 100644
+--- a/dlls/dmime/segmentstate.c
++++ b/dlls/dmime/segmentstate.c
+@@ -62,6 +62,7 @@ struct segment_state
+     BOOL auto_download;
+     DWORD repeats, actual_repeats;
+     DWORD track_flags;
++    DWORD segment_flags;
+ 
+     struct list tracks;
+ };
+@@ -119,7 +120,7 @@ static ULONG WINAPI segment_state_Release(IDirectMusicSegmentState8 *iface)
+ 
+     if (!ref)
+     {
+-        segment_state_end_play((IDirectMusicSegmentState *)iface, NULL);
++        if (!(This->segment_flags & DMUS_SEGF_SECONDARY)) segment_state_end_play((IDirectMusicSegmentState *)iface, NULL);
+         if (This->segment) IDirectMusicSegment_Release(This->segment);
+         if (This->parent_graph) IDirectMusicGraph_Release(This->parent_graph);
+         free(This);
+@@ -291,7 +292,7 @@ HRESULT create_dmsegmentstate(REFIID riid, void **ret_iface)
+     return hr;
+ }
+ 
+-HRESULT segment_state_create(IDirectMusicSegment *segment, MUSIC_TIME start_time,
++HRESULT segment_state_create(IDirectMusicSegment *segment, MUSIC_TIME start_time, DWORD segment_flags,
+         IDirectMusicPerformance8 *performance, IDirectMusicSegmentState **ret_iface)
+ {
+     IDirectMusicSegmentState *iface;
+@@ -308,6 +309,7 @@ HRESULT segment_state_create(IDirectMusicSegment *segment, MUSIC_TIME start_time
+     if (FAILED(hr = create_dmsegmentstate(&IID_IDirectMusicSegmentState, (void **)&iface))) return hr;
+     This = impl_from_IDirectMusicSegmentState8((IDirectMusicSegmentState8 *)iface);
+ 
++    This->segment_flags = segment_flags;
+     This->segment = segment;
+     IDirectMusicSegment_AddRef(This->segment);
+ 
+@@ -435,6 +437,7 @@ static HRESULT segment_state_play_chunk(struct segment_state *This, IDirectMusic
+         {
+             MUSIC_TIME end_time = This->actual_start_time + This->played;
+ 
++            if (This->segment_flags & DMUS_SEGF_SECONDARY) return S_OK;
+             if (FAILED(hr = performance_send_segment_end(performance, end_time, iface, FALSE)))
+             {
+                 ERR("Failed to send segment end, hr %#lx\n", hr);
+diff --git a/dlls/dmime/wavetrack.c b/dlls/dmime/wavetrack.c
+index 5ac995eda8b6949c01d3ef03d3c372e2192298f7..34f77147f3dc3ef0e61204bab76c8fcd702192f9 100644
+--- a/dlls/dmime/wavetrack.c
++++ b/dlls/dmime/wavetrack.c
+@@ -139,7 +139,20 @@ static HRESULT WINAPI wave_track_InitPlay(IDirectMusicTrack8 *iface,
+ static HRESULT WINAPI wave_track_EndPlay(IDirectMusicTrack8 *iface, void *pStateData)
+ {
+     struct wave_track *This = impl_from_IDirectMusicTrack8(iface);
++    struct wave_part *part;
++    struct wave_item *item;
++
+     FIXME("(%p, %p): stub\n", This, pStateData);
++
++    LIST_FOR_EACH_ENTRY(part, &This->parts, struct wave_part, entry)
++    {
++        LIST_FOR_EACH_ENTRY(item, &part->items, struct wave_item, entry)
++        {
++            if (!item->buffer) continue;
++            IDirectSoundBuffer_Stop(item->buffer);
++        }
++    }
++
+     return S_OK;
+ }
+ 
+diff --git a/dlls/dmloader/loader.c b/dlls/dmloader/loader.c
+index c00588bb9a7d1d2b1ce1f5d6350004d29c56affd..0a01f376e905990022522a79d1f75c60c05cef3a 100644
+--- a/dlls/dmloader/loader.c
++++ b/dlls/dmloader/loader.c
+@@ -897,11 +897,41 @@ static const IDirectMusicLoader8Vtbl loader_vtbl =
+     loader_LoadObjectFromFile,
+ };
+ 
++static inline void touch_soundfont_used_tag(void)
++{
++    WCHAR env[MAX_PATH];
++    ERR("Creating the soundfont-used file.\n");
++
++    if (GetEnvironmentVariableW(L"STEAM_COMPAT_TRANSCODED_MEDIA_PATH", env, ARRAY_SIZE(env)))
++    {
++        WCHAR buffer[MAX_PATH];
++        HANDLE file;
++
++        swprintf(buffer, ARRAY_SIZE(buffer), L"\\??\\unix%s/soundfont-used", env);
++
++        file = CreateFileW(buffer, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
++
++        if (file == INVALID_HANDLE_VALUE)
++        {
++            ERR("Failed to open/create %s\n", debugstr_w(buffer));
++            return;
++        }
++
++        CloseHandle(file);
++    }
++    else
++    {
++        ERR("STEAM_COMPAT_TRANSCODED_MEDIA_PATH not set, cannot create soundfont-used file.\n");
++    }
++}
++
+ static HRESULT get_default_gm_path(WCHAR *path, DWORD max_len)
+ {
+ 	DWORD ret;
+ 	HKEY hkey;
+ 
++    touch_soundfont_used_tag();
++
+ 	if (!(ret = RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"Software\\Microsoft\\DirectMusic" , 0, KEY_READ, &hkey)))
+     {
+         DWORD type, size = max_len * sizeof(WCHAR);
+diff --git a/dlls/dsound/primary.c b/dlls/dsound/primary.c
+index 3331b31db15ce707de47cb4071c417642f14f5cf..d3dbeed36e84eae0922011cbe14dfbe173936c9d 100644
+--- a/dlls/dsound/primary.c
++++ b/dlls/dsound/primary.c
+@@ -138,7 +138,7 @@ static HRESULT DSOUND_WaveFormat(DirectSoundDevice *device, IAudioClient *client
+         wfe.SubFormat = KSDATAFORMAT_SUBTYPE_IEEE_FLOAT;
+         wfe.Samples.wValidBitsPerSample = wfe.Format.wBitsPerSample = 32;
+ 
+-        if (wfe.Format.nChannels < device->num_speakers) {
++        if (device->num_speakers == 0 || wfe.Format.nChannels < device->num_speakers) {
+             device->speaker_config = DSOUND_FindSpeakerConfig(device->mmdevice, wfe.Format.nChannels);
+             DSOUND_ParseSpeakerConfig(device);
+         } else if (wfe.Format.nChannels > device->num_speakers) {
+diff --git a/dlls/mmdevapi/client.c b/dlls/mmdevapi/client.c
+index e22dae1b2dd8e697fae1f8f8e3c05196d5f2cc7a..8b297d229bcf76df44e714dc634694b6cd67b870 100644
+--- a/dlls/mmdevapi/client.c
++++ b/dlls/mmdevapi/client.c
+@@ -1131,6 +1131,7 @@ static HRESULT WINAPI client_GetSharedModeEnginePeriod(IAudioClient3 *iface,
+ 
+     *default_period_frames = MulDiv(def_period, format->nSamplesPerSec, 10000000);
+     *min_period_frames     = MulDiv(min_period, format->nSamplesPerSec, 10000000);
++    *default_period_frames = max( *default_period_frames, *min_period_frames );
+     *max_period_frames     = *default_period_frames;
+     *unit_period_frames    = 1;
+ 
+diff --git a/dlls/mmdevapi/devenum.c b/dlls/mmdevapi/devenum.c
+index 814320898f4835299977f32cd69399daa9d1b9f2..bf8a0e954d6ea033cf7631733d4d742740abd6fe 100644
+--- a/dlls/mmdevapi/devenum.c
++++ b/dlls/mmdevapi/devenum.c
+@@ -44,6 +44,14 @@ WINE_DEFAULT_DEBUG_CHANNEL(mmdevapi);
+ 
+ DEFINE_GUID(GUID_NULL,0,0,0,0,0,0,0,0,0,0,0);
+ 
++#define WINE_REG_PROP_MAGIC 0xbeef
++struct reg_prop_serialized {
++    VARTYPE vt;
++    WORD unk; /* Uninitialized memory on native, we store a magic value here. */
++    ULONG elems;
++    BYTE data[];
++};
++
+ static HKEY key_render;
+ static HKEY key_capture;
+ 
+@@ -260,6 +268,143 @@ static HRESULT MMDevPropStore_OpenPropKey(const GUID *guid, DWORD flow, HKEY *pr
+     return S_OK;
+ }
+ 
++static BOOL is_vector_vt(VARTYPE vt)
++{
++    return !!(vt & VT_VECTOR);
++}
++
++static unsigned int get_vt_elem_size(VARTYPE vt)
++{
++    switch (vt & VT_TYPEMASK)
++    {
++        case VT_BOOL:
++            return sizeof(VARIANT_BOOL);
++
++        case VT_CLSID:
++            return sizeof(GUID);
++
++        default:
++            return 0;
++    }
++}
++
++static BOOL is_valid_serialized_reg_prop(BYTE *data, DWORD data_size)
++{
++    struct reg_prop_serialized *reg_prop;
++    unsigned int elem_size;
++
++    if (data_size <= sizeof(*reg_prop))
++        return FALSE;
++
++    reg_prop = (struct reg_prop_serialized *)data;
++    if (reg_prop->unk != WINE_REG_PROP_MAGIC)
++        return FALSE;
++
++    if (((reg_prop->vt & VT_TYPEMASK) > VT_CLSID))
++        return FALSE;
++
++    if (!!(reg_prop->vt & ~VT_TYPEMASK) && !is_vector_vt(reg_prop->vt))
++        return FALSE;
++
++    if (!reg_prop->elems || ((reg_prop->elems > 1) && !is_vector_vt(reg_prop->vt)))
++        return FALSE;
++
++    elem_size = get_vt_elem_size(reg_prop->vt);
++    if (elem_size && (((elem_size * reg_prop->elems) + sizeof(*reg_prop)) > data_size))
++        return FALSE;
++
++    return TRUE;
++}
++
++static void deserialize_reg_prop(BYTE *data, DWORD data_size, PROPVARIANT *pv)
++{
++    struct reg_prop_serialized *reg_prop = (struct reg_prop_serialized *)data;
++    unsigned int elems_size;
++
++    switch (reg_prop->vt)
++    {
++        case VT_BOOL:
++            pv->vt = reg_prop->vt;
++            pv->boolVal = ((VARIANT_BOOL *)reg_prop->data)[0];
++            break;
++
++        case VT_BOOL | VT_VECTOR:
++            pv->vt = reg_prop->vt;
++            pv->cabool.cElems = reg_prop->elems;
++            elems_size = sizeof(*pv->cabool.pElems) * reg_prop->elems;
++            pv->cabool.pElems = CoTaskMemAlloc(elems_size);
++            memcpy(pv->cabool.pElems, reg_prop->data, elems_size);
++            break;
++
++        case VT_CLSID:
++            pv->vt = reg_prop->vt;
++            pv->puuid = CoTaskMemAlloc(sizeof(*pv->puuid));
++            *pv->puuid = ((GUID *)reg_prop->data)[0];
++            break;
++
++        case VT_CLSID | VT_VECTOR:
++            pv->vt = reg_prop->vt;
++            pv->cauuid.cElems = reg_prop->elems;
++            elems_size = sizeof(*pv->cauuid.pElems) * reg_prop->elems;
++            pv->cauuid.pElems = CoTaskMemAlloc(elems_size);
++            memcpy(pv->cauuid.pElems, reg_prop->data, elems_size);
++            break;
++
++        default:
++            break;
++    }
++}
++
++static HRESULT serialize_reg_prop(HKEY reg_key, const WCHAR *prop_id, PROPVARIANT *pv)
++{
++    const struct reg_prop_serialized reg_prop_init = { pv->vt, WINE_REG_PROP_MAGIC };
++    struct reg_prop_serialized *reg_prop = NULL;
++    unsigned int size = sizeof(reg_prop_init);
++    unsigned int elems_size = 0, elem_count = 1;
++    void *elems_val = NULL;
++    LONG ret;
++
++    switch (pv->vt)
++    {
++        case VT_BOOL:
++            elems_size = get_vt_elem_size(pv->vt);
++            elems_val = &pv->boolVal;
++            break;
++
++        case VT_BOOL | VT_VECTOR:
++            elem_count = pv->cabool.cElems;
++            elems_size = elem_count * get_vt_elem_size(pv->vt);
++            elems_val = pv->cabool.pElems;
++            break;
++
++        case VT_CLSID:
++            elems_size = get_vt_elem_size(pv->vt);
++            elems_val = pv->puuid;
++            break;
++
++        case VT_CLSID | VT_VECTOR:
++            elem_count = pv->cauuid.cElems;
++            elems_size = elem_count * get_vt_elem_size(pv->vt);
++            elems_val = pv->cauuid.pElems;
++            break;
++
++        default:
++            assert(0);
++            break;
++    }
++
++    size += elems_size;
++    if (!(reg_prop = malloc(size)))
++        return E_OUTOFMEMORY;
++
++    *reg_prop = reg_prop_init;
++    reg_prop->elems = elem_count;
++    memcpy(reg_prop->data, elems_val, elems_size);
++    ret = RegSetValueExW(reg_key, prop_id, 0, REG_BINARY, (BYTE *)reg_prop, size);
++    free(reg_prop);
++    return !ret ? S_OK : E_FAIL;
++}
++
+ static HRESULT MMDevice_GetPropValue(const GUID *devguid, DWORD flow, REFPROPERTYKEY key, PROPVARIANT *pv)
+ {
+     WCHAR buffer[80];
+@@ -304,13 +449,27 @@ static HRESULT MMDevice_GetPropValue(const GUID *devguid, DWORD flow, REFPROPERT
+         }
+         case REG_BINARY:
+         {
+-            pv->vt = VT_BLOB;
+-            pv->blob.cbSize = size;
+-            pv->blob.pBlobData = CoTaskMemAlloc(size);
+-            if (!pv->blob.pBlobData)
++            BYTE *data = CoTaskMemAlloc(size);
++
++            if (!data)
++            {
+                 hr = E_OUTOFMEMORY;
++                break;
++            }
++
++            RegGetValueW(regkey, NULL, buffer, RRF_RT_REG_BINARY, NULL, data, &size);
++            if (is_valid_serialized_reg_prop(data, size))
++            {
++                TRACE("do_deserialize().\n");
++                deserialize_reg_prop(data, size, pv);
++                CoTaskMemFree(data);
++            }
+             else
+-                RegGetValueW(regkey, NULL, buffer, RRF_RT_REG_BINARY, NULL, (BYTE*)pv->blob.pBlobData, &size);
++            {
++                pv->vt = VT_BLOB;
++                pv->blob.cbSize = size;
++                pv->blob.pBlobData = data;
++            }
+             break;
+         }
+         default:
+@@ -343,6 +502,17 @@ static HRESULT MMDevice_SetPropValue(const GUID *devguid, DWORD flow, REFPROPERT
+             ret = RegSetValueExW(regkey, buffer, 0, REG_DWORD, (const BYTE*)&pv->ulVal, sizeof(DWORD));
+             break;
+         }
++
++        case VT_BOOL:
++        case VT_BOOL | VT_VECTOR:
++        case VT_CLSID:
++        case VT_CLSID | VT_VECTOR:
++        {
++            hr = serialize_reg_prop(regkey, buffer, (PROPVARIANT *)pv);
++            ret = 0;
++            break;
++        }
++
+         case VT_BLOB:
+         {
+             ret = RegSetValueExW(regkey, buffer, 0, REG_BINARY, pv->blob.pBlobData, pv->blob.cbSize);
+@@ -534,6 +704,8 @@ static MMDevice *MMDevice_Create(const WCHAR *name, GUID *id, EDataFlow flow, DW
+             pv.pwszVal = guidstr;
+             MMDevice_SetPropValue(id, flow, &deviceinterface_key, &pv);
+ 
++            set_driver_prop_value(id, flow, (const PROPERTYKEY*)&DEVPKEY_Device_ContainerId);
++
+             if (FAILED(set_driver_prop_value(id, flow, &PKEY_AudioEndpoint_FormFactor)))
+             {
+                 pv.vt = VT_UI4;
+@@ -639,6 +811,7 @@ static HRESULT set_format(MMDevice *dev)
+     HRESULT hr;
+     IAudioClient *client;
+     WAVEFORMATEX *fmt;
++    WAVEFORMATEXTENSIBLE *fmtex;
+     PROPVARIANT pv = { VT_EMPTY };
+ 
+     hr = AudioClient_Create(&dev->devguid, &dev->IMMDevice_iface, &client);
+@@ -653,6 +826,24 @@ static HRESULT set_format(MMDevice *dev)
+ 
+     IAudioClient_Release(client);
+ 
++    /* for most devices, native Windows only allows PCM formats for
++     * DeviceFormat. GetMixFormat often returns float. */
++    if(fmt->wFormatTag == WAVE_FORMAT_EXTENSIBLE){
++        fmtex = (WAVEFORMATEXTENSIBLE *)fmt;
++        if(IsEqualGUID(&fmtex->SubFormat, &KSDATAFORMAT_SUBTYPE_IEEE_FLOAT)){
++            fmt->wBitsPerSample = 16;
++            fmt->nBlockAlign = fmt->wBitsPerSample * fmt->nChannels / 8;
++            fmt->nAvgBytesPerSec = fmt->nSamplesPerSec * fmt->nBlockAlign;
++            fmtex->SubFormat = KSDATAFORMAT_SUBTYPE_PCM;
++            fmtex->Samples.wValidBitsPerSample = fmt->wBitsPerSample;
++        }
++    }else if(fmt->wFormatTag == WAVE_FORMAT_IEEE_FLOAT){
++        fmt->wFormatTag = WAVE_FORMAT_PCM;
++        fmt->wBitsPerSample = 16;
++        fmt->nBlockAlign = fmt->wBitsPerSample * fmt->nChannels / 8;
++        fmt->nAvgBytesPerSec = fmt->nSamplesPerSec * fmt->nBlockAlign;
++    }
++
+     pv.vt = VT_BLOB;
+     pv.blob.cbSize = sizeof(WAVEFORMATEX) + fmt->cbSize;
+     pv.blob.pBlobData = (BYTE*)fmt;
+diff --git a/dlls/mmdevapi/tests/Makefile.in b/dlls/mmdevapi/tests/Makefile.in
+index d7408be1bbf30b2400bd1bd35272b6f82b297cc4..dc515833ce19c1e2dea8b1509ddb1635a7b59ff9 100644
+--- a/dlls/mmdevapi/tests/Makefile.in
++++ b/dlls/mmdevapi/tests/Makefile.in
+@@ -1,5 +1,5 @@
+ TESTDLL   = mmdevapi.dll
+-IMPORTS   = ole32 version user32 advapi32 winmm
++IMPORTS   = ole32 version user32 advapi32 winmm oleaut32 propsys
+ 
+ SOURCES = \
+ 	capture.c \
+diff --git a/dlls/mmdevapi/tests/propstore.c b/dlls/mmdevapi/tests/propstore.c
+index 2ed2afa4b58d516ec3f18a0a6a90a7eea9820afb..1fa2a850d00a5012d8701eaa3bed3e1828b67a8d 100644
+--- a/dlls/mmdevapi/tests/propstore.c
++++ b/dlls/mmdevapi/tests/propstore.c
+@@ -31,6 +31,7 @@
+ #include "ks.h"
+ #include "ksmedia.h"
+ #include "mmreg.h"
++#include "propvarutil.h"
+ 
+ static BOOL (WINAPI *pIsWow64Process)(HANDLE, BOOL *);
+ 
+@@ -147,19 +148,150 @@ static void test_getat(IPropertyStore *store)
+     ok(found_desc, "DEVPKEY_Device_DeviceDesc not found\n");
+ }
+ 
++static const VARIANT_BOOL vt_bool_vals[] = { VARIANT_TRUE, VARIANT_FALSE };
++static const GUID vt_clsid_vals[] =  { { 1 }, { 2 } };
++static const BYTE vt_blob_val[] = { 1, 2, 3, 4, 5, 6 };
++static const WCHAR vt_bstr_val[] = L"Test1";
++
++static ULONG set_propvariant_for_vt(PROPVARIANT *pv, VARTYPE vt, const void *val, DWORD size)
++{
++    ULONG elems = 1;
++
++    PropVariantInit(pv);
++    pv->vt = vt;
++    switch (vt)
++    {
++        case VT_BOOL:
++            pv->boolVal = ((const VARIANT_BOOL *)val)[0];
++            break;
++
++        case VT_BOOL | VT_VECTOR:
++            pv->cabool.cElems = size / sizeof(*pv->cabool.pElems);
++            pv->cabool.pElems = CoTaskMemAlloc(size);
++            memcpy(pv->cabool.pElems, val, size);
++            elems = pv->cabool.cElems;
++            break;
++
++        case VT_CLSID:
++            pv->puuid = CoTaskMemAlloc(sizeof(*pv->puuid));
++            *pv->puuid = ((const GUID *)val)[0];
++            break;
++
++        case VT_CLSID | VT_VECTOR:
++            pv->cauuid.cElems = size / sizeof(*pv->cauuid.pElems);
++            pv->cauuid.pElems = CoTaskMemAlloc(size);
++            memcpy(pv->cauuid.pElems, val, size);
++            elems = pv->cauuid.cElems;
++            break;
++
++        case VT_BSTR:
++            pv->bstrVal = SysAllocString((const WCHAR *)val);
++            break;
++
++        case VT_BLOB:
++            pv->blob.cbSize = size;
++            pv->blob.pBlobData = CoTaskMemAlloc(size);
++            memcpy(pv->blob.pBlobData, val, size);
++            break;
++    }
++
++    return elems;
++}
++
++static BOOL compare_propvariant(PROPVARIANT *pv, PROPVARIANT *pv2)
++{
++    unsigned int i;
++
++    if (pv->vt != pv2->vt)
++        return FALSE;
++
++    switch (pv->vt)
++    {
++        case VT_BSTR:
++        case VT_CLSID:
++            return !PropVariantCompareEx(pv, pv2, 0, 0);
++
++        case VT_BOOL:
++            return pv->boolVal == pv2->boolVal;
++
++        case VT_BOOL | VT_VECTOR:
++            if (pv->cabool.cElems != pv2->cabool.cElems)
++                return FALSE;
++
++            for (i = 0; i < pv->cabool.cElems; i++)
++            {
++                if (pv->cabool.pElems[i] != pv2->cabool.pElems[i])
++                    return FALSE;
++            }
++            return TRUE;
++
++        case VT_CLSID | VT_VECTOR:
++            if (pv->cauuid.cElems != pv2->cauuid.cElems)
++                return FALSE;
++
++            for (i = 0; i < pv->cauuid.cElems; i++)
++            {
++                if (memcmp(&pv->cauuid.pElems[i], &pv2->cauuid.pElems[i], sizeof(*pv->cauuid.pElems)))
++                    return FALSE;
++            }
++            return TRUE;
++
++        case VT_BLOB:
++            if (pv->blob.cbSize != pv2->blob.cbSize)
++                return FALSE;
++
++            return !memcmp(pv->blob.pBlobData, pv2->blob.pBlobData, pv->blob.cbSize);
++    }
++
++    return FALSE;
++}
++
++struct reg_serialized {
++    VARTYPE vt;
++    WORD unk; /* Seems like mostly uninitialized memory... */
++    ULONG elems;
++    BYTE data[];
++};
++
+ static void test_setvalue_on_wow64(IPropertyStore *store)
+ {
+-    PROPVARIANT pv;
++    static const struct
++    {
++        VARTYPE vt;
++        const void *data;
++        DWORD data_size;
++
++        HRESULT expected_hr;
++        DWORD expected_reg_type;
++        DWORD expected_size;
++        BOOL todo_hr;
++        BOOL todo_data;
++    } propvar_tests[] =
++    {
++        { VT_BOOL, vt_bool_vals, sizeof(vt_bool_vals) / 2, S_OK, REG_BINARY, 0xa },
++        { VT_BOOL | VT_VECTOR, vt_bool_vals, sizeof(vt_bool_vals), S_OK, REG_BINARY, 0xc },
++        { VT_CLSID, vt_clsid_vals, sizeof(vt_clsid_vals) / 2, S_OK, REG_BINARY, 0x18 },
++        { VT_CLSID | VT_VECTOR, vt_clsid_vals, sizeof(vt_clsid_vals), S_OK, REG_BINARY, 0x28 },
++        { VT_BSTR, vt_bstr_val, sizeof(vt_bstr_val), S_OK, REG_BINARY, 0x14, TRUE, TRUE },
++        { VT_BLOB, vt_blob_val, sizeof(vt_blob_val), S_OK, REG_BINARY, 0xe, .todo_data = TRUE },
++    };
++    PROPVARIANT pv, pv2;
+     HRESULT hr;
+     LONG ret;
+     WCHAR *guidW;
+     HKEY root, props, devkey;
+     DWORD type, regval, size;
++    unsigned int i;
++    BYTE buf[256];
+ 
+     static const PROPERTYKEY PKEY_Bogus = {
+         {0x1da5d803, 0xd492, 0x4edd, {0x8c, 0x23, 0xe0, 0xc0, 0xff, 0xee, 0x7f, 0x00}}, 0x7f
+     };
++    static const PROPERTYKEY PKEY_Bogus2 = {
++        {0x1da5d803, 0xd492, 0x4edd, {0x8c, 0x23, 0xe0, 0xc0, 0xff, 0xee, 0x7f, 0x00}}, 0x80
++    };
+     static const WCHAR bogusW[] = L"{1DA5D803-D492-4EDD-8C23-E0C0FFEE7F00},127";
++    static const WCHAR bogus2W[] = L"{1DA5D803-D492-4EDD-8C23-E0C0FFEE7F00},128";
+ 
+     PropVariantInit(&pv);
+ 
+@@ -203,6 +335,47 @@ static void test_setvalue_on_wow64(IPropertyStore *store)
+     ok(type == REG_DWORD, "Got wrong value type: %lu\n", type);
+     ok(regval == 0xAB, "Got wrong value: 0x%lx\n", regval);
+ 
++    for (i = 0; i < ARRAY_SIZE(propvar_tests); i++)
++    {
++        struct reg_serialized *reg_val;
++        ULONG expected_elems;
++
++        winetest_push_context("Test %u", i);
++
++        expected_elems = set_propvariant_for_vt(&pv, propvar_tests[i].vt, propvar_tests[i].data, propvar_tests[i].data_size);
++        hr = IPropertyStore_SetValue(store, &PKEY_Bogus2, &pv);
++        todo_wine_if(propvar_tests[i].todo_hr) ok(hr == propvar_tests[i].expected_hr, "Unexpected hr %#lx.\n", hr);
++        if (FAILED(hr))
++        {
++            winetest_pop_context();
++            PropVariantClear(&pv);
++            continue;
++        }
++
++        ret = RegQueryValueExW(props, bogus2W, NULL, &type, NULL, &size);
++        ok(ret == ERROR_SUCCESS, "Couldn't get bogus propertykey value: %lu.\n", ret);
++        ok(type == propvar_tests[i].expected_reg_type, "Unexpected registry value type %lu.\n", type);
++        todo_wine_if(propvar_tests[i].todo_data) ok(size >= propvar_tests[i].expected_size, "Unexpected registry value size 0x%lx.\n", size);
++
++        ret = RegQueryValueExW(props, bogus2W, NULL, &type, buf, &size);
++        ok(ret == ERROR_SUCCESS, "Couldn't get bogus propertykey value: %lu.\n", ret);
++        reg_val = (struct reg_serialized *)buf;
++        todo_wine_if(propvar_tests[i].todo_data)
++            ok(reg_val->vt == propvar_tests[i].vt, "Unexpected vt: %#x.\n", reg_val->vt);
++        todo_wine_if(propvar_tests[i].todo_data)
++            ok(reg_val->elems == expected_elems, "Unexpected elems: %lu.\n", reg_val->elems);
++        todo_wine_if(propvar_tests[i].todo_data)
++            ok(!memcmp(reg_val->data, propvar_tests[i].data, propvar_tests[i].data_size), "Unexpected data.\n");
++
++        hr = IPropertyStore_GetValue(store, &PKEY_Bogus2, &pv2);
++        ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
++        ok(compare_propvariant(&pv, &pv2), "Propvariant mismatch.\n");
++
++        PropVariantClear(&pv);
++        PropVariantClear(&pv2);
++        winetest_pop_context();
++    }
++
+     RegCloseKey(props);
+     RegCloseKey(devkey);
+     RegCloseKey(root);
+diff --git a/dlls/mmdevapi/tests/render.c b/dlls/mmdevapi/tests/render.c
+index 43059955bda9647d15cda249adc6ed81b0510bba..b5b548c1a0a2d44422fc6bcaeffb9353a1f93060 100644
+--- a/dlls/mmdevapi/tests/render.c
++++ b/dlls/mmdevapi/tests/render.c
+@@ -186,7 +186,6 @@ static void test_audioclient(void)
+         ref = IUnknown_Release(unk);
+         ok(ref == 1, "Released count is %lu\n", ref);
+     }
+-
+     hr = IAudioClient_QueryInterface(ac, &IID_IAudioClient, (void**)&unk);
+     ok(hr == S_OK, "QueryInterface(IID_IAudioClient) returned %08lx\n", hr);
+     if (unk)
+@@ -368,6 +367,20 @@ static void test_audioclient(void)
+         hr = IMMDevice_Activate(dev, &IID_IAudioClient, CLSCTX_INPROC_SERVER,
+                 NULL, (void**)&ac);
+         ok(hr == S_OK, "Activation failed with %08lx\n", hr);
++
++        hr = IAudioClient_QueryInterface(ac, &IID_IAudioClient3, (void**)&ac3);
++        ok(hr == S_OK, "Failed to query IAudioClient3 interface: %08lx\n", hr);
++
++        hr = IAudioClient3_InitializeSharedAudioStream(
++            ac3, AUDCLNT_SHAREMODE_SHARED, min_period, pwfx, NULL);
++        ok(hr == S_OK, "InitializeSharedAudioStream returns %08lx\n", hr);
++
++        IAudioClient3_Release(ac3);
++        IAudioClient_Release(ac);
++
++        hr = IMMDevice_Activate(dev, &IID_IAudioClient, CLSCTX_INPROC_SERVER,
++                NULL, (void**)&ac);
++        ok(hr == S_OK, "Activation failed with %08lx\n", hr);
+     }
+     else
+         win_skip("IAudioClient3 is not present\n");
+diff --git a/dlls/winepulse.drv/Makefile.in b/dlls/winepulse.drv/Makefile.in
+index bfde863704f610a582a3420736fec1ccd39753a8..b376020a6a64593b906c5d817b27d96b17fde636 100644
+--- a/dlls/winepulse.drv/Makefile.in
++++ b/dlls/winepulse.drv/Makefile.in
+@@ -1,6 +1,7 @@
+ UNIXLIB   = winepulse.so
+-UNIX_LIBS    = $(PULSE_LIBS) $(PTHREAD_LIBS) -lm
+-UNIX_CFLAGS  = $(PULSE_CFLAGS)
++IMPORTS   = dxguid uuid winmm user32 advapi32 ole32
++UNIX_LIBS    = $(PULSE_LIBS) $(PTHREAD_LIBS) $(UDEV_LIBS) -lm
++UNIX_CFLAGS  = $(PULSE_CFLAGS) $(UDEV_CFLAGS)
+ 
+ SOURCES = \
+ 	pulse.c
+diff --git a/dlls/winepulse.drv/pulse.c b/dlls/winepulse.drv/pulse.c
+index 0539a4601bef5ded54727d57b90eb4b20b9187f1..a20e6f7a8ddac58d6e1574b1e2344299e46ab6ab 100644
+--- a/dlls/winepulse.drv/pulse.c
++++ b/dlls/winepulse.drv/pulse.c
+@@ -23,7 +23,11 @@
+ #pragma makedep unix
+ #endif
+ 
++#include "config.h"
++#undef _TIME_BITS /* libpulse uses default time bitness convention. */
+ #include <stdarg.h>
++#include <stdlib.h>
++#include <stdint.h>
+ #include <pthread.h>
+ #include <math.h>
+ #include <poll.h>
+@@ -41,22 +45,47 @@
+ #include "wine/list.h"
+ #include "wine/unixlib.h"
+ 
++#include "initguid.h"
++#include "devpkey.h"
++DEFINE_GUID(GUID_NULL,0,0,0,0,0,0,0,0,0,0,0);
++
+ #include "../mmdevapi/unixlib.h"
+ 
++#ifdef HAVE_LIBUDEV_H
++#include <libudev.h>
++#endif
++
+ #include "mult.h"
+ 
+ WINE_DEFAULT_DEBUG_CHANNEL(pulse);
+ 
++C_ASSERT((sizeof(void *) == 8 && sizeof(struct timeval) == 16) || (sizeof(void *) == 4 && sizeof(struct timeval) == 8));
++
+ enum phys_device_bus_type {
+     phys_device_bus_invalid = -1,
+     phys_device_bus_pci,
+     phys_device_bus_usb
+ };
+ 
++struct pulse_period
++{
++    struct list entry;
++    char *device;
++    pa_usec_t period;
++    pa_usec_t timer_last_time, stream_time;
++    pa_usec_t adjust;
++    struct list streams;
++    pa_time_event *time_event;
++    struct pulse_stream *timer_stream;
++};
++
++static struct list active_periods = LIST_INIT(active_periods);
++
+ struct pulse_stream
+ {
+     EDataFlow dataflow;
+ 
++    char *device;
+     pa_stream *stream;
+     pa_sample_spec ss;
+     pa_channel_map map;
+@@ -75,16 +104,19 @@ struct pulse_stream
+     BOOL started;
+     SIZE_T bufsize_frames, real_bufsize_bytes, period_bytes;
+     SIZE_T peek_ofs, read_offs_bytes, lcl_offs_bytes, pa_offs_bytes;
+-    SIZE_T tmp_buffer_bytes, held_bytes, peek_len, peek_buffer_len, pa_held_bytes;
++    SIZE_T tmp_buffer_bytes, held_bytes, peek_len, peek_buffer_len, pa_held_bytes, max_pa_held_bytes;
+     BYTE *local_buffer, *tmp_buffer, *peek_buffer;
+     void *locked_ptr;
+-    BOOL please_quit, just_started, just_underran;
++    BOOL please_quit, just_started, just_underran, pa_started, update_timing_info_pending;
+     pa_usec_t mmdev_period_usec;
++    pa_usec_t timeline_start_stream_time, timeline_start_period_time;
+ 
+     INT64 clock_lastpos, clock_written;
+ 
+     struct list packet_free_head;
+     struct list packet_filled_head;
++    struct list period_entry;
++    struct pulse_period *period;
+ };
+ 
+ typedef struct _ACPacket
+@@ -95,6 +127,8 @@ typedef struct _ACPacket
+     UINT32 discont;
+ } ACPacket;
+ 
++static void remove_stream_from_period(struct pulse_stream *stream);
++
+ typedef struct _PhysDevice {
+     struct list entry;
+     WCHAR *name;
+@@ -105,6 +139,7 @@ typedef struct _PhysDevice {
+     UINT index;
+     REFERENCE_TIME min_period, def_period;
+     WAVEFORMATEXTENSIBLE fmt;
++    GUID container_id;
+     char pulse_name[0];
+ } PhysDevice;
+ 
+@@ -119,6 +154,9 @@ static pthread_cond_t pulse_cond = PTHREAD_COND_INITIALIZER;
+ 
+ static ULONG_PTR zero_bits = 0;
+ 
++static UINT32 silence_buf_size = 1048576;
++static BYTE *silence_buf;
++
+ static NTSTATUS pulse_not_implemented(void *args)
+ {
+     return STATUS_SUCCESS;
+@@ -263,6 +301,8 @@ static NTSTATUS pulse_process_detach(void *args)
+     if (pulse_ml)
+         pa_mainloop_quit(pulse_ml, 0);
+ 
++    free( silence_buf );
++    silence_buf = NULL;
+     return STATUS_SUCCESS;
+ }
+ 
+@@ -384,13 +424,13 @@ static void pulse_contextcallback(pa_context *c, void *userdata)
+ static void pulse_stream_state(pa_stream *s, void *user)
+ {
+     pa_stream_state_t state = pa_stream_get_state(s);
+-    TRACE("Stream state changed to %i\n", state);
++    TRACE("%p: Stream state changed to %i\n", user, state);
+     pulse_broadcast();
+ }
+ 
+ static void pulse_attr_update(pa_stream *s, void *user) {
+     const pa_buffer_attr *attr = pa_stream_get_buffer_attr(s);
+-    TRACE("New attributes or device moved:\n");
++    TRACE("%p: New attributes or device moved:\n", user);
+     dump_attr(attr);
+ }
+ 
+@@ -403,7 +443,10 @@ static void pulse_underflow_callback(pa_stream *s, void *userdata)
+ 
+ static void pulse_started_callback(pa_stream *s, void *userdata)
+ {
++    struct pulse_stream *stream = userdata;
++
+     TRACE("%p: (Re)started playing\n", userdata);
++    stream->pa_started = TRUE;
+ }
+ 
+ static void pulse_op_cb(pa_stream *s, int success, void *user)
+@@ -433,6 +476,7 @@ static HRESULT pulse_connect(const char *name)
+         pa_context_unref(pulse_ctx);
+ 
+     pulse_ctx = pa_context_new(pa_mainloop_get_api(pulse_ml), name);
++    setenv("PULSE_PROP_application.name", name, 1);
+     if (!pulse_ctx) {
+         ERR("Failed to create context\n");
+         return E_FAIL;
+@@ -571,6 +615,77 @@ static WCHAR *get_device_name(const char *desc, pa_proplist *proplist)
+     return name;
+ }
+ 
++#ifdef HAVE_UDEV
++static void create_usb_dev_container_id(uint64_t usec_init, uint16_t vid, uint16_t pid, uint8_t bus_num, uint8_t dev_num,
++        GUID *out)
++{
++    out->Data1 = MAKELONG(vid, pid);
++    out->Data2 = bus_num;
++    out->Data3 = dev_num;
++    memcpy(out->Data4, &usec_init, sizeof(out->Data4));
++}
++
++static GUID get_container_id(const char *sysfs_path)
++{
++    struct udev_device *audio_dev, *usb_dev;
++    struct udev *udev = udev_new();
++    char buffer[4096] = "/sys";
++    uint32_t vid, pid, version;
++    uint8_t bus_num, dev_num;
++    uint64_t init_time;
++    const char *tmp;
++    GUID tmp_guid;
++
++    tmp_guid = GUID_NULL;
++    strcat(buffer, sysfs_path);
++    audio_dev = usb_dev = NULL;
++    if (!udev)
++    {
++        ERR("Failed to get udev!\n");
++        goto exit;
++    }
++
++    audio_dev = udev_device_new_from_syspath(udev, buffer);
++    if (!audio_dev)
++        goto exit;
++
++    usb_dev = udev_device_get_parent_with_subsystem_devtype(audio_dev, "usb", "usb_device");
++    TRACE("usb dev %p, udev %p.\n", usb_dev, udev);
++    if (!usb_dev)
++        goto exit;
++
++    init_time = 0;
++    bus_num = dev_num = 0;
++    vid = pid = version = 0;
++    if ((tmp = udev_device_get_property_value(usb_dev, "PRODUCT")))
++        sscanf(tmp, "%x/%x/%x", &vid, &pid, &version);
++    if ((tmp = udev_device_get_property_value(usb_dev, "USEC_INITIALIZED")))
++        init_time = strtoull(tmp, NULL, 10);
++    if ((tmp = udev_device_get_property_value(usb_dev, "BUSNUM")))
++        bus_num = strtol(tmp, NULL, 10);
++    if ((tmp = udev_device_get_property_value(usb_dev, "DEVNUM")))
++        dev_num = strtol(tmp, NULL, 10);
++
++    create_usb_dev_container_id(init_time, vid, pid, bus_num, dev_num, &tmp_guid);
++
++exit:
++    if (udev)
++        udev_unref(udev);
++    if (audio_dev)
++        udev_device_unref(audio_dev);
++
++    TRACE("Returning %s.\n", debugstr_guid(&tmp_guid));
++    return tmp_guid;
++}
++#else
++static GUID get_container_id(const char *sysfs_path)
++{
++    FIXME("No udev, can't get device data.\n");
++    return GUID_NULL;
++}
++#endif
++
++
+ static void fill_device_info(PhysDevice *dev, pa_proplist *p)
+ {
+     const char *buffer;
+@@ -578,6 +693,7 @@ static void fill_device_info(PhysDevice *dev, pa_proplist *p)
+     dev->bus_type = phys_device_bus_invalid;
+     dev->vendor_id = 0;
+     dev->product_id = 0;
++    memset(&dev->container_id, 0, sizeof(dev->container_id));
+ 
+     if (!p)
+         return;
+@@ -594,6 +710,9 @@ static void fill_device_info(PhysDevice *dev, pa_proplist *p)
+ 
+     if ((buffer = pa_proplist_gets(p, PA_PROP_DEVICE_PRODUCT_ID)))
+         dev->product_id = strtol(buffer, NULL, 16);
++
++    if ((buffer = pa_proplist_gets(p, "sysfs.path")))
++        dev->container_id = get_container_id(buffer);
+ }
+ 
+ static void pulse_add_device(struct list *list, pa_proplist *proplist, int index, EndpointFormFactor form,
+@@ -1082,7 +1201,7 @@ static HRESULT pulse_stream_connect(struct pulse_stream *stream, const char *pul
+     attr.minreq = attr.fragsize = period_bytes;
+     attr.tlength = period_bytes * 3;
+     attr.maxlength = stream->bufsize_frames * pa_frame_size(&stream->ss);
+-    attr.prebuf = pa_frame_size(&stream->ss);
++    attr.prebuf = 0;
+     dump_attr(&attr);
+ 
+     /* If specific device was requested, use it exactly */
+@@ -1237,11 +1356,12 @@ static NTSTATUS pulse_create_stream(void *args)
+                 }
+             }
+         }
++        stream->device = strdup(params->device);
+     }
+ 
+     *params->channel_count = stream->ss.channels;
+     *params->stream = (stream_handle)(UINT_PTR)stream;
+-
++    TRACE("created stream %p.\n", stream);
+ exit:
+     if (FAILED(params->result = hr)) {
+         free(stream->local_buffer);
+@@ -1249,6 +1369,7 @@ exit:
+             pa_stream_disconnect(stream->stream);
+             pa_stream_unref(stream->stream);
+         }
++        free(stream->device);
+         free(stream);
+     }
+ 
+@@ -1269,6 +1390,7 @@ static NTSTATUS pulse_release_stream(void *args)
+     }
+ 
+     pulse_lock();
++    remove_stream_from_period(stream);
+     if (PA_STREAM_IS_GOOD(pa_stream_get_state(stream->stream))) {
+         pa_stream_disconnect(stream->stream);
+         while (pulse_ml && PA_STREAM_IS_GOOD(pa_stream_get_state(stream->stream)))
+@@ -1288,6 +1410,7 @@ static NTSTATUS pulse_release_stream(void *args)
+                             &size, MEM_RELEASE);
+     }
+     free(stream->peek_buffer);
++    free(stream->device);
+     free(stream);
+     return STATUS_SUCCESS;
+ }
+@@ -1431,6 +1554,39 @@ write:
+     return pa_stream_write(stream->stream, buffer, bytes, NULL, 0, PA_SEEK_RELATIVE);
+ }
+ 
++static void pulse_write_index_catchup(struct pulse_stream *stream)
++{
++    const pa_timing_info *ti = pa_stream_get_timing_info(stream->stream);
++    UINT32 frame_size, to_write;
++    int64_t write_index;
++
++    if (!ti || ti->read_index <= ti->write_index) return;
++    if (ti->read_index_corrupt || ti->write_index_corrupt)
++    {
++        WARN("index corrupt %d / %d.\n", ti->read_index_corrupt, ti->write_index_corrupt);
++        return;
++    }
++
++    if (!silence_buf) silence_buf = calloc(1, silence_buf_size);
++    frame_size = pa_frame_size(&stream->ss);
++
++    while (ti && ti->read_index > ti->write_index)
++    {
++        write_index = ti->write_index;
++        TRACE("stream %p, runnind %d, read is ahead of write %lld bytes.\n", stream, stream->started,
++              (long long)(ti->read_index - write_index));
++
++        to_write = min(ti->read_index - write_index, silence_buf_size) / frame_size * frame_size;
++        pa_stream_write(stream->stream, silence_buf, to_write, NULL, 0, PA_SEEK_RELATIVE);
++        ti = pa_stream_get_timing_info(stream->stream);
++        if (ti && ti->write_index <= write_index)
++        {
++            WARN("write index did not advance.\n");
++            break;
++        }
++    }
++}
++
+ static void pulse_write(struct pulse_stream *stream)
+ {
+     /* write as much data to PA as we can */
+@@ -1445,9 +1601,17 @@ static void pulse_write(struct pulse_stream *stream)
+             to_write = bytes - stream->pa_held_bytes;
+             TRACE("prebuffering %u frames of silence\n",
+                     (int)(to_write / pa_frame_size(&stream->ss)));
+-            buf = calloc(1, to_write);
+-            pa_stream_write(stream->stream, buf, to_write, NULL, 0, PA_SEEK_RELATIVE);
+-            free(buf);
++            if (silence_buf && to_write > silence_buf_size)
++            {
++                free(silence_buf);
++                silence_buf = NULL;
++            }
++            if (!silence_buf)
++            {
++                silence_buf_size = max(silence_buf_size, to_write);
++                silence_buf = calloc(1, silence_buf_size);
++            }
++            pa_stream_write(stream->stream, silence_buf, to_write, NULL, 0, PA_SEEK_RELATIVE);
+         }
+ 
+         stream->just_underran = FALSE;
+@@ -1675,6 +1839,225 @@ static void pulse_timer_loop(void *args)
+     }
+ }
+ 
++#define TIMER_ADJUST_DELAY (5 * PA_USEC_PER_SEC)
++
++static void pulse_update_timing_cb(pa_stream *s, int success, void *user)
++{
++    struct pulse_stream *stream = user;
++    struct pulse_period *period = stream->period;
++    pa_usec_t period_stream_time, stream_time;
++    int err;
++
++    stream->update_timing_info_pending = FALSE;
++    if (!success)
++    {
++        WARN("failed.\n");
++        return;
++    }
++
++    period_stream_time = period->stream_time;
++    if (!stream->pa_started)
++    {
++        pulse_write_index_catchup(stream);
++        return;
++    }
++
++    if (period->timer_stream && (!period->timer_stream->pa_started || !period->timer_stream->timeline_start_period_time
++                                 || period_stream_time - period->timer_stream->timeline_start_period_time < TIMER_ADJUST_DELAY))
++    {
++        TRACE("stream %p is no longer timer stream, started %d, period_stream_time %lld, last_time %lld.\n",
++            period->timer_stream, period->timer_stream->pa_started, (long long)period_stream_time, (long long)period->timer_stream->timeline_start_period_time);
++        period->timer_stream->timeline_start_period_time = 0;
++        period->timer_stream = NULL;
++    }
++
++    if ((err = pa_stream_get_time(stream->stream, &stream_time)))
++    {
++        WARN("pa_stream_get_time failed with %d.\n", err);
++        return;
++    }
++
++    if (!stream->timeline_start_period_time)
++    {
++        stream->timeline_start_period_time = period_stream_time;
++        stream->timeline_start_stream_time = stream_time;
++        TRACE("started stream %p timing at rt %lld, stream %lld.\n", stream, (long long)period_stream_time, (long long)stream_time);
++    }
++    else if (!period->timer_stream && period_stream_time - stream->timeline_start_period_time > TIMER_ADJUST_DELAY)
++    {
++        period->timer_stream = stream;
++        TRACE("stream %p is now timer stream.\n", stream);
++    }
++    if (period->timer_stream == stream)
++    {
++        period->adjust = (int64_t)((period_stream_time - stream->timeline_start_period_time) - (stream_time - stream->timeline_start_stream_time)) / 10;
++        TRACE("stream %p, peropd diff %lld, stream diff %lld.\n", stream,
++              (long long)(period_stream_time - stream->timeline_start_period_time),
++              (long long)(stream_time - stream->timeline_start_stream_time));
++        if (period->adjust < -5 * period->period && period->adjust > 5 * period->period)
++        {
++            WARN("stream %p, resetting period timing (adjust %lld).\n", stream, (long long)period->adjust);
++            period->adjust = 0;
++            period->timer_stream = NULL;
++            stream->timeline_start_period_time = 0;
++            stream->timeline_start_stream_time = 0;
++        }
++    }
++    pulse_write_index_catchup(stream);
++}
++
++
++static void pa_streams_timer_cb(pa_mainloop_api *api, pa_time_event *e, const struct timeval *tv, void *userdata)
++{
++    struct pulse_period *period = userdata;
++    struct pulse_stream *stream;
++    BOOL reset_timeline = FALSE;
++    pa_usec_t next_timer;
++    int64_t adjust = 0;
++    UINT32 adv_bytes;
++    pa_operation *o;
++    pa_usec_t now;
++
++    period->stream_time += period->period;
++    now = pa_rtclock_now();
++    if (period->timer_last_time + period->period < now)
++    {
++        WARN("Next period is in the past, resetting timeline.\n");
++        period->timer_last_time = now;
++        period->adjust = 0;
++        reset_timeline = TRUE;
++    }
++
++    LIST_FOR_EACH_ENTRY(stream, &period->streams, struct pulse_stream, period_entry)
++    {
++        if (stream->started)
++        {
++            if (reset_timeline)
++            {
++                stream->timeline_start_period_time = 0;
++                stream->timeline_start_stream_time = 0;
++            }
++            if (!stream->update_timing_info_pending && (o = pa_stream_update_timing_info(stream->stream, pulse_update_timing_cb, stream)))
++            {
++                pa_operation_unref(o);
++                stream->update_timing_info_pending = TRUE;
++            }
++            else if (stream->update_timing_info_pending)
++            {
++                TRACE("pa_stream_update_timing_info is still pending.\n");
++            }
++            else
++            {
++                ERR("pa_stream_update_timing_info err %d.\n", pa_context_errno(pulse_ctx));
++            }
++            if (stream->dataflow == eRender && stream->held_bytes)
++            {
++                pulse_write(stream);
++
++                /* regardless of what PA does, advance one per`iod */
++                adv_bytes = min(stream->period_bytes, stream->held_bytes);
++                stream->lcl_offs_bytes += adv_bytes;
++                stream->lcl_offs_bytes %= stream->real_bufsize_bytes;
++                stream->held_bytes -= adv_bytes;
++            }
++            else if (stream->dataflow == eCapture)
++            {
++                pulse_read(stream);
++            }
++        }
++        if (stream->event)
++            NtSetEvent(stream->event, NULL);
++    }
++
++    adjust = period->adjust;
++    if (adjust > (int64_t)(period->period / 3))
++        adjust = period->period / 3;
++    else if (adjust < -(int64_t)(period->period / 3))
++        adjust = -(int64_t)period->period / 3;
++    next_timer = period->timer_last_time + period->period + adjust;
++    TRACE("period %p, timer_last_time %llu, next_timer %llu, adjust %lld.\n",
++            period, (long long)period->timer_last_time, (long long)next_timer, (long long)period->adjust);
++    period->timer_last_time = next_timer;
++    period->adjust = 0;
++    pa_context_rttime_restart(pulse_ctx, e, next_timer);
++}
++
++static void pa_streams_timer_cb_destroy(pa_mainloop_api *api, pa_time_event *e, void *userdata)
++{
++    struct pulse_period *period = userdata;
++
++    TRACE("period %p.\n", period);
++
++    list_remove(&period->entry);
++    free(period->device);
++    free(period);
++}
++
++static void remove_stream_from_period(struct pulse_stream *stream)
++{
++    if (!stream->period)
++        return;
++
++    if (stream->period->timer_stream == stream)
++        stream->period->timer_stream = NULL;
++
++    list_remove(&stream->period_entry);
++    if (list_empty(&stream->period->streams) && pulse_ml)
++    {
++        pa_mainloop_api *api = pa_mainloop_get_api(pulse_ml);
++
++        TRACE("freeing time event for period %p.\n", stream->period);
++        api->time_free(stream->period->time_event);
++        stream->period->time_event = NULL;
++    }
++}
++
++static void pulse_add_stream_to_period(struct pulse_stream *stream)
++{
++    struct pulse_period *period;
++    pa_mainloop_api *api;
++
++    if ((period = stream->period))
++    {
++        assert(stream->mmdev_period_usec == period->period);
++        assert(!strcmp(stream->device, period->device));
++        /* */
++        list_remove(&stream->period_entry);
++        list_add_tail(&period->streams, &stream->period_entry);
++        return;
++    }
++
++    LIST_FOR_EACH_ENTRY(period, &active_periods, struct pulse_period, entry)
++    {
++        if (!period->time_event)
++        {
++            /* Period is being removed but pa_streams_timer_cb_destroy was not called yet. */
++            continue;
++        }
++        if (period->period == stream->mmdev_period_usec && !strcmp(period->device, stream->device))
++        {
++            TRACE("Using period %p.\n", period);
++            stream->period = period;
++            list_add_tail(&period->streams, &stream->period_entry);
++            return;
++        }
++    }
++
++    period = calloc(1, sizeof(*period));
++    period->period = stream->mmdev_period_usec;
++    period->device = strdup(stream->device);
++    list_init(&period->streams);
++    stream->period = period;
++    list_add_tail(&period->streams, &stream->period_entry);
++    list_add_tail(&active_periods, &period->entry);
++    period->timer_last_time = pa_rtclock_now() + period->period;
++    period->time_event = pa_context_rttime_new(pulse_ctx, period->timer_last_time,
++            pa_streams_timer_cb, period);
++    api = pa_mainloop_get_api(pulse_ml);
++    api->time_set_destroy(period->time_event, pa_streams_timer_cb_destroy);
++    TRACE("Created period %p, %s, %lld.\n", period, debugstr_a(period->device), (long long)period->period);
++}
++
+ static NTSTATUS pulse_start(void *args)
+ {
+     struct start_params *params = args;
+@@ -1718,7 +2101,7 @@ static NTSTATUS pulse_start(void *args)
+     if (SUCCEEDED(params->result))
+     {
+         stream->started = TRUE;
+-        stream->just_started = TRUE;
++        pulse_add_stream_to_period(stream);
+     }
+     pulse_unlock();
+     if (!stream->timer_thread) create_unix_thread( &stream->timer_thread, name, pulse_timer_loop, stream );
+@@ -1755,7 +2138,12 @@ static NTSTATUS pulse_stop(void *args)
+             params->result = E_FAIL;
+     }
+     if (SUCCEEDED(params->result))
++    {
+         stream->started = FALSE;
++        stream->pa_started = FALSE;
++        stream->timeline_start_period_time = 0;
++        stream->timeline_start_stream_time = 0;
++    }
+     pulse_unlock();
+     return STATUS_SUCCESS;
+ }
+@@ -1976,11 +2364,17 @@ static NTSTATUS pulse_release_render_buffer(void *args)
+ 
+     stream->held_bytes += written_bytes;
+     stream->pa_held_bytes += written_bytes;
++    if (stream->pa_held_bytes > stream->max_pa_held_bytes)
++    {
++        stream->max_pa_held_bytes = stream->pa_held_bytes;
++        TRACE("%p max_pa_held_bytes %lld.\n", stream, (long long)stream->max_pa_held_bytes);
++    }
+     if (stream->pa_held_bytes > stream->real_bufsize_bytes)
+     {
+-        stream->pa_offs_bytes += stream->pa_held_bytes - stream->real_bufsize_bytes;
+-        stream->pa_offs_bytes %= stream->real_bufsize_bytes;
+-        stream->pa_held_bytes = stream->real_bufsize_bytes;
++        WARN("%p PA buffer overflow.\n", stream);
++        stream->max_pa_held_bytes = 0;
++        stream->pa_offs_bytes = stream->lcl_offs_bytes;
++        stream->pa_held_bytes = stream->held_bytes;
+     }
+     stream->clock_written += written_bytes;
+     stream->locked = 0;
+@@ -2509,6 +2903,18 @@ static NTSTATUS pulse_get_prop_value(void *args)
+                 params->result = S_OK;
+                 return STATUS_SUCCESS;
+             }
++        } else if (IsEqualGUID(&params->prop->fmtid, &DEVPKEY_Device_ContainerId)) {
++            if (!params->buffer || *params->buffer_size < sizeof(*params->value->puuid)) {
++                *params->buffer_size = sizeof(*params->value->puuid);
++                params->result = E_NOT_SUFFICIENT_BUFFER;
++            } else {
++                params->value->vt = VT_CLSID;
++                params->value->puuid = params->buffer;
++                *params->value->puuid = dev->container_id;
++                params->result = S_OK;
++            }
++
++            return STATUS_SUCCESS;
+         }
+ 
+         params->result = E_NOTIMPL;
+@@ -3011,6 +3417,7 @@ static NTSTATUS pulse_wow64_get_prop_value(void *args)
+             value32->ulVal = value.ulVal;
+             break;
+         case VT_LPWSTR:
++        case VT_CLSID:
+             value32->ptr = params32->buffer;
+             break;
+         default:
+diff --git a/dlls/winmm/joystick.c b/dlls/winmm/joystick.c
+index ed839dcc85205dc11eebbc5cd0607bfb49c66a17..0c0b8c73adbd93bed0941a35c7a12844779fdd8e 100644
+--- a/dlls/winmm/joystick.c
++++ b/dlls/winmm/joystick.c
+@@ -271,7 +271,7 @@ static void update_connected_state(void)
+ 
+ static void add_joystick( const DIDEVICEINSTANCEW *instance )
+ {
+-    int index = -1;
++    int first_disconnected = -1, index = -1;
+     IDirectInputDevice8W *device = NULL;
+     unsigned int i;
+     HANDLE event;
+@@ -280,8 +280,10 @@ static void add_joystick( const DIDEVICEINSTANCEW *instance )
+     for (i = 0; i < ARRAY_SIZE(joysticks); ++i)
+     {
+         if (!memcmp( &joysticks[i].instance, instance, sizeof(DIDEVICEINSTANCEW) )) return;
+-        if (index == -1 && (!joysticks[i].device || joysticks[i].disconnected)) index = i;
++        if (index == -1 && !joysticks[i].device) index = i;
++        if (index == -1 && first_disconnected == -1 && joysticks[i].disconnected) first_disconnected = i;
+     }
++    if (index == -1) index = first_disconnected;
+     if (index == -1)
+     {
+         ERR( "Could not find existing or empty slot.\n" );
+diff --git a/dlls/x3daudio1_0/Makefile.in b/dlls/x3daudio1_0/Makefile.in
+index d3c2cbe674384a4f926480626bdb08876e67ec61..ab5af4ac64c39c651e2899d867a27115899dada3 100644
+--- a/dlls/x3daudio1_0/Makefile.in
++++ b/dlls/x3daudio1_0/Makefile.in
+@@ -4,5 +4,7 @@ PARENTSRC = ../xaudio2_7
+ IMPORTS   = $(FAUDIO_PE_LIBS)
+ EXTRAINCL = $(FAUDIO_PE_CFLAGS)
+ 
++EXTRADLLFLAGS = -Wb,--prefer-native
++
+ SOURCES = \
+ 	x3daudio.c
+diff --git a/dlls/x3daudio1_1/Makefile.in b/dlls/x3daudio1_1/Makefile.in
+index 8dfccce11d815c93db9837ce6520679e910f5808..6b25e3909d48c9f5d08b1038e012104efd231f9c 100644
+--- a/dlls/x3daudio1_1/Makefile.in
++++ b/dlls/x3daudio1_1/Makefile.in
+@@ -4,5 +4,7 @@ PARENTSRC = ../xaudio2_7
+ IMPORTS   = $(FAUDIO_PE_LIBS)
+ EXTRAINCL = $(FAUDIO_PE_CFLAGS)
+ 
++EXTRADLLFLAGS = -Wb,--prefer-native
++
+ SOURCES = \
+ 	x3daudio.c
+diff --git a/dlls/x3daudio1_2/Makefile.in b/dlls/x3daudio1_2/Makefile.in
+index 699aac41317ac450d32695858af6d5662b32c09a..150028ad4346ef8f33e7367bfb0a2e8b43c0b942 100644
+--- a/dlls/x3daudio1_2/Makefile.in
++++ b/dlls/x3daudio1_2/Makefile.in
+@@ -4,5 +4,7 @@ PARENTSRC = ../xaudio2_7
+ IMPORTS   = $(FAUDIO_PE_LIBS)
+ EXTRAINCL = $(FAUDIO_PE_CFLAGS)
+ 
++EXTRADLLFLAGS = -Wb,--prefer-native
++
+ SOURCES = \
+ 	x3daudio.c
+diff --git a/dlls/x3daudio1_3/Makefile.in b/dlls/x3daudio1_3/Makefile.in
+index 093fe1180895e004d44e5a6f203c1d8f6b75a93c..c87c19da479879db33a7a3c49073558f7ccc3a27 100644
+--- a/dlls/x3daudio1_3/Makefile.in
++++ b/dlls/x3daudio1_3/Makefile.in
+@@ -4,5 +4,7 @@ PARENTSRC = ../xaudio2_7
+ IMPORTS   = $(FAUDIO_PE_LIBS)
+ EXTRAINCL = $(FAUDIO_PE_CFLAGS)
+ 
++EXTRADLLFLAGS = -Wb,--prefer-native
++
+ SOURCES = \
+ 	x3daudio.c
+diff --git a/dlls/x3daudio1_4/Makefile.in b/dlls/x3daudio1_4/Makefile.in
+index c67d6535a4da28d5b919dbc5b3866cbca0cfcc2a..a3319b81c87c749a4eea534b0a7ec7a0a92c78bd 100644
+--- a/dlls/x3daudio1_4/Makefile.in
++++ b/dlls/x3daudio1_4/Makefile.in
+@@ -4,5 +4,7 @@ PARENTSRC = ../xaudio2_7
+ IMPORTS   = $(FAUDIO_PE_LIBS)
+ EXTRAINCL = $(FAUDIO_PE_CFLAGS)
+ 
++EXTRADLLFLAGS = -Wb,--prefer-native
++
+ SOURCES = \
+ 	x3daudio.c
+diff --git a/dlls/x3daudio1_5/Makefile.in b/dlls/x3daudio1_5/Makefile.in
+index 471e2c6b05250887682e5d1b8d9172e5870b9c38..3b548bf954851d4da0a4410f4887f885f208e046 100644
+--- a/dlls/x3daudio1_5/Makefile.in
++++ b/dlls/x3daudio1_5/Makefile.in
+@@ -4,5 +4,7 @@ PARENTSRC = ../xaudio2_7
+ IMPORTS   = $(FAUDIO_PE_LIBS)
+ EXTRAINCL = $(FAUDIO_PE_CFLAGS)
+ 
++EXTRADLLFLAGS = -Wb,--prefer-native
++
+ SOURCES = \
+ 	x3daudio.c
+diff --git a/dlls/x3daudio1_6/Makefile.in b/dlls/x3daudio1_6/Makefile.in
+index 7fb6f0527291978afa4543ef3216d2d7ac70fa2d..956c36912043d64c3b1b5526908efe5bbd91df3d 100644
+--- a/dlls/x3daudio1_6/Makefile.in
++++ b/dlls/x3daudio1_6/Makefile.in
+@@ -4,5 +4,7 @@ PARENTSRC = ../xaudio2_7
+ IMPORTS   = $(FAUDIO_PE_LIBS)
+ EXTRAINCL = $(FAUDIO_PE_CFLAGS)
+ 
++EXTRADLLFLAGS = -Wb,--prefer-native
++
+ SOURCES = \
+ 	x3daudio.c
+diff --git a/dlls/x3daudio1_7/Makefile.in b/dlls/x3daudio1_7/Makefile.in
+index fd22a260f07d37a338471d22f1767821c565dff7..b906e9146a590d8659dcdbd2d4ed41801e90d643 100644
+--- a/dlls/x3daudio1_7/Makefile.in
++++ b/dlls/x3daudio1_7/Makefile.in
+@@ -4,5 +4,7 @@ PARENTSRC = ../xaudio2_7
+ IMPORTS   = $(FAUDIO_PE_LIBS)
+ EXTRAINCL = $(FAUDIO_PE_CFLAGS)
+ 
++EXTRADLLFLAGS = -Wb,--prefer-native
++
+ SOURCES = \
+ 	x3daudio.c
+diff --git a/dlls/xactengine2_0/Makefile.in b/dlls/xactengine2_0/Makefile.in
+index 2064afadc3dbae713c9ac1d7e926f39b462bf52e..ea57370f978520fa721465728d48f8e0261ef08f 100644
+--- a/dlls/xactengine2_0/Makefile.in
++++ b/dlls/xactengine2_0/Makefile.in
+@@ -4,6 +4,8 @@ EXTRAINCL = $(FAUDIO_PE_CFLAGS)
+ EXTRADEFS = -DXACT3_VER=0x0200
+ PARENTSRC = ../xactengine3_7
+ 
++EXTRADLLFLAGS = -Wb,--prefer-native
++
+ SOURCES = \
+ 	xact_classes.idl \
+ 	xact_dll.c
+diff --git a/dlls/xactengine2_4/Makefile.in b/dlls/xactengine2_4/Makefile.in
+index b61774d669370f3ef360a763006a3f3d901457b1..4771318e118c8c8c4aa036666d5d42de1284e1e4 100644
+--- a/dlls/xactengine2_4/Makefile.in
++++ b/dlls/xactengine2_4/Makefile.in
+@@ -4,6 +4,8 @@ EXTRAINCL = $(FAUDIO_PE_CFLAGS)
+ EXTRADEFS = -DXACT3_VER=0x0204
+ PARENTSRC = ../xactengine3_7
+ 
++EXTRADLLFLAGS = -Wb,--prefer-native
++
+ SOURCES = \
+ 	xact_classes.idl \
+ 	xact_dll.c
+diff --git a/dlls/xactengine2_7/Makefile.in b/dlls/xactengine2_7/Makefile.in
+index bd91161fd2cb19687350aac5dc23659bb5dfeaf0..faae6a20d47d152649301eec7a5777e4155f8d04 100644
+--- a/dlls/xactengine2_7/Makefile.in
++++ b/dlls/xactengine2_7/Makefile.in
+@@ -4,6 +4,8 @@ EXTRAINCL = $(FAUDIO_PE_CFLAGS)
+ EXTRADEFS = -DXACT3_VER=0x0207
+ PARENTSRC = ../xactengine3_7
+ 
++EXTRADLLFLAGS = -Wb,--prefer-native
++
+ SOURCES = \
+ 	xact_classes.idl \
+ 	xact_dll.c
+diff --git a/dlls/xactengine2_9/Makefile.in b/dlls/xactengine2_9/Makefile.in
+index 10e0578a82c5486acf89cf768cdf0b394afbe2b6..016efa9c76f98809e5f4f84cf6d2bd02fd94e62b 100644
+--- a/dlls/xactengine2_9/Makefile.in
++++ b/dlls/xactengine2_9/Makefile.in
+@@ -4,6 +4,8 @@ EXTRAINCL = $(FAUDIO_PE_CFLAGS)
+ EXTRADEFS = -DXACT3_VER=0x0209
+ PARENTSRC = ../xactengine3_7
+ 
++EXTRADLLFLAGS = -Wb,--prefer-native
++
+ SOURCES = \
+ 	xact_classes.idl \
+ 	xact_dll.c
+diff --git a/dlls/xactengine3_0/Makefile.in b/dlls/xactengine3_0/Makefile.in
+index b944a7d5a7afbe8c32cae2ba6eba3814bda7a8e4..a52a282fdf2eb871c3afb4e6a8537ec08274448b 100644
+--- a/dlls/xactengine3_0/Makefile.in
++++ b/dlls/xactengine3_0/Makefile.in
+@@ -4,6 +4,8 @@ EXTRAINCL = $(FAUDIO_PE_CFLAGS)
+ EXTRADEFS = -DXACT3_VER=0x0300
+ PARENTSRC = ../xactengine3_7
+ 
++EXTRADLLFLAGS = -Wb,--prefer-native
++
+ SOURCES = \
+ 	xact_classes.idl \
+ 	xact_dll.c
+diff --git a/dlls/xactengine3_1/Makefile.in b/dlls/xactengine3_1/Makefile.in
+index 410ac6ce4f25e508a619a7dc02f60ac53c82619b..6f2466d7f2540afd712e2267ff3191e539d76a8d 100644
+--- a/dlls/xactengine3_1/Makefile.in
++++ b/dlls/xactengine3_1/Makefile.in
+@@ -4,6 +4,8 @@ EXTRAINCL = $(FAUDIO_PE_CFLAGS)
+ EXTRADEFS = -DXACT3_VER=0x0301
+ PARENTSRC = ../xactengine3_7
+ 
++EXTRADLLFLAGS = -Wb,--prefer-native
++
+ SOURCES = \
+ 	xact_classes.idl \
+ 	xact_dll.c
+diff --git a/dlls/xactengine3_2/Makefile.in b/dlls/xactengine3_2/Makefile.in
+index 32d855dd2c3aef637627f435dddc0a282a63c7b4..70c3491ce4a150967c70ad10836e3950cf42aea5 100644
+--- a/dlls/xactengine3_2/Makefile.in
++++ b/dlls/xactengine3_2/Makefile.in
+@@ -4,6 +4,8 @@ EXTRAINCL = $(FAUDIO_PE_CFLAGS)
+ EXTRADEFS = -DXACT3_VER=0x0302
+ PARENTSRC = ../xactengine3_7
+ 
++EXTRADLLFLAGS = -Wb,--prefer-native
++
+ SOURCES = \
+ 	xact_classes.idl \
+ 	xact_dll.c
+diff --git a/dlls/xactengine3_3/Makefile.in b/dlls/xactengine3_3/Makefile.in
+index 650b577a16cdc9cbf9bf322048e75b193ce7f5f4..47795dcdf61a5b29b20fa06146162b4d4670bfb7 100644
+--- a/dlls/xactengine3_3/Makefile.in
++++ b/dlls/xactengine3_3/Makefile.in
+@@ -4,6 +4,8 @@ EXTRAINCL = $(FAUDIO_PE_CFLAGS)
+ EXTRADEFS = -DXACT3_VER=0x0303
+ PARENTSRC = ../xactengine3_7
+ 
++EXTRADLLFLAGS = -Wb,--prefer-native
++
+ SOURCES = \
+ 	xact_classes.idl \
+ 	xact_dll.c
+diff --git a/dlls/xactengine3_4/Makefile.in b/dlls/xactengine3_4/Makefile.in
+index 1fad4f2f4c4867966a43e5160281c65aef466f34..fa459af88ca80638533bb77ded72a76597fac73e 100644
+--- a/dlls/xactengine3_4/Makefile.in
++++ b/dlls/xactengine3_4/Makefile.in
+@@ -4,6 +4,8 @@ EXTRAINCL = $(FAUDIO_PE_CFLAGS)
+ EXTRADEFS = -DXACT3_VER=0x0304
+ PARENTSRC = ../xactengine3_7
+ 
++EXTRADLLFLAGS = -Wb,--prefer-native
++
+ SOURCES = \
+ 	xact_classes.idl \
+ 	xact_dll.c
+diff --git a/dlls/xactengine3_5/Makefile.in b/dlls/xactengine3_5/Makefile.in
+index 1e74124da7502757d78d483e5d21c91efc2d4e25..bb1a25e9ca02f6a4c2b518efbc757aed8b58618f 100644
+--- a/dlls/xactengine3_5/Makefile.in
++++ b/dlls/xactengine3_5/Makefile.in
+@@ -4,6 +4,8 @@ EXTRAINCL = $(FAUDIO_PE_CFLAGS)
+ EXTRADEFS = -DXACT3_VER=0x0305
+ PARENTSRC = ../xactengine3_7
+ 
++EXTRADLLFLAGS = -Wb,--prefer-native
++
+ SOURCES = \
+ 	xact_classes.idl \
+ 	xact_dll.c
+diff --git a/dlls/xactengine3_6/Makefile.in b/dlls/xactengine3_6/Makefile.in
+index 12861dbfad90c34a5fd651f1951d2fb425efdfbf..3bc687144611799a5c3edc36fb35da99653d2933 100644
+--- a/dlls/xactengine3_6/Makefile.in
++++ b/dlls/xactengine3_6/Makefile.in
+@@ -4,6 +4,8 @@ EXTRAINCL = $(FAUDIO_PE_CFLAGS)
+ EXTRADEFS = -DXACT3_VER=0x0306
+ PARENTSRC = ../xactengine3_7
+ 
++EXTRADLLFLAGS = -Wb,--prefer-native
++
+ SOURCES = \
+ 	xact_classes.idl \
+ 	xact_dll.c
+diff --git a/dlls/xactengine3_7/Makefile.in b/dlls/xactengine3_7/Makefile.in
+index e9b815b9b6adff87e3fa38615d9a4f09c9a86f36..8883b860c1c35256934540db1161bb276e5b9f60 100644
+--- a/dlls/xactengine3_7/Makefile.in
++++ b/dlls/xactengine3_7/Makefile.in
+@@ -3,6 +3,8 @@ IMPORTS   = $(FAUDIO_PE_LIBS) ole32 uuid
+ EXTRAINCL = $(FAUDIO_PE_CFLAGS)
+ EXTRADEFS = -DXACT3_VER=0x0307
+ 
++EXTRADLLFLAGS = -Wb,--prefer-native
++
+ SOURCES = \
+ 	xact_classes.idl \
+ 	xact_dll.c
+diff --git a/dlls/xapofx1_1/Makefile.in b/dlls/xapofx1_1/Makefile.in
+index 63d4493646d505d40f5450d8be2257712f6c6da5..c1004405845eaec3251d8340757300e59c079f7f 100644
+--- a/dlls/xapofx1_1/Makefile.in
++++ b/dlls/xapofx1_1/Makefile.in
+@@ -6,6 +6,7 @@ PARENTSRC = ../xaudio2_7
+ 
+ VER_FILEDESCRIPTION_STR = "Wine XAPOFX dll"
+ VER_PRODUCTVERSION      = 9,24,1400,0
++EXTRADLLFLAGS = -Wb,--prefer-native
+ 
+ SOURCES = \
+ 	xapo.c \
+diff --git a/dlls/xapofx1_2/Makefile.in b/dlls/xapofx1_2/Makefile.in
+index 635341424600d9b8b9731e2ee6692c2ccb201059..88532c05aa42337a55853cea6721e21af31fb0ba 100644
+--- a/dlls/xapofx1_2/Makefile.in
++++ b/dlls/xapofx1_2/Makefile.in
+@@ -4,6 +4,8 @@ IMPORTS   = $(FAUDIO_PE_LIBS) ole32
+ EXTRAINCL = $(FAUDIO_PE_CFLAGS)
+ PARENTSRC = ../xaudio2_7
+ 
++EXTRADLLFLAGS = -Wb,--prefer-native
++
+ SOURCES = \
+ 	xapo.c \
+ 	xapofx.c \
+diff --git a/dlls/xapofx1_3/Makefile.in b/dlls/xapofx1_3/Makefile.in
+index c5bd078e3de8df228254c06a019d5c3943721349..5394d182e490634330123e00d68ed8d29be91e57 100644
+--- a/dlls/xapofx1_3/Makefile.in
++++ b/dlls/xapofx1_3/Makefile.in
+@@ -6,6 +6,7 @@ PARENTSRC = ../xaudio2_7
+ 
+ VER_FILEDESCRIPTION_STR = "Wine XAPOFX dll"
+ VER_PRODUCTVERSION      = 9,26,1590,0
++EXTRADLLFLAGS = -Wb,--prefer-native
+ 
+ SOURCES = \
+ 	xapo.c \
+diff --git a/dlls/xapofx1_4/Makefile.in b/dlls/xapofx1_4/Makefile.in
+index 43dde8f047e7c380515fd0c28dd32370d21c5eeb..19881955d1c557b1402a5631e2f997bb3072b6f1 100644
+--- a/dlls/xapofx1_4/Makefile.in
++++ b/dlls/xapofx1_4/Makefile.in
+@@ -4,6 +4,8 @@ IMPORTS   = $(FAUDIO_PE_LIBS) ole32
+ EXTRAINCL = $(FAUDIO_PE_CFLAGS)
+ PARENTSRC = ../xaudio2_7
+ 
++EXTRADLLFLAGS = -Wb,--prefer-native
++
+ SOURCES = \
+ 	xapo.c \
+ 	xapofx.c \
+diff --git a/dlls/xapofx1_5/Makefile.in b/dlls/xapofx1_5/Makefile.in
+index fb53428662684f6436095d0a29e793954e823d02..d3586b26d34a4832d3a63b08de00be02c3b4d030 100644
+--- a/dlls/xapofx1_5/Makefile.in
++++ b/dlls/xapofx1_5/Makefile.in
+@@ -4,6 +4,8 @@ IMPORTS   = $(FAUDIO_PE_LIBS) ole32
+ EXTRAINCL = $(FAUDIO_PE_CFLAGS)
+ PARENTSRC = ../xaudio2_7
+ 
++EXTRADLLFLAGS = -Wb,--prefer-native
++
+ SOURCES = \
+ 	xapo.c \
+ 	xapofx.c \
+diff --git a/dlls/xaudio2_0/Makefile.in b/dlls/xaudio2_0/Makefile.in
+index 18721ae94be422e805c9d68bfd702b93a191955d..239bdbcc1af8508e6200645c13c766ac17456276 100644
+--- a/dlls/xaudio2_0/Makefile.in
++++ b/dlls/xaudio2_0/Makefile.in
+@@ -4,6 +4,8 @@ IMPORTS   = $(FAUDIO_PE_LIBS) advapi32 ole32 user32 uuid
+ EXTRAINCL = $(FAUDIO_PE_CFLAGS)
+ PARENTSRC = ../xaudio2_7
+ 
++EXTRADLLFLAGS = -Wb,--prefer-native
++
+ SOURCES = \
+ 	xapo.c \
+ 	xaudio_allocator.c \
+diff --git a/dlls/xaudio2_1/Makefile.in b/dlls/xaudio2_1/Makefile.in
+index 97fbed467f4cf45fc4d1e2d029bdcd6ad15a4326..103edb2be8e67227567f3a4785bcffb6bc8a29c7 100644
+--- a/dlls/xaudio2_1/Makefile.in
++++ b/dlls/xaudio2_1/Makefile.in
+@@ -4,6 +4,8 @@ IMPORTS   = $(FAUDIO_PE_LIBS) advapi32 ole32 user32 uuid
+ EXTRAINCL = $(FAUDIO_PE_CFLAGS)
+ PARENTSRC = ../xaudio2_7
+ 
++EXTRADLLFLAGS = -Wb,--prefer-native
++
+ SOURCES = \
+ 	xapo.c \
+ 	xaudio_allocator.c \
+diff --git a/dlls/xaudio2_2/Makefile.in b/dlls/xaudio2_2/Makefile.in
+index 11dfabc8439e378f513883a9ba97bc199f387b31..83ff54d855ef26529daf6d68f966126c6d57c4f7 100644
+--- a/dlls/xaudio2_2/Makefile.in
++++ b/dlls/xaudio2_2/Makefile.in
+@@ -4,6 +4,8 @@ IMPORTS   = $(FAUDIO_PE_LIBS) advapi32 ole32 user32 uuid
+ EXTRAINCL = $(FAUDIO_PE_CFLAGS)
+ PARENTSRC = ../xaudio2_7
+ 
++EXTRADLLFLAGS = -Wb,--prefer-native
++
+ SOURCES = \
+ 	xapo.c \
+ 	xaudio_allocator.c \
+diff --git a/dlls/xaudio2_3/Makefile.in b/dlls/xaudio2_3/Makefile.in
+index ea979c2041a039551263c5e0eced0e367249f88e..c2ed7ffe20ed8aca698e005105c4bc3aeb58903d 100644
+--- a/dlls/xaudio2_3/Makefile.in
++++ b/dlls/xaudio2_3/Makefile.in
+@@ -4,6 +4,8 @@ IMPORTS   = $(FAUDIO_PE_LIBS) advapi32 ole32 user32 uuid
+ EXTRAINCL = $(FAUDIO_PE_CFLAGS)
+ PARENTSRC = ../xaudio2_7
+ 
++EXTRADLLFLAGS = -Wb,--prefer-native
++
+ SOURCES = \
+ 	xapo.c \
+ 	xaudio_allocator.c \
+diff --git a/dlls/xaudio2_4/Makefile.in b/dlls/xaudio2_4/Makefile.in
+index e94796cbca07d741edf769349161485fff35911a..71b0719087ce4331aae381840faff898ce1a7a39 100644
+--- a/dlls/xaudio2_4/Makefile.in
++++ b/dlls/xaudio2_4/Makefile.in
+@@ -4,6 +4,8 @@ IMPORTS   = $(FAUDIO_PE_LIBS) advapi32 ole32 user32 uuid
+ EXTRAINCL = $(FAUDIO_PE_CFLAGS)
+ PARENTSRC = ../xaudio2_7
+ 
++EXTRADLLFLAGS = -Wb,--prefer-native
++
+ SOURCES = \
+ 	xapo.c \
+ 	xaudio_allocator.c \
+diff --git a/dlls/xaudio2_5/Makefile.in b/dlls/xaudio2_5/Makefile.in
+index acc5b35e6fd96ff01d4d2c029976914472363463..cd77261a654895045c88fc9743d04bafaec20ba0 100644
+--- a/dlls/xaudio2_5/Makefile.in
++++ b/dlls/xaudio2_5/Makefile.in
+@@ -4,6 +4,8 @@ IMPORTS   = $(FAUDIO_PE_LIBS) advapi32 ole32 user32 uuid
+ EXTRAINCL = $(FAUDIO_PE_CFLAGS)
+ PARENTSRC = ../xaudio2_7
+ 
++EXTRADLLFLAGS = -Wb,--prefer-native
++
+ SOURCES = \
+ 	xapo.c \
+ 	xaudio_allocator.c \
+diff --git a/dlls/xaudio2_6/Makefile.in b/dlls/xaudio2_6/Makefile.in
+index 9e6e844813851f56f0704a28659b7a7d28d5b6b4..88c894f90f324477f94608b0d97fd02f7dc4e7a8 100644
+--- a/dlls/xaudio2_6/Makefile.in
++++ b/dlls/xaudio2_6/Makefile.in
+@@ -4,6 +4,8 @@ IMPORTS   = $(FAUDIO_PE_LIBS) advapi32 ole32 user32 uuid
+ EXTRAINCL = $(FAUDIO_PE_CFLAGS)
+ PARENTSRC = ../xaudio2_7
+ 
++EXTRADLLFLAGS = -Wb,--prefer-native
++
+ SOURCES = \
+ 	xapo.c \
+ 	xaudio_allocator.c \
+diff --git a/dlls/xaudio2_7/Makefile.in b/dlls/xaudio2_7/Makefile.in
+index e1e21766328499e32c98ab7de1afe2aa2d3ba541..136315c0b210bac69f6f73f8c4a27560ed5e51b1 100644
+--- a/dlls/xaudio2_7/Makefile.in
++++ b/dlls/xaudio2_7/Makefile.in
+@@ -3,6 +3,8 @@ MODULE    = xaudio2_7.dll
+ IMPORTS   = $(FAUDIO_PE_LIBS) advapi32 ole32 user32 uuid
+ EXTRAINCL = $(FAUDIO_PE_CFLAGS)
+ 
++EXTRADLLFLAGS = -Wb,--prefer-native
++
+ SOURCES = \
+ 	x3daudio.c \
+ 	xapo.c \
+diff --git a/dlls/xaudio2_8/Makefile.in b/dlls/xaudio2_8/Makefile.in
+index b5406fe7fd04cf633ace51a1ba778a9c0d17c5e5..f4a15960e2e70c0bc62c84b2e13d50aa5e2703ee 100644
+--- a/dlls/xaudio2_8/Makefile.in
++++ b/dlls/xaudio2_8/Makefile.in
+@@ -5,6 +5,8 @@ IMPORTS   = $(FAUDIO_PE_LIBS) advapi32 ole32 user32 uuid
+ EXTRAINCL = $(FAUDIO_PE_CFLAGS)
+ PARENTSRC = ../xaudio2_7
+ 
++EXTRADLLFLAGS = -Wb,--prefer-native
++
+ SOURCES = \
+ 	x3daudio.c \
+ 	xapo.c \
+diff --git a/dlls/xaudio2_9/Makefile.in b/dlls/xaudio2_9/Makefile.in
+index 84960c310d45d2e464ccacc4fc36b14f5f452ee8..4a9422c4014841722c8534e8b751870e947cf10b 100644
+--- a/dlls/xaudio2_9/Makefile.in
++++ b/dlls/xaudio2_9/Makefile.in
+@@ -5,6 +5,7 @@ EXTRAINCL = $(FAUDIO_PE_CFLAGS)
+ PARENTSRC = ../xaudio2_7
+ 
+ VER_PRODUCTVERSION = 10,0,19041,1
++EXTRADLLFLAGS = -Wb,--prefer-native
+ 
+ SOURCES = \
+ 	x3daudio.c \

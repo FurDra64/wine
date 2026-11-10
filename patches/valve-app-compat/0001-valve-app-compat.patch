@@ -1,0 +1,3892 @@
+diff --git a/dlls/advapi32/advapi.c b/dlls/advapi32/advapi.c
+index 4fff8944f3bde02a45cfa059ff7cad1a763a4f4e..017ee260af79d8ec3b14eb4362f8b9b93bd443d6 100644
+--- a/dlls/advapi32/advapi.c
++++ b/dlls/advapi32/advapi.c
+@@ -45,26 +45,15 @@ WINE_DEFAULT_DEBUG_CHANNEL(advapi);
+  */
+ BOOL WINAPI GetUserNameA( LPSTR name, LPDWORD size )
+ {
+-    WCHAR nameW[UNLEN + 1];
+-    DWORD length, sizeW;
+-
+-    sizeW = ARRAY_SIZE(nameW);
+-    if (!GetUserNameW( nameW, &sizeW ))
+-        return FALSE;
+-
+-    length = WideCharToMultiByte( CP_ACP, 0, nameW, -1, NULL, 0, NULL, NULL );
+-    if (name && length <= *size)
+-    {
+-        WideCharToMultiByte( CP_ACP, 0, nameW, -1, name, *size, NULL, NULL );
+-        *size = length;
+-        return TRUE;
+-    }
+-    else
+-    {
+-        *size = length;
++    static const char steamuserA[] = {'s','t','e','a','m','u','s','e','r',0};
++    if(*size < ARRAY_SIZE(steamuserA)){
+         SetLastError( ERROR_INSUFFICIENT_BUFFER );
++        *size = ARRAY_SIZE(steamuserA);
+         return FALSE;
+     }
++    memcpy(name, steamuserA, sizeof(steamuserA));
++    *size = ARRAY_SIZE(steamuserA);
++    return TRUE;
+ }
+ 
+ /******************************************************************************
+@@ -72,50 +61,14 @@ BOOL WINAPI GetUserNameA( LPSTR name, LPDWORD size )
+  */
+ BOOL WINAPI GetUserNameW( LPWSTR name, LPDWORD size )
+ {
+-    static SID network_service = {SID_REVISION, 1, {SECURITY_NT_AUTHORITY}, {SECURITY_NETWORK_SERVICE_RID}};
+-    char token_buffer[sizeof(TOKEN_USER) + sizeof(SID) + sizeof(DWORD) * SID_MAX_SUB_AUTHORITIES];
+-    TOKEN_USER *token_user = (TOKEN_USER *)token_buffer;
+-    DWORD token_buffer_size = 0, domain_size = MAX_PATH;
+-    WCHAR buffer[UNLEN + 2], domain[MAX_PATH];
+-    DWORD buffer_size = ARRAY_SIZE(buffer);
+-    SID_NAME_USE name_use;
+-
+-    TRACE("name %p, size %p.\n", name, size);
+-
+-    token_buffer_size = sizeof(token_buffer);
+-    if (!GetTokenInformation( GetCurrentThreadEffectiveToken(), TokenUser, token_user,
+-                              token_buffer_size, &token_buffer_size ))
+-        return FALSE;
+-
+-    /* The NetworkService account returns "<HOSTNAME>$" */
+-    if (EqualSid( token_user->User.Sid, &network_service ))
+-    {
+-        if (!GetComputerNameW( buffer, &buffer_size ))
+-            return FALSE;
+-
+-        wcscat( buffer, L"$" );
+-        buffer_size += 1;
+-    }
+-    else
+-    {
+-        if (!LookupAccountSidW( NULL, token_user->User.Sid, buffer, &buffer_size, domain,
+-                                &domain_size, &name_use ))
+-            return FALSE;
+-    }
+-
+-    /* buffer_size from GetComputerNameW()/LookupAccountSidW() doesn't include the terminating NUL
+-     * character on success */
+-    buffer_size += 1;
+-
+-    if (!name || *size < buffer_size)
+-    {
+-        *size = buffer_size;
++    static const WCHAR steamuserW[] = {'s','t','e','a','m','u','s','e','r',0};
++    if(*size < ARRAY_SIZE(steamuserW)){
+         SetLastError( ERROR_INSUFFICIENT_BUFFER );
++        *size = ARRAY_SIZE(steamuserW);
+         return FALSE;
+     }
+-
+-    memcpy( name, buffer, buffer_size * sizeof(WCHAR) );
+-    *size = buffer_size;
++    memcpy(name, steamuserW, sizeof(steamuserW));
++    *size = ARRAY_SIZE(steamuserW);
+     return TRUE;
+ }
+ 
+diff --git a/dlls/advapi32/crypt.c b/dlls/advapi32/crypt.c
+index b2b1be3f1c5cf8727c808113bf23defa8382d620..afaf31f939b13b52b21f1c2f7cdf1a28b5b0daa5 100644
+--- a/dlls/advapi32/crypt.c
++++ b/dlls/advapi32/crypt.c
+@@ -633,9 +633,19 @@ BOOL WINAPI CryptReleaseContext (HCRYPTPROV hProv, DWORD dwFlags)
+ 
+ 	if (InterlockedDecrement(&pProv->refcount) == 0)
+ 	{
++		static unsigned int once;
++		char sgi[64];
++
+ 		ret = pProv->pFuncs->pCPReleaseContext(pProv->hPrivate, dwFlags);
+ 		pProv->dwMagic = 0;
+-		FreeLibrary(pProv->hModule);
++		if(GetEnvironmentVariableA("SteamGameId", sgi, sizeof(sgi)) && !strcmp(sgi, "1252330"))
++		{
++			if (!once++) FIXME("HACK: not freeing provider library.\n");
++		}
++		else
++		{
++			FreeLibrary(pProv->hModule);
++		}
+ #if 0
+ 		CRYPT_Free(pProv->pVTable->pContextInfo);
+ #endif
+diff --git a/dlls/advapi32/security.c b/dlls/advapi32/security.c
+index b6f91af85b29c1820a6b00f7983c0ebb31eb6636..9493c851d469e8210e3365151794007f240f5748 100644
+--- a/dlls/advapi32/security.c
++++ b/dlls/advapi32/security.c
+@@ -244,12 +244,42 @@ BOOL ADVAPI_IsLocalComputer(LPCWSTR ServerName)
+     return Result;
+ }
+ 
++static BOOL WINAPI init_computer_sid( INIT_ONCE *init_once, void *parameter, void **context )
++{
++    DWORD *sub_authority = parameter;
++    unsigned int i, count;
++    DWORD len, index;
++    BOOL found = FALSE;
++    DWORD values[3];
++    char buffer[64];
++    LSTATUS status;
++
++    len = ARRAY_SIZE(buffer);
++    index = 0;
++    while (!(status = RegEnumKeyExA( HKEY_USERS, index, buffer, &len, NULL, NULL, NULL, NULL )))
++    {
++        count = sscanf(buffer, "S-1-5-21-%lu-%lu-%lu", &values[0], &values[1], &values[2]);
++        if (count == 3)
++        {
++            if (found)
++                ERR( "Multiple users are not supported.\n" );
++            for (i = 0; i < 3; ++i)
++                sub_authority[i] = values[i];
++            found = TRUE;
++        }
++        ++index;
++        len = ARRAY_SIZE(buffer);
++    }
++    return found;
++}
++
+ /************************************************************
+  *                ADVAPI_GetComputerSid
+  */
+ BOOL ADVAPI_GetComputerSid(PSID sid)
+ {
+-    static const struct /* same fields as struct SID */
++    static INIT_ONCE init_once = INIT_ONCE_STATIC_INIT;
++    static struct /* same fields as struct SID */
+     {
+         BYTE Revision;
+         BYTE SubAuthorityCount;
+@@ -258,6 +288,9 @@ BOOL ADVAPI_GetComputerSid(PSID sid)
+     } computer_sid =
+     { SID_REVISION, 4, { SECURITY_NT_AUTHORITY }, { SECURITY_NT_NON_UNIQUE, 0, 0, 0 } };
+ 
++    if (!InitOnceExecuteOnce( &init_once, init_computer_sid, computer_sid.SubAuthority + 1, NULL ))
++        ERR( "Could not initialize computer sid.\n" );
++
+     memcpy( sid, &computer_sid, sizeof(computer_sid) );
+     return TRUE;
+ }
+diff --git a/dlls/advapi32/tests/registry.c b/dlls/advapi32/tests/registry.c
+index cc9c0bff2c67aaf5b2466a94ebd476410b18b93d..119e287c5db8e556ade3c6daccb5920d30fc4b61 100644
+--- a/dlls/advapi32/tests/registry.c
++++ b/dlls/advapi32/tests/registry.c
+@@ -3378,6 +3378,78 @@ static void test_redirection(void)
+ 
+     RegDeleteKeyA( key32, "" );
+     RegCloseKey( key32 );
++
++    /* HKCU\\Software is shared. */
++    err = RegCreateKeyExA( HKEY_CURRENT_USER, "Software\\Wow6432Node\\tmp", 0, NULL, 0, KEY_ALL_ACCESS | KEY_WOW64_32KEY, NULL, &key, NULL );
++    ok( !err, "got %#lx.\n", err );
++    RegDeleteKeyA( key, "" );
++    RegCloseKey( key );
++
++    err = RegCreateKeyExA( HKEY_CURRENT_USER, "Software\\TestKey", 0, NULL, 0, KEY_ALL_ACCESS | KEY_WOW64_32KEY, NULL, &root64, NULL );
++    ok( !err, "got %#lx.\n", err );
++    err = RegOpenKeyExA( HKEY_CURRENT_USER, "Software\\Wow6432Node\\TestKey", 0, KEY_ALL_ACCESS | KEY_WOW64_64KEY, &root32 );
++    ok ( err == ERROR_FILE_NOT_FOUND, "got %#lx.\n", err );
++
++    err = RegCreateKeyExA( HKEY_CURRENT_USER, "Software\\Wow6432Node\\TestKey", 0, NULL, 0, KEY_ALL_ACCESS | KEY_WOW64_32KEY, NULL, &root32, NULL );
++    ok( !err, "got %#lx.\n", err );
++
++    dw = 1;
++    err = RegSetKeyValueA( root64, NULL, "val", REG_DWORD, &dw, sizeof(dw) );
++    ok( !err, "got %#lx.\n", err );
++
++    dw = 2;
++    err = RegSetKeyValueA( root32, NULL, "val", REG_DWORD, &dw, sizeof(dw) );
++    ok( !err, "got %#lx.\n", err );
++
++    err = RegCreateKeyExA( root64, "subkey", 0, NULL, 0, KEY_ALL_ACCESS | KEY_WOW64_64KEY, NULL, &key64, NULL );
++    ok( !err, "got %#lx.\n", err );
++    dw = 1;
++    err = RegSetKeyValueA( key64, NULL, "val", REG_DWORD, &dw, sizeof(dw) );
++    ok( !err, "got %#lx.\n", err );
++
++    err = RegCreateKeyExA( root32, "subkey", 0, NULL, 0, KEY_ALL_ACCESS | KEY_WOW64_32KEY, NULL, &key32, NULL );
++    ok( !err, "got %#lx.\n", err );
++    dw = 2;
++    err = RegSetKeyValueA( key32, NULL, "val", REG_DWORD, &dw, sizeof(dw) );
++    ok( !err, "got %#lx.\n", err );
++
++    err = RegOpenKeyExA( HKEY_CURRENT_USER, "Software\\TestKey", 0, KEY_ALL_ACCESS | KEY_WOW64_64KEY, &key );
++    ok( !err, "got %#lx.\n", err );
++    len = sizeof(dw);
++    err = RegQueryValueExA( key, "val", NULL, NULL, (BYTE *)&dw, &len );
++    ok( !err, "got %#lx.\n", err );
++    ok( dw == 1, "got %lu.\n", dw );
++    RegCloseKey( key );
++    err = RegOpenKeyExA( HKEY_CURRENT_USER, "Software\\TestKey", 0, KEY_ALL_ACCESS | KEY_WOW64_32KEY, &key );
++    ok( !err, "got %#lx.\n", err );
++    len = sizeof(dw);
++    err = RegQueryValueExA( key, "val", NULL, NULL, (BYTE *)&dw, &len );
++    ok( !err, "got %#lx.\n", err );
++    ok( dw == 1, "got %lu.\n", dw );
++    RegCloseKey( key );
++    err = RegOpenKeyExA( HKEY_CURRENT_USER, "Software\\TestKey\\subkey", 0, KEY_ALL_ACCESS | KEY_WOW64_64KEY, &key );
++    ok( !err, "got %#lx.\n", err );
++    len = sizeof(dw);
++    err = RegQueryValueExA( key, "val", NULL, NULL, (BYTE *)&dw, &len );
++    ok( !err, "got %#lx.\n", err );
++    ok( dw == 1, "got %lu.\n", dw );
++    RegCloseKey( key );
++    err = RegOpenKeyExA( HKEY_CURRENT_USER, "Software\\TestKey\\subkey", 0, KEY_ALL_ACCESS | KEY_WOW64_32KEY, &key );
++    ok( !err, "got %#lx.\n", err );
++    len = sizeof(dw);
++    err = RegQueryValueExA( key, "val", NULL, NULL, (BYTE *)&dw, &len );
++    ok( !err, "got %#lx.\n", err );
++    ok( dw == 1, "got %lu.\n", dw );
++    RegCloseKey( key );
++
++    RegDeleteKeyA( key64, "" );
++    RegCloseKey( key64 );
++    RegDeleteKeyA( key32, "" );
++    RegCloseKey( key32 );
++    RegDeleteKeyA( root32, "" );
++    RegCloseKey( root32 );
++    RegDeleteKeyA( root64, "" );
++    RegCloseKey( root64 );
+ }
+ 
+ static void test_classesroot(void)
+diff --git a/dlls/advapi32/tests/security.c b/dlls/advapi32/tests/security.c
+index 435cc8a5f708b6a61daca17b1e4d5fe2654e05b6..ba2b592d16b5c7e43758bc5d62fd488f25bcc8b7 100644
+--- a/dlls/advapi32/tests/security.c
++++ b/dlls/advapi32/tests/security.c
+@@ -734,6 +734,9 @@ static void test_lookupPrivilegeValue(void)
+     }
+ }
+ 
++static TOKEN_OWNER *get_alloc_token_owner( HANDLE token );
++static TOKEN_PRIMARY_GROUP *get_alloc_token_primary_group( HANDLE token );
++
+ static void test_FileSecurity(void)
+ {
+     char wintmpdir [MAX_PATH];
+@@ -748,6 +751,16 @@ static void test_FileSecurity(void)
+     const SECURITY_INFORMATION request = OWNER_SECURITY_INFORMATION
+                                        | GROUP_SECURITY_INFORMATION
+                                        | DACL_SECURITY_INFORMATION;
++    TOKEN_OWNER *owner;
++    PSID owner_sid;
++    BOOL defaulted, present;
++    TOKEN_PRIMARY_GROUP *group;
++    SECURITY_ATTRIBUTES sa;
++    PACL dacl;
++    ACL_SIZE_INFORMATION acl_size;
++    ACCESS_ALLOWED_ACE *ace;
++    static SID owner_rights_sid = { SID_REVISION, 1, { SECURITY_CREATOR_SID_AUTHORITY }, { SECURITY_CREATOR_OWNER_RIGHTS_RID } };
++    const WCHAR sd_onwer_rights_str[] = L"D:(A;;FA;;;S-1-3-4)";
+ 
+     if (!GetTempPathA (sizeof (wintmpdir), wintmpdir)) {
+         win_skip ("GetTempPathA failed\n");
+@@ -843,6 +856,58 @@ static void test_FileSecurity(void)
+     ok (GetLastError() == ERROR_FILE_NOT_FOUND,
+         "last error ERROR_FILE_NOT_FOUND expected, got %ld\n", GetLastError());
+ 
++    sa.nLength = sizeof(sa);
++    sa.bInheritHandle = FALSE;
++    rc = ConvertStringSecurityDescriptorToSecurityDescriptorW(sd_onwer_rights_str, SDDL_REVISION_1, &sa.lpSecurityDescriptor, NULL);
++    ok(rc, "got error %lu.\n", GetLastError());
++
++    DeleteFileA(file);
++    fh = CreateFileA(file, GENERIC_READ, 0, &sa, CREATE_ALWAYS, 0, NULL);
++    ok (fh != INVALID_HANDLE_VALUE, "error %lu\n", GetLastError());
++    LocalFree(sa.lpSecurityDescriptor);
++
++    rc = GetFileSecurityA (file, OWNER_SECURITY_INFORMATION, NULL, 0, &retSize);
++    ok (!rc && GetLastError() == ERROR_INSUFFICIENT_BUFFER, "got %ld, error %lu.\n", rc, GetLastError());
++    sd = HeapAlloc (GetProcessHeap (), 0, sdSize);
++    rc = GetFileSecurityA (file, OWNER_SECURITY_INFORMATION, sd, retSize, &retSize);
++    ok(rc, "got error %lu.\n", GetLastError());
++    rc = GetSecurityDescriptorOwner(sd, &owner_sid, &defaulted);
++    ok(rc, "got error %lu.\n", GetLastError());
++    ok(!defaulted, "got %d.\n", defaulted);
++    owner = get_alloc_token_owner(GetCurrentProcessToken());
++    todo_wine ok(EqualSid(owner_sid, owner->Owner), "Owner SIDs are not equal %s != %s\n", debugstr_sid(owner_sid), debugstr_sid(owner->Owner));
++    HeapFree (GetProcessHeap (), 0, owner);
++    HeapFree (GetProcessHeap (), 0, sd);
++
++    group = get_alloc_token_primary_group(GetCurrentProcessToken());
++    test_group_equal(fh, group->PrimaryGroup, __LINE__);
++    HeapFree (GetProcessHeap (), 0, group);
++
++    CloseHandle(fh);
++
++    fh = CreateFileA(file, GENERIC_READ, 0, NULL, OPEN_EXISTING, 0, NULL);
++    ok (fh != INVALID_HANDLE_VALUE, "error %lu\n", GetLastError());
++    if (fh != INVALID_HANDLE_VALUE)
++    {
++        rc = GetFileSecurityA (file, DACL_SECURITY_INFORMATION, NULL, 0, &retSize);
++        ok (!rc && GetLastError() == ERROR_INSUFFICIENT_BUFFER, "got %ld, error %lu.\n", rc, GetLastError());
++        sd = HeapAlloc (GetProcessHeap (), 0, sdSize);
++        rc = GetFileSecurityA (file, DACL_SECURITY_INFORMATION, sd, retSize, &retSize);
++        ok(rc, "got error %lu.\n", GetLastError());
++        rc = GetSecurityDescriptorDacl(sd, &present, &dacl, &defaulted);
++        ok(rc, "got error %lu.\n", GetLastError());
++        ok(present, "got %d.\n", present);
++        ok(!defaulted, "got %d.\n", defaulted);
++        rc = GetAclInformation(dacl, &acl_size, sizeof(acl_size), AclSizeInformation);
++        ok(rc, "got error %lu.\n", GetLastError());
++        ok(acl_size.AceCount == 1, "got %lu.\n", acl_size.AceCount);
++        rc = GetAce(dacl, 0, (VOID **)&ace);
++        ok(rc, "got error %lu.\n", GetLastError());
++        ok(EqualSid(&ace->SidStart, &owner_rights_sid), "Owner SIDs are not equal %s != %s\n", debugstr_sid(&ace->SidStart), debugstr_sid(&owner_rights_sid));
++        CloseHandle(fh);
++        HeapFree (GetProcessHeap (), 0, sd);
++    }
++
+ cleanup:
+     /* Remove temporary file and directory */
+     DeleteFileA(file);
+@@ -3612,7 +3677,7 @@ static void test_CreateDirectoryA(void)
+     }
+     ok(!error, "GetNamedSecurityInfo failed with error %ld\n", error);
+     test_inherited_dacl(pDacl, admin_sid, user_sid, OBJECT_INHERIT_ACE|CONTAINER_INHERIT_ACE,
+-                        0x1f01ff, FALSE, TRUE, FALSE, __LINE__);
++                        0x1f01ff, FALSE, FALSE, FALSE, __LINE__);
+     LocalFree(pSD);
+ 
+     /* Test inheritance of ACLs in CreateFile without security descriptor */
+@@ -3658,7 +3723,6 @@ static void test_CreateDirectoryA(void)
+     ok(error == ERROR_SUCCESS, "GetNamedSecurityInfo failed with error %ld\n", error);
+     bret = GetAclInformation(pDacl, &acl_size, sizeof(acl_size), AclSizeInformation);
+     ok(bret, "GetAclInformation failed\n");
+-    todo_wine
+     ok(acl_size.AceCount == 0, "GetAclInformation returned unexpected entry count (%ld != 0).\n",
+                                acl_size.AceCount);
+     LocalFree(pSD);
+@@ -3668,15 +3732,11 @@ static void test_CreateDirectoryA(void)
+                                   (PSID *)&owner, NULL, &pDacl, NULL, &pSD);
+     todo_wine
+     ok(error == ERROR_SUCCESS, "GetNamedSecurityInfo failed with error %ld\n", error);
+-    if (error == ERROR_SUCCESS)
+-    {
+-        bret = GetAclInformation(pDacl, &acl_size, sizeof(acl_size), AclSizeInformation);
+-        ok(bret, "GetAclInformation failed\n");
+-        todo_wine
+-        ok(acl_size.AceCount == 0, "GetAclInformation returned unexpected entry count (%ld != 0).\n",
+-                                   acl_size.AceCount);
+-        LocalFree(pSD);
+-    }
++    bret = GetAclInformation(pDacl, &acl_size, sizeof(acl_size), AclSizeInformation);
++    ok(bret, "GetAclInformation failed\n");
++    ok(acl_size.AceCount == 0, "GetAclInformation returned unexpected entry count (%ld != 0).\n",
++                               acl_size.AceCount);
++    LocalFree(pSD);
+     CloseHandle(hTemp);
+ 
+     /* Test inheritance of ACLs in NtCreateFile without security descriptor */
+@@ -3746,16 +3806,154 @@ static void test_CreateDirectoryA(void)
+                                   OWNER_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION,
+                                   (PSID *)&owner, NULL, &pDacl, NULL, &pSD);
+     todo_wine
++    ok(acl_size.AceCount == 0, "GetAclInformation returned unexpected entry count (%ld != 0).\n",
++                               acl_size.AceCount);
++    LocalFree(pSD);
++    CloseHandle(hTemp);
++
++    /* Test inheritance of ACLs in CreateDirectory without security descriptor */
++    strcpy(tmpfile, tmpdir);
++    lstrcatA(tmpfile, "/tmpdir");
++    bret = CreateDirectoryA(tmpfile, NULL);
++    ok(bret == TRUE, "CreateDirectoryA failed with error %lu\n", GetLastError());
++
++    error = GetNamedSecurityInfoA(tmpfile, SE_FILE_OBJECT,
++                                   OWNER_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION,
++                                   (PSID *)&owner, NULL, &pDacl, NULL, &pSD);
++    ok(error == ERROR_SUCCESS, "Failed to get permissions on file\n");
++    test_inherited_dacl(pDacl, admin_sid, user_sid,
++                        OBJECT_INHERIT_ACE | CONTAINER_INHERIT_ACE | INHERITED_ACE,
++                        0x1f01ff, TRUE, TRUE, TRUE, __LINE__);
++    LocalFree(pSD);
++    bret = RemoveDirectoryA(tmpfile);
++    ok(bret == TRUE, "RemoveDirectoryA failed with error %lu\n", GetLastError());
++
++    /* Test inheritance of ACLs in CreateDirectory with security descriptor */
++    pSD = &sd;
++    InitializeSecurityDescriptor(pSD, SECURITY_DESCRIPTOR_REVISION);
++    pDacl = HeapAlloc(GetProcessHeap(), 0, sizeof(ACL));
++    bret = InitializeAcl(pDacl, sizeof(ACL), ACL_REVISION);
++    ok(bret, "Failed to initialize ACL\n");
++    bret = SetSecurityDescriptorDacl(pSD, TRUE, pDacl, FALSE);
++    ok(bret, "Failed to add ACL to security desciptor\n");
++
++    strcpy(tmpfile, tmpdir);
++    lstrcatA(tmpfile, "/tmpdir1");
++
++    sa.nLength = sizeof(sa);
++    sa.lpSecurityDescriptor = pSD;
++    sa.bInheritHandle = TRUE;
++    bret = CreateDirectoryA(tmpfile, &sa);
++    ok(bret == TRUE, "CreateDirectoryA failed with error %lu\n", GetLastError());
++    HeapFree(GetProcessHeap(), 0, pDacl);
++
++    error = GetNamedSecurityInfoA(tmpfile, SE_FILE_OBJECT,
++                                   OWNER_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION,
++                                   (PSID *)&owner, NULL, &pDacl, NULL, &pSD);
++    ok(error == ERROR_SUCCESS, "GetNamedSecurityInfo failed with error %lu\n", error);
++    bret = GetAclInformation(pDacl, &acl_size, sizeof(acl_size), AclSizeInformation);
++    ok(bret, "GetAclInformation failed\n");
++    ok(acl_size.AceCount == 0, "GetAclInformation returned unexpected entry count (%lu != 0).\n",
++                               acl_size.AceCount);
++    LocalFree(pSD);
++
++    SetLastError(0xdeadbeef);
++    bret = RemoveDirectoryA(tmpfile);
++    error = GetLastError();
++    ok(bret == FALSE, "RemoveDirectoryA unexpected succeeded\n");
++    ok(error == ERROR_ACCESS_DENIED, "expected ERROR_ACCESS_DENIED, got %lu\n", error);
++
++    pSD = &sd;
++    InitializeSecurityDescriptor(pSD, SECURITY_DESCRIPTOR_REVISION);
++    pDacl = HeapAlloc(GetProcessHeap(), 0, 100);
++    bret = InitializeAcl(pDacl, 100, ACL_REVISION);
++    ok(bret, "Failed to initialize ACL.\n");
++    bret = AddAccessAllowedAceEx(pDacl, ACL_REVISION, 0, GENERIC_ALL, user_sid);
++    ok(bret, "Failed to add Current User to ACL.\n");
++    bret = SetSecurityDescriptorDacl(pSD, TRUE, pDacl, FALSE);
++    ok(bret, "Failed to add ACL to security desciptor.\n");
++    error = SetNamedSecurityInfoA(tmpfile, SE_FILE_OBJECT, DACL_SECURITY_INFORMATION, NULL,
++                                   NULL, pDacl, NULL);
++    ok(error == ERROR_SUCCESS, "SetNamedSecurityInfoA failed with error %lu\n", error);
++    HeapFree(GetProcessHeap(), 0, pDacl);
++
++    bret = RemoveDirectoryA(tmpfile);
++    ok(bret == TRUE, "RemoveDirectoryA failed with error %lu\n", GetLastError());
++
++    /* Test inheritance of ACLs in NtCreateFile(..., FILE_DIRECTORY_FILE, ...) without security descriptor */
++    strcpy(tmpfile, tmpdir);
++    lstrcatA(tmpfile, "/tmpdir");
++    get_nt_pathW(tmpfile, &tmpfileW);
++
++    attr.Length = sizeof(attr);
++    attr.RootDirectory = 0;
++    attr.ObjectName = &tmpfileW;
++    attr.Attributes = OBJ_CASE_INSENSITIVE;
++    attr.SecurityDescriptor = NULL;
++    attr.SecurityQualityOfService = NULL;
++
++    status = NtCreateFile(&hTemp, GENERIC_READ | DELETE, &attr, &io, NULL, FILE_ATTRIBUTE_NORMAL,
++                           FILE_SHARE_READ, FILE_CREATE, FILE_DIRECTORY_FILE | FILE_DELETE_ON_CLOSE, NULL, 0);
++    ok(!status, "NtCreateFile failed with %08lx\n", status);
++    RtlFreeUnicodeString(&tmpfileW);
++
++    error = GetNamedSecurityInfoA(tmpfile, SE_FILE_OBJECT,
++                                   OWNER_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION,
++                                   (PSID *)&owner, NULL, &pDacl, NULL, &pSD);
++    ok(error == ERROR_SUCCESS, "Failed to get permissions on file\n");
++    test_inherited_dacl(pDacl, admin_sid, user_sid,
++                        OBJECT_INHERIT_ACE | CONTAINER_INHERIT_ACE | INHERITED_ACE,
++                        0x1f01ff, TRUE, TRUE, TRUE, __LINE__);
++    LocalFree(pSD);
++    CloseHandle(hTemp);
++
++    /* Test inheritance of ACLs in NtCreateFile(..., FILE_DIRECTORY_FILE, ...) with security descriptor */
++    pSD = &sd;
++    InitializeSecurityDescriptor(pSD, SECURITY_DESCRIPTOR_REVISION);
++    pDacl = HeapAlloc(GetProcessHeap(), 0, sizeof(ACL));
++    bret = InitializeAcl(pDacl, sizeof(ACL), ACL_REVISION);
++    ok(bret, "Failed to initialize ACL\n");
++    bret = SetSecurityDescriptorDacl(pSD, TRUE, pDacl, FALSE);
++    ok(bret, "Failed to add ACL to security desciptor\n");
++
++    strcpy(tmpfile, tmpdir);
++    lstrcatA(tmpfile, "/tmpdir2");
++    get_nt_pathW(tmpfile, &tmpfileW);
++
++    attr.Length = sizeof(attr);
++    attr.RootDirectory = 0;
++    attr.ObjectName = &tmpfileW;
++    attr.Attributes = OBJ_CASE_INSENSITIVE;
++    attr.SecurityDescriptor = pSD;
++    attr.SecurityQualityOfService = NULL;
++
++    status = NtCreateFile(&hTemp, GENERIC_READ | DELETE, &attr, &io, NULL, FILE_ATTRIBUTE_NORMAL,
++                           FILE_SHARE_READ, FILE_CREATE, FILE_DIRECTORY_FILE | FILE_DELETE_ON_CLOSE, NULL, 0);
++    ok(!status, "NtCreateFile failed with %08lx\n", status);
++    RtlFreeUnicodeString(&tmpfileW);
++    HeapFree(GetProcessHeap(), 0, pDacl);
++
++    error = GetSecurityInfo(hTemp, SE_FILE_OBJECT,
++                             OWNER_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION,
++                             (PSID *)&owner, NULL, &pDacl, NULL, &pSD);
+     ok(error == ERROR_SUCCESS, "GetNamedSecurityInfo failed with error %ld\n", error);
+-    if (error == ERROR_SUCCESS)
+-    {
+-        bret = GetAclInformation(pDacl, &acl_size, sizeof(acl_size), AclSizeInformation);
+-        ok(bret, "GetAclInformation failed\n");
+-        todo_wine
+-        ok(acl_size.AceCount == 0, "GetAclInformation returned unexpected entry count (%ld != 0).\n",
+-                                   acl_size.AceCount);
+-        LocalFree(pSD);
+-    }
++    bret = GetAclInformation(pDacl, &acl_size, sizeof(acl_size), AclSizeInformation);
++    ok(bret, "GetAclInformation failed\n");
++    todo_wine
++    ok(acl_size.AceCount == 0, "GetAclInformation returned unexpected entry count (%ld != 0).\n",
++                               acl_size.AceCount);
++    LocalFree(pSD);
++
++    error = GetNamedSecurityInfoA(tmpfile, SE_FILE_OBJECT,
++                                   OWNER_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION,
++                                   (PSID *)&owner, NULL, &pDacl, NULL, &pSD);
++    ok(error == ERROR_SUCCESS, "GetNamedSecurityInfo failed with error %ld\n", error);
++    bret = GetAclInformation(pDacl, &acl_size, sizeof(acl_size), AclSizeInformation);
++    ok(bret, "GetAclInformation failed\n");
++    todo_wine
++    ok(acl_size.AceCount == 0, "GetAclInformation returned unexpected entry count (%ld != 0).\n",
++                               acl_size.AceCount);
++    LocalFree(pSD);
+     CloseHandle(hTemp);
+ 
+ done:
+@@ -3916,21 +4114,20 @@ static void test_GetNamedSecurityInfoA(void)
+         bret = GetAce(pDacl, 0, (VOID **)&ace);
+         ok(bret, "Failed to get Current User ACE.\n");
+         bret = EqualSid(&ace->SidStart, user_sid);
+-        todo_wine ok(bret, "Current User ACE (%s) != Current User SID (%s).\n",
+-                     debugstr_sid(&ace->SidStart), debugstr_sid(user_sid));
++        ok(bret, "Current User ACE (%s) != Current User SID (%s).\n",
++           debugstr_sid(&ace->SidStart), debugstr_sid(user_sid));
+         ok(((ACE_HEADER *)ace)->AceFlags == 0,
+            "Current User ACE has unexpected flags (0x%x != 0x0)\n", ((ACE_HEADER *)ace)->AceFlags);
+-        ok(ace->Mask == 0x1f01ff, "Current User ACE has unexpected mask (0x%lx != 0x1f01ff)\n",
+-                                  ace->Mask);
++        ok(ace->Mask == 0x1f01ff,
++           "Current User ACE has unexpected mask (0x%lx != 0x1f01ff)\n", ace->Mask);
+     }
+     if (acl_size.AceCount > 1)
+     {
+         bret = GetAce(pDacl, 1, (VOID **)&ace);
+         ok(bret, "Failed to get Administators Group ACE.\n");
+         bret = EqualSid(&ace->SidStart, admin_sid);
+-        todo_wine ok(bret || broken(!bret) /* win2k */,
+-                     "Administators Group ACE (%s) != Administators Group SID (%s).\n",
+-                     debugstr_sid(&ace->SidStart), debugstr_sid(admin_sid));
++        ok(bret || broken(!bret) /* win2k */, "Administators Group ACE (%s) != Administators Group SID (%s).\n",
++           debugstr_sid(&ace->SidStart), debugstr_sid(admin_sid));
+         ok(((ACE_HEADER *)ace)->AceFlags == 0,
+            "Administators Group ACE has unexpected flags (0x%x != 0x0)\n", ((ACE_HEADER *)ace)->AceFlags);
+         ok(ace->Mask == 0x1f01ff || broken(ace->Mask == GENERIC_ALL) /* win2k */,
+@@ -3957,8 +4154,8 @@ static void test_GetNamedSecurityInfoA(void)
+     {
+         bret = GetAce(pDacl, 0, (VOID **)&ace);
+         ok(bret, "Failed to get ACE.\n");
+-        todo_wine ok(((ACE_HEADER *)ace)->AceFlags & INHERITED_ACE,
+-                "ACE has unexpected flags: 0x%x\n", ((ACE_HEADER *)ace)->AceFlags);
++        ok(((ACE_HEADER *)ace)->AceFlags & INHERITED_ACE,
++           "ACE has unexpected flags: 0x%x\n", ((ACE_HEADER *)ace)->AceFlags);
+     }
+     LocalFree(pSD);
+ 
+@@ -4763,23 +4960,22 @@ static void test_GetSecurityInfo(void)
+         bret = GetAce(pDacl, 0, (VOID **)&ace);
+         ok(bret, "Failed to get Current User ACE.\n");
+         bret = EqualSid(&ace->SidStart, user_sid);
+-        todo_wine ok(bret, "Current User ACE (%s) != Current User SID (%s).\n",
+-                     debugstr_sid(&ace->SidStart), debugstr_sid(user_sid));
++        ok(bret, "Current User ACE (%s) != Current User SID (%s).\n", debugstr_sid(&ace->SidStart), debugstr_sid(user_sid));
+         ok(((ACE_HEADER *)ace)->AceFlags == 0,
+            "Current User ACE has unexpected flags (0x%x != 0x0)\n", ((ACE_HEADER *)ace)->AceFlags);
+         ok(ace->Mask == 0x1f01ff, "Current User ACE has unexpected mask (0x%lx != 0x1f01ff)\n",
+-                                    ace->Mask);
++                                  ace->Mask);
+     }
+     if (acl_size.AceCount > 1)
+     {
+         bret = GetAce(pDacl, 1, (VOID **)&ace);
+         ok(bret, "Failed to get Administators Group ACE.\n");
+         bret = EqualSid(&ace->SidStart, admin_sid);
+-        todo_wine ok(bret, "Administators Group ACE (%s) != Administators Group SID (%s).\n", debugstr_sid(&ace->SidStart), debugstr_sid(admin_sid));
++        ok(bret, "Administators Group ACE (%s) != Administators Group SID (%s).\n", debugstr_sid(&ace->SidStart), debugstr_sid(admin_sid));
+         ok(((ACE_HEADER *)ace)->AceFlags == 0,
+            "Administators Group ACE has unexpected flags (0x%x != 0x0)\n", ((ACE_HEADER *)ace)->AceFlags);
+-        ok(ace->Mask == 0x1f01ff, "Administators Group ACE has unexpected mask (0x%lx != 0x1f01ff)\n",
+-                                  ace->Mask);
++        ok(ace->Mask == 0x1f01ff,
++                     "Administators Group ACE has unexpected mask (0x%lx != 0x1f01ff)\n", ace->Mask);
+     }
+     LocalFree(pSD);
+     CloseHandle(obj);
+diff --git a/dlls/dbghelp/elf_module.c b/dlls/dbghelp/elf_module.c
+index b29382de1c7b0aba7e272121a06470e0217bfb7f..2cdcb67c73f853f8bfeecba46049f08d30eb8a69 100644
+--- a/dlls/dbghelp/elf_module.c
++++ b/dlls/dbghelp/elf_module.c
+@@ -1470,6 +1470,59 @@ static BOOL elf_search_and_load_file(struct process* pcs, const WCHAR* filename,
+ typedef BOOL (*enum_elf_modules_cb)(const WCHAR*, ULONG_PTR load_addr,
+                                     ULONG_PTR dyn_addr, BOOL is_system, void* user);
+ 
++static BOOL elf_linkmap_validate_entry(const struct process* pcs, DWORD64 base, DWORD64 name_addr, WCHAR* buffer, SIZE_T buflen)
++{
++    static DWORD page_size;
++    MEMORY_BASIC_INFORMATION mem_info;
++    char bufstr[MAX_PATH];
++
++    if (!page_size)
++    {
++        SYSTEM_INFO sys_info;
++        GetSystemInfo(&sys_info);
++        page_size = sys_info.dwPageSize;
++    }
++    if (base & (page_size - 1))
++    {
++        WARN("Unaligned base addr=%I64x page_size=%lx\n", base, page_size);
++        return FALSE;
++    }
++    if (VirtualQueryEx(pcs->handle, (void*)(ULONG_PTR)base, &mem_info, sizeof(mem_info)))
++    {
++        if (mem_info.BaseAddress != (void*)(ULONG_PTR)base)
++        {
++            WARN("Invalid base addr %I64x (beg map at %p)\n", base, mem_info.BaseAddress);
++            return FALSE;
++        }
++    }
++    else
++    {
++        /* Some ELF modules are loaded in 32bit mode above 2G limit,
++         * and virtual query will fail on these addresses when process is not large address aware.
++         * Don't consider this as an error for a 32bit debuggee.
++         */
++        if (pcs->is_64bit)
++        {
++            WARN("Invalid base addr %I64x\n", base);
++            return FALSE;
++        }
++    }
++
++    memset(bufstr, ' ', sizeof(bufstr));
++    if (!read_process_memory(pcs, name_addr, bufstr, sizeof(bufstr)))
++    {
++        WARN("Invalid name_address %I64x\n", name_addr);
++        return FALSE;
++    }
++    if (!memchr(bufstr, '\0', sizeof(bufstr)))
++    {
++        WARN("Unterminated string %s\n", wine_dbgstr_an(bufstr, sizeof(bufstr)));
++        return FALSE;
++    }
++    MultiByteToWideChar(CP_UNIXCP, 0, bufstr, -1, buffer, buflen);
++    return TRUE;
++}
++
+ /******************************************************************
+  *		elf_enum_modules_internal
+  *
+@@ -1479,8 +1532,7 @@ static BOOL elf_enum_modules_internal(const struct process* pcs,
+                                       const WCHAR* main_name,
+                                       enum_elf_modules_cb cb, void* user)
+ {
+-    WCHAR bufstrW[MAX_PATH];
+-    char bufstr[256];
++    WCHAR bufstr[MAX_PATH];
+     ULONG_PTR lm_addr;
+ 
+     if (pcs->is_host_64bit)
+@@ -1514,15 +1566,16 @@ static BOOL elf_enum_modules_internal(const struct process* pcs,
+             if (!read_process_memory(pcs, lm_addr, &lm, sizeof(lm)))
+                 return FALSE;
+ 
+-            if (lm.l_prev && /* skip first entry, normally debuggee itself */
+-                lm.l_name && read_process_memory(pcs, lm.l_name, bufstr, sizeof(bufstr)))
++            /* skip first entry(normally debuggee itself) and entries without names */
++            if (!lm.l_prev || !lm.l_name) continue;
++            if (!elf_linkmap_validate_entry(pcs, lm.l_addr, lm.l_name, bufstr, ARRAY_SIZE(bufstr)))
+             {
+-                bufstr[sizeof(bufstr) - 1] = '\0';
+-                MultiByteToWideChar(CP_UNIXCP, 0, bufstr, -1, bufstrW, ARRAY_SIZE(bufstrW));
+-                if (main_name && !bufstrW[0]) lstrcpyW(bufstrW, main_name);
+-                if (!cb(bufstrW, (ULONG_PTR)lm.l_addr, (ULONG_PTR)lm.l_ld, FALSE, user))
+-                    break;
++                FIXME("Incorrect link_map entry, bailing out\n");
++                return FALSE;
+             }
++            if (main_name && !bufstr[0]) lstrcpyW(bufstr, main_name);
++            if (!cb(bufstr, (ULONG_PTR)lm.l_addr, (ULONG_PTR)lm.l_ld, FALSE, user))
++                break;
+         }
+     }
+     else
+@@ -1556,15 +1609,16 @@ static BOOL elf_enum_modules_internal(const struct process* pcs,
+             if (!read_process_memory(pcs, lm_addr, &lm, sizeof(lm)))
+                 return FALSE;
+ 
+-            if (lm.l_prev && /* skip first entry, normally debuggee itself */
+-                lm.l_name && read_process_memory(pcs, lm.l_name, bufstr, sizeof(bufstr)))
++            /* skip first entry(normally debuggee itself) and entries without names */
++            if (!lm.l_prev || !lm.l_name) continue;
++            if (!elf_linkmap_validate_entry(pcs, lm.l_addr, lm.l_name, bufstr, ARRAY_SIZE(bufstr)))
+             {
+-                bufstr[sizeof(bufstr) - 1] = '\0';
+-                MultiByteToWideChar(CP_UNIXCP, 0, bufstr, -1, bufstrW, ARRAY_SIZE(bufstrW));
+-                if (main_name && !bufstrW[0]) lstrcpyW(bufstrW, main_name);
+-                if (!cb(bufstrW, (ULONG_PTR)lm.l_addr, (ULONG_PTR)lm.l_ld, FALSE, user))
+-                    break;
++                FIXME("Incorrect link_map entry, bailing out\n");
++                return FALSE;
+             }
++            if (main_name && !bufstr[0]) lstrcpyW(bufstr, main_name);
++            if (!cb(bufstr, (ULONG_PTR)lm.l_addr, (ULONG_PTR)lm.l_ld, FALSE, user))
++                break;
+         }
+     }
+ 
+diff --git a/dlls/imm32/ime.c b/dlls/imm32/ime.c
+index a6663d79722169160e8b21db7063fcfc3ac7b7e6..58a0baa3086dc7dd0826f11b66227498cf04e087 100644
+--- a/dlls/imm32/ime.c
++++ b/dlls/imm32/ime.c
+@@ -464,7 +464,7 @@ static LRESULT WINAPI ime_ui_window_proc( HWND hwnd, UINT msg, WPARAM wparam, LP
+     case WM_IME_CONTROL:
+         FIXME( "hwnd %p, himc %p, msg %s, wparam %s, lparam %#Ix stub!\n", hwnd, himc,
+                debugstr_wm_ime(msg), debugstr_imc(wparam), lparam );
+-        return 1;
++        return 0;
+     }
+ 
+     return DefWindowProcW( hwnd, msg, wparam, lparam );
+diff --git a/dlls/imm32/tests/imm32.c b/dlls/imm32/tests/imm32.c
+index a4ace7f7ba248325b9aaf520eaf0b8d5c689b3dd..50f134920eb6d7d1c965c05a58cb25043e5e6e40 100644
+--- a/dlls/imm32/tests/imm32.c
++++ b/dlls/imm32/tests/imm32.c
+@@ -6590,7 +6590,7 @@ static void test_ImmSetCompositionWindow(void)
+     ok_ne( NULL, himc, HIMC, "%p" );
+     ctx = ImmLockIMC( himc );
+     ok_ne( NULL, ctx, INPUTCONTEXT *, "%p" );
+-    process_messages();
++    flush_events();
+     memset( ime_calls, 0, sizeof(ime_calls) );
+     ime_call_count = 0;
+ 
+diff --git a/dlls/mscoree/metahost.c b/dlls/mscoree/metahost.c
+index 262a9851c698a94b33d2743f38052651e2798c1b..f0599290d3a13bcfb07d6464e9dc16f6efed00ed 100644
+--- a/dlls/mscoree/metahost.c
++++ b/dlls/mscoree/metahost.c
+@@ -793,7 +793,8 @@ static BOOL get_mono_path_registry(LPWSTR path)
+ 
+ static BOOL get_mono_path_dos(const WCHAR *dir, LPWSTR path)
+ {
+-    static const WCHAR basedir[] = L"\\wine-mono-" WINE_MONO_VERSION;
++    static const WCHAR basedir[] = L"\\wine-mono";
++    static const WCHAR basedir2[] = L"\\wine-mono-" WINE_MONO_VERSION;
+     LPWSTR dos_dir;
+     WCHAR mono_dll_path[MAX_PATH];
+     DWORD len;
+@@ -810,6 +811,20 @@ static BOOL get_mono_path_dos(const WCHAR *dir, LPWSTR path)
+ 
+     free(dos_dir);
+ 
++    if (!ret)
++    {
++        len = lstrlenW( dir ) + lstrlenW( basedir2 ) + 1;
++        if (!(dos_dir = malloc( len * sizeof(WCHAR) ))) return FALSE;
++        lstrcpyW( dos_dir, dir );
++        lstrcatW( dos_dir, basedir2 );
++
++        ret = find_mono_dll(dos_dir, mono_dll_path);
++        if (ret)
++            lstrcpyW(path, dos_dir);
++
++        free(dos_dir);
++    }
++
+     return ret;
+ }
+ 
+@@ -1722,6 +1737,44 @@ static MonoAssembly* mono_assembly_try_load(WCHAR *path)
+     return result;
+ }
+ 
++static BOOL compile_assembly(const char *source, const char *target, char *target_path, DWORD target_path_len)
++{
++    static const char *csc = "C:\\windows\\Microsoft.NET\\Framework\\v2.0.50727\\csc.exe";
++    char cmdline[2 * MAX_PATH + 74], tmp[MAX_PATH], tmpdir[MAX_PATH], source_path[MAX_PATH];
++    STARTUPINFOA si = {.cb = sizeof(STARTUPINFOA)};
++    PROCESS_INFORMATION pi;
++    HANDLE file;
++    DWORD size;
++    BOOL ret;
++    LUID id;
++
++    if (!PathFileExistsA(csc)) return FALSE;
++    if (!AllocateLocallyUniqueId(&id)) return FALSE;
++
++    GetTempPathA(MAX_PATH, tmp);
++    if (!GetTempFileNameA(tmp, "assembly", id.LowPart, tmpdir)) return FALSE;
++    if (!CreateDirectoryA(tmpdir, NULL) && GetLastError() != ERROR_ALREADY_EXISTS) return FALSE;
++
++    snprintf(source_path, MAX_PATH, "%s\\source.cs", tmpdir);
++    snprintf(target_path, target_path_len, "%s\\%s", tmpdir, target);
++
++    file = CreateFileA(source_path, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
++    if (file == INVALID_HANDLE_VALUE) return FALSE;
++    ret = WriteFile(file, source, strlen(source), &size, NULL);
++    CloseHandle(file);
++    if (!ret) return FALSE;
++
++    snprintf(cmdline, ARRAY_SIZE(cmdline), "%s /t:library /out:\"%s\" \"%s\"", csc, target_path, source_path);
++    ret = CreateProcessA(csc, cmdline, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi);
++    if (!ret) return FALSE;
++
++    WaitForSingleObject(pi.hProcess, INFINITE);
++    CloseHandle(pi.hThread);
++    CloseHandle(pi.hProcess);
++
++    return PathFileExistsA(target_path);
++}
++
+ static MonoAssembly* CDECL mono_assembly_preload_hook_fn(MonoAssemblyName *aname, char **assemblies_path, void *user_data)
+ {
+     int flags = 0;
+@@ -1754,6 +1807,8 @@ static MonoAssembly* CDECL wine_mono_assembly_preload_hook_v2_fn(MonoAssemblyNam
+     static const WCHAR dotdllW[] = {'.','d','l','l',0};
+     static const WCHAR dotexeW[] = {'.','e','x','e',0};
+ 
++    const char *sgi = getenv("SteamGameId");
++
+     stringname = mono_stringify_assembly_name(aname);
+     assemblyname = mono_assembly_name_get_name(aname);
+     culture = mono_assembly_name_get_culture(aname);
+@@ -1810,6 +1865,99 @@ static MonoAssembly* CDECL wine_mono_assembly_preload_hook_v2_fn(MonoAssemblyNam
+         }
+     }
+ 
++    if (!strcmp(assemblyname, "ManagedStarter"))
++    {
++        /* HACK for Mount & Blade II: Bannerlord
++         *
++         * The launcher executable uses an AssemblyResolve event handler
++         * to redirect loads of the "ManagedStarter" assembly to
++         * Bannerlord.exe. Due to Mono issue #11319, the runtime attempts
++         * to load ManagedStarter before executing the static constructor
++         * that adds this event handler. We work around this by doing the
++         * same thing in our own assembly load hook. */
++        if (sgi && !strcmp(sgi, "261550"))
++        {
++            FIXME("hack, using Bannerlord.exe\n");
++
++            result = mono_assembly_open("Bannerlord.exe", &stat);
++
++            if (result)
++                goto done;
++            else
++                ERR("Bannerlord.exe failed to load\n");
++        }
++    }
++
++    /* HACK for games which reference a type from a non-existing DLL.
++     * Native .NET framework normally gets away with it but Mono cannot
++     * due to some deeply rooted differences. */
++    if (sgi)
++    {
++        size_t i;
++
++        static const struct {
++            const char *assembly_name;
++            const char *module_name;
++            const char *appid;
++            const char *source;
++            const WCHAR *library;
++        } assembly_hacks[] = {
++            {
++                "CameraQuakeViewer",
++                "CameraQuakeViewer.dll",
++                "527280", /* Nights of Azure */
++                "namespace CQViewer { class CQMgr {} }"
++            },
++            {
++                "UnrealEdCSharp",
++                "UnrealEdCSharp.dll",
++                "317940", /* Karmaflow */
++                "namespace ContentBrowser { class IContentBrowserBackendInterface {} class Package {} } "
++            },
++            {
++                "UnrealEdCSharp",
++                "UnrealEdCSharp.dll",
++                "321360", /* Primal Carnage: Extinction */
++                "namespace ContentBrowser { class IContentBrowserBackendInterface {} class Package {} } "
++            },
++            {
++                "DockPanel",
++                "DockPanel.dll",
++                "46450", /* Grotesque Tactics: Evil Heroes  */
++                "namespace WeifenLuo.WinFormsUI { class DockPanel {} }"
++            },
++            {
++                "EdgeBrowserControl",
++                "EdgeBrowserControl.dll",
++                NULL,
++                "namespace EdgeBrowserControl { class MyWebBrowser {} }",
++                L"SharpKmyCore"
++            },
++        };
++
++        for (i = 0; i < ARRAY_SIZE(assembly_hacks); ++i)
++        {
++            if (!strcmp(assemblyname, assembly_hacks[i].assembly_name) &&
++                    (!assembly_hacks[i].appid || !strcmp(sgi, assembly_hacks[i].appid)) &&
++                    (!assembly_hacks[i].library || GetModuleHandleW(assembly_hacks[i].library)))
++            {
++                char assembly_path[MAX_PATH];
++
++                FIXME("HACK: Building %s\n", assembly_hacks[i].module_name);
++
++                if (compile_assembly(assembly_hacks[i].source, assembly_hacks[i].module_name, assembly_path, MAX_PATH))
++                    result = mono_assembly_open(assembly_path, &stat);
++                else
++                    ERR("HACK: Failed to build %s\n", assembly_hacks[i].assembly_name);
++
++                if (result)
++                    goto done;
++
++                ERR("HACK: Failed to load %s\n", assembly_hacks[i].assembly_name);
++            }
++        }
++    }
++
+     if ((search_flags & ASSEMBLY_SEARCH_GAC) != 0)
+     {
+         stringnameW_size = MultiByteToWideChar(CP_UTF8, 0, stringname, -1, NULL, 0);
+diff --git a/dlls/mscoree/mscoree_main.c b/dlls/mscoree/mscoree_main.c
+index d65cc25993cfb626c99a1077ba30f70f73ceb7a1..5758b35cf848c2873bce7f1c1aaf8910f0218429 100644
+--- a/dlls/mscoree/mscoree_main.c
++++ b/dlls/mscoree/mscoree_main.c
+@@ -796,7 +796,7 @@ static BOOL invoke_appwiz(void)
+     return ret;
+ }
+ 
+-static BOOL get_support_msi(LPCWSTR mono_path, LPWSTR msi_path)
++static BOOL get_support_msi(LPCWSTR mono_path, LPWSTR msi_path, BOOL ignore_version)
+ {
+     static const WCHAR support_msi_relative[] = {'\\','s','u','p','p','o','r','t','\\','w','i','n','e','m','o','n','o','-','s','u','p','p','o','r','t','.','m','s','i',0};
+     UINT (WINAPI *pMsiOpenPackageW)(LPCWSTR,ULONG*);
+@@ -834,7 +834,7 @@ static BOOL get_support_msi(LPCWSTR mono_path, LPWSTR msi_path)
+     if (res == ERROR_SUCCESS) {
+         TRACE("found support msi version %s at %s\n", versionstringbuf, debugstr_w(msi_path));
+ 
+-        if (compare_versions(WINE_MONO_VERSION, versionstringbuf) <= 0)
++        if (ignore_version || compare_versions(WINE_MONO_VERSION, versionstringbuf) <= 0)
+         {
+             ret = TRUE;
+         }
+@@ -918,12 +918,12 @@ static BOOL install_wine_mono(void)
+ 
+     initresult = CoInitialize(NULL);
+ 
+-    ret = get_support_msi(mono_path, support_msi_path);
++    ret = get_support_msi(mono_path, support_msi_path, FALSE);
+     if (!ret)
+     {
+         /* Try looking outside c:\windows\mono */
+         ret = (get_mono_path(mono_path, TRUE) &&
+-            get_support_msi(mono_path, support_msi_path));
++            get_support_msi(mono_path, support_msi_path, TRUE));
+     }
+ 
+     if (ret)
+diff --git a/dlls/msctf/msctf.c b/dlls/msctf/msctf.c
+index e2dde836b12f5dab53db2f78ecbf159610ddda2e..a79a32afc02533d33f7c48f100a00907a1c59c41 100644
+--- a/dlls/msctf/msctf.c
++++ b/dlls/msctf/msctf.c
+@@ -67,7 +67,6 @@ static UINT array_size;
+ static struct list AtsList = LIST_INIT(AtsList);
+ static UINT activated = 0;
+ 
+-DWORD tlsIndex = 0;
+ TfClientId processId = 0;
+ ITfCompartmentMgr *globalCompartmentMgr = NULL;
+ 
+@@ -394,23 +393,19 @@ HRESULT add_active_textservice(TF_LANGUAGEPROFILE *lp)
+     ActivatedTextService *actsvr;
+     ITfCategoryMgr *catmgr;
+     AtsEntry *entry;
+-    ITfThreadMgrEx *tm = TlsGetValue(tlsIndex);
++    ITfThreadMgr *tm;
+     ITfClientId *clientid;
+ 
+-    if (!tm) return E_UNEXPECTED;
++    if (FAILED(TF_GetThreadMgr(&tm))) return E_UNEXPECTED;
+ 
+     actsvr = malloc(sizeof(ActivatedTextService));
+-    if (!actsvr) return E_OUTOFMEMORY;
++    if (!actsvr) goto fail;
+ 
+-    ITfThreadMgrEx_QueryInterface(tm, &IID_ITfClientId, (void **)&clientid);
++    ITfThreadMgr_QueryInterface(tm, &IID_ITfClientId, (void **)&clientid);
+     ITfClientId_GetClientId(clientid, &lp->clsid, &actsvr->tid);
+     ITfClientId_Release(clientid);
+ 
+-    if (!actsvr->tid)
+-    {
+-        free(actsvr);
+-        return E_OUTOFMEMORY;
+-    }
++    if (!actsvr->tid) goto fail;
+ 
+     actsvr->pITfTextInputProcessor = NULL;
+     actsvr->LanguageProfile = *lp;
+@@ -437,20 +432,21 @@ HRESULT add_active_textservice(TF_LANGUAGEPROFILE *lp)
+         deactivate_remove_conflicting_ts(&actsvr->LanguageProfile.catid);
+ 
+     if (activated > 0)
+-        activate_given_ts(actsvr, tm);
++        activate_given_ts(actsvr, (ITfThreadMgrEx *)tm);
+ 
+     entry = malloc(sizeof(AtsEntry));
+-
+-    if (!entry)
+-    {
+-        free(actsvr);
+-        return E_OUTOFMEMORY;
+-    }
++    if (!entry) goto fail;
+ 
+     entry->ats = actsvr;
+     list_add_head(&AtsList, &entry->entry);
+ 
++    ITfThreadMgr_Release(tm);
+     return S_OK;
++
++fail:
++    ITfThreadMgr_Release(tm);
++    free(actsvr);
++    return E_OUTOFMEMORY;
+ }
+ 
+ BOOL get_active_textservice(REFCLSID rclsid, TF_LANGUAGEPROFILE *profile)
+@@ -554,11 +550,9 @@ BOOL WINAPI DllMain(HINSTANCE hinst, DWORD fdwReason, LPVOID fImpLoad)
+     switch (fdwReason)
+     {
+         case DLL_PROCESS_ATTACH:
+-            tlsIndex = TlsAlloc();
+             break;
+         case DLL_PROCESS_DETACH:
+             if (fImpLoad) break;
+-            TlsFree(tlsIndex);
+             break;
+     }
+     return TRUE;
+@@ -592,20 +586,6 @@ HRESULT WINAPI TF_CreateThreadMgr(ITfThreadMgr **pptim)
+     return ThreadMgr_Constructor(NULL,(IUnknown**)pptim);
+ }
+ 
+-/***********************************************************************
+- *              TF_GetThreadMgr (MSCTF.@)
+- */
+-HRESULT WINAPI TF_GetThreadMgr(ITfThreadMgr **pptim)
+-{
+-    TRACE("\n");
+-    *pptim = TlsGetValue(tlsIndex);
+-
+-    if (*pptim)
+-        ITfThreadMgr_AddRef(*pptim);
+-
+-    return S_OK;
+-}
+-
+ /***********************************************************************
+  *              SetInputScope(MSCTF.@)
+  */
+diff --git a/dlls/msctf/msctf_internal.h b/dlls/msctf/msctf_internal.h
+index 1d94fa1b9b302cc5a51120305145139294d832b8..e465b985bf2beeeb2b473bba0e06b10b287108d4 100644
+--- a/dlls/msctf/msctf_internal.h
++++ b/dlls/msctf/msctf_internal.h
+@@ -36,7 +36,6 @@
+ #define COOKIE_MAGIC_INPUTPROCESSORPROFILEACTIVATIONSINK 0x00b0
+ #define COOKIE_MAGIC_ACTIVELANGSINK 0x00c0
+ 
+-extern DWORD tlsIndex;
+ extern TfClientId processId;
+ extern ITfCompartmentMgr *globalCompartmentMgr;
+ 
+diff --git a/dlls/msctf/threadmgr.c b/dlls/msctf/threadmgr.c
+index 312b527eb74a8e14e8a3e5b56538254ede30c955..f71eedd9f8ad8843f62289fdeddf03ba5442136e 100644
+--- a/dlls/msctf/threadmgr.c
++++ b/dlls/msctf/threadmgr.c
+@@ -39,8 +39,22 @@
+ 
+ DEFINE_GUID(GUID_SYSTEM_FUNCTIONPROVIDER, 0x9a698bb0,0x0f21,0x11d3,0x8d,0xf1,0x00,0x10,0x5a,0x27,0x99,0xb5);
+ 
++#include "initguid.h"
++#include "ctffunc.h"
++
+ WINE_DEFAULT_DEBUG_CHANNEL(msctf);
+ 
++static CRITICAL_SECTION ThreadMgrCs;
++static CRITICAL_SECTION_DEBUG ThreadMgrCsDebug =
++{
++    0, 0, &ThreadMgrCs,
++    {&ThreadMgrCsDebug.ProcessLocksList,
++     &ThreadMgrCsDebug.ProcessLocksList },
++     0, 0, {(DWORD_PTR)(__FILE__ ": ThreadMgrCs")}
++};
++static CRITICAL_SECTION ThreadMgrCs = {&ThreadMgrCsDebug, -1, 0, 0, 0, 0};
++struct list ThreadMgrList = LIST_INIT(ThreadMgrList);
++
+ typedef struct tagPreservedKey
+ {
+     struct list     entry;
+@@ -103,6 +117,9 @@ typedef struct tagACLMulti {
+     struct list     ThreadMgrEventSink;
+     struct list     UIElementSink;
+     struct list     InputProcessorProfileActivationSink;
++
++    DWORD threadId;
++    struct list entry;
+ } ThreadMgr;
+ 
+ typedef struct tagEnumTfDocumentMgr {
+@@ -115,6 +132,11 @@ typedef struct tagEnumTfDocumentMgr {
+ 
+ static HRESULT EnumTfDocumentMgr_Constructor(struct list* head, IEnumTfDocumentMgrs **ppOut);
+ 
++static inline ThreadMgr *impl_from_ITfThreadMgr(ITfThreadMgr *iface)
++{
++    return CONTAINING_RECORD(iface, ThreadMgr, ITfThreadMgrEx_iface);
++}
++
+ static inline ThreadMgr *impl_from_ITfThreadMgrEx(ITfThreadMgrEx *iface)
+ {
+     return CONTAINING_RECORD(iface, ThreadMgr, ITfThreadMgrEx_iface);
+@@ -165,6 +187,36 @@ static inline EnumTfDocumentMgr *impl_from_IEnumTfDocumentMgrs(IEnumTfDocumentMg
+     return CONTAINING_RECORD(iface, EnumTfDocumentMgr, IEnumTfDocumentMgrs_iface);
+ }
+ 
++/***********************************************************************
++ *              TF_GetThreadMgr (MSCTF.@)
++ */
++HRESULT WINAPI TF_GetThreadMgr(ITfThreadMgr **pptim)
++{
++    DWORD id = GetCurrentThreadId();
++    ThreadMgr *cursor;
++
++    TRACE("%p\n", pptim);
++
++    if (!pptim)
++        return E_INVALIDARG;
++
++    EnterCriticalSection(&ThreadMgrCs);
++    LIST_FOR_EACH_ENTRY(cursor, &ThreadMgrList, ThreadMgr, entry)
++    {
++        if (cursor->threadId == id)
++        {
++            ITfThreadMgrEx_AddRef(&cursor->ITfThreadMgrEx_iface);
++            *pptim = (ITfThreadMgr *)&cursor->ITfThreadMgrEx_iface;
++            LeaveCriticalSection(&ThreadMgrCs);
++            return S_OK;
++        }
++    }
++    LeaveCriticalSection(&ThreadMgrCs);
++    *pptim = NULL;
++    return E_FAIL;
++}
++
++
+ struct reconv
+ {
+     ITfFnReconversion ITfFnReconversion_iface;
+@@ -339,7 +391,9 @@ static void ThreadMgr_Destructor(ThreadMgr *This)
+     if (This->focusHook)
+         UnhookWindowsHookEx(This->focusHook);
+ 
+-    TlsSetValue(tlsIndex,NULL);
++    EnterCriticalSection(&ThreadMgrCs);
++    list_remove(&This->entry);
++    LeaveCriticalSection(&ThreadMgrCs);
+     TRACE("destroying %p\n", This);
+     if (This->focus)
+         ITfDocumentMgr_Release(This->focus);
+@@ -562,17 +616,20 @@ static HRESULT WINAPI ThreadMgr_SetFocus(ITfThreadMgrEx *iface, ITfDocumentMgr *
+ 
+ static LRESULT CALLBACK ThreadFocusHookProc(int nCode, WPARAM wParam, LPARAM lParam)
+ {
++    ITfThreadMgr *ThreadMgr_iface;
+     ThreadMgr *This;
+ 
+-    This = TlsGetValue(tlsIndex);
+-    if (!This)
++    if (FAILED(TF_GetThreadMgr(&ThreadMgr_iface)))
+     {
+         ERR("Hook proc but no ThreadMgr for this thread. Serious Error\n");
+         return 0;
+     }
++
++    This = impl_from_ITfThreadMgr(ThreadMgr_iface);
+     if (!This->focusHook)
+     {
+         ERR("Hook proc but no ThreadMgr focus Hook. Serious Error\n");
++        ITfThreadMgr_Release(ThreadMgr_iface);
+         return 0;
+     }
+ 
+@@ -593,6 +650,7 @@ static LRESULT CALLBACK ThreadFocusHookProc(int nCode, WPARAM wParam, LPARAM lPa
+         }
+     }
+ 
++    ITfThreadMgr_Release(ThreadMgr_iface);
+     return CallNextHookEx(This->focusHook, nCode, wParam, lParam);
+ }
+ 
+@@ -1532,13 +1590,8 @@ HRESULT ThreadMgr_Constructor(IUnknown *pUnkOuter, IUnknown **ppOut)
+         return CLASS_E_NOAGGREGATION;
+ 
+     /* Only 1 ThreadMgr is created per thread */
+-    This = TlsGetValue(tlsIndex);
+-    if (This)
+-    {
+-        ThreadMgr_AddRef(&This->ITfThreadMgrEx_iface);
+-        *ppOut = (IUnknown*)&This->ITfThreadMgrEx_iface;
++    if (SUCCEEDED(TF_GetThreadMgr((ITfThreadMgr **)ppOut)))
+         return S_OK;
+-    }
+ 
+     This = calloc(1, sizeof(ThreadMgr));
+     if (This == NULL)
+@@ -1554,7 +1607,6 @@ HRESULT ThreadMgr_Constructor(IUnknown *pUnkOuter, IUnknown **ppOut)
+     This->ITfSourceSingle_iface.lpVtbl = &SourceSingleVtbl;
+     This->ITfFunctionProvider_iface.lpVtbl = &TfFunctionProviderVtbl;
+     This->refCount = 1;
+-    TlsSetValue(tlsIndex,This);
+ 
+     CompartmentMgr_Constructor((IUnknown*)&This->ITfThreadMgrEx_iface, &IID_IUnknown, (IUnknown**)&This->CompartmentMgr);
+ 
+@@ -1571,6 +1623,11 @@ HRESULT ThreadMgr_Constructor(IUnknown *pUnkOuter, IUnknown **ppOut)
+     list_init(&This->UIElementSink);
+     list_init(&This->InputProcessorProfileActivationSink);
+ 
++    This->threadId = GetCurrentThreadId();
++    EnterCriticalSection(&ThreadMgrCs);
++    list_add_tail(&ThreadMgrList, &This->entry);
++    LeaveCriticalSection(&ThreadMgrCs);
++
+     TRACE("returning %p\n", This);
+     *ppOut = (IUnknown *)&This->ITfThreadMgrEx_iface;
+     return S_OK;
+diff --git a/dlls/msi/package.c b/dlls/msi/package.c
+index d20e87f9601b6e70309d509a0a0397b3dc5c65a9..25fcbbd104d7fd1929f14d2ddec4e5edad954632 100644
+--- a/dlls/msi/package.c
++++ b/dlls/msi/package.c
+@@ -622,6 +622,29 @@ done:
+     free(version);
+ }
+ 
++static void fixup_winver(DWORD *verval)
++{
++    static int cached = -1;
++
++    if (cached == -1)
++    {
++        const char *s;
++
++        cached = (s = getenv("STEAM_COMPAT_APP_ID")) &&
++                    (
++                        !strcmp(s, "976730")
++                        || !strcmp(s, "231430")
++                        || !strcmp(s, "1017900")
++                        || !strcmp(s, "285190")
++                        || !strcmp(s, "627270")
++                    );
++        if (cached)
++            ERR("HACK: setting winver 502.\n");
++    }
++    if (!cached) return;
++    if (*verval > 502) *verval = 502;
++}
++
+ static VOID set_installer_properties(MSIPACKAGE *package)
+ {
+     WCHAR *ptr;
+@@ -749,6 +772,7 @@ static VOID set_installer_properties(MSIPACKAGE *package)
+         verval = 603;
+         OSVersion.dwBuildNumber = 9600;
+     }
++    fixup_winver(&verval);
+     len = swprintf( verstr, ARRAY_SIZE(verstr), L"%u", verval );
+     switch (OSVersion.dwPlatformId)
+     {
+diff --git a/dlls/setupapi/devinst.c b/dlls/setupapi/devinst.c
+index ff97cda352a56f59728e37f876501db72d26cf29..f06f18641612f2d99c042b7c657623b8866d8d58 100644
+--- a/dlls/setupapi/devinst.c
++++ b/dlls/setupapi/devinst.c
+@@ -2769,7 +2769,7 @@ static DWORD get_device_reg_property( HKEY base_key, const DEVPROPKEY *prop_key,
+     if (!(ret = RegOpenKeyExW( base_key, prop_path, 0, KEY_QUERY_VALUE, &property )))
+     {
+         size = buf_size;
+-        ret = RegQueryValueExW( property, NULL, NULL, &val_type, buf, &size );
++        ret = RegQueryValueExW( property, L"", NULL, &val_type, buf, &size );
+         RegCloseKey( property );
+     }
+ 
+diff --git a/dlls/setupapi/fakedll.c b/dlls/setupapi/fakedll.c
+index f117db6f718939cc2f38bc505c34b9b5bde4ac08..b245affb1810574f31e9c34a488e9707f74c7099 100644
+--- a/dlls/setupapi/fakedll.c
++++ b/dlls/setupapi/fakedll.c
+@@ -430,7 +430,7 @@ static const WCHAR *enum_load_path( unsigned int idx )
+ }
+ 
+ /* try to load a pre-compiled fake dll */
+-static void *load_fake_dll( const WCHAR *name, SIZE_T *size )
++static void *load_fake_dll( const WCHAR *name, SIZE_T *size, WCHAR **out_filename )
+ {
+     const WCHAR *build_dir = _wgetenv( L"WINEBUILDDIR" );
+     const WCHAR *path;
+@@ -478,11 +478,94 @@ static void *load_fake_dll( const WCHAR *name, SIZE_T *size )
+     }
+ 
+ done:
++    if (res == 1)
++    {
++        *out_filename = malloc( (wcslen( ptr ) + 1) * sizeof(WCHAR) );
++        wcscpy( *out_filename, ptr );
++        free( file );
++        return data;
++    }
+     free( file );
+-    if (res == 1) return data;
+     return NULL;
+ }
+ 
++/* Check if the 2 files are already the same */
++static BOOL fake_dll_matches( const WCHAR *source, const WCHAR *dest )
++{
++    WIN32_FILE_ATTRIBUTE_DATA data1, data2;
++    HANDLE h;
++    char *buf;
++    DWORD size, bytesread;
++    BOOL result;
++
++    if (!GetFileAttributesExW( source, GetFileExInfoStandard, &data1 ))
++        return FALSE;
++
++    if (!GetFileAttributesExW( dest, GetFileExInfoStandard, &data2 ))
++        return FALSE;
++
++    if ((data2.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) == FILE_ATTRIBUTE_REPARSE_POINT)
++        /* If it's a symlink, assume it was put there by the proton script and is therefore correct */
++        return TRUE;
++
++    if (data1.nFileSizeHigh != 0 ||
++        data2.nFileSizeHigh != 0 ||
++        data1.nFileSizeLow != data2.nFileSizeLow)
++    {
++        return FALSE;
++    }
++
++    size = data1.nFileSizeLow;
++
++    /* If size and mtime matches, don't bother comparing contents */
++    if ((data1.ftLastWriteTime.dwLowDateTime != 0 || data1.ftLastWriteTime.dwHighDateTime != 0) &&
++        data1.ftLastWriteTime.dwLowDateTime == data2.ftLastWriteTime.dwLowDateTime &&
++        data1.ftLastWriteTime.dwHighDateTime == data2.ftLastWriteTime.dwHighDateTime)
++        return TRUE;
++
++    buf = malloc( size * 2 );
++
++    if (!buf)
++        return FALSE;
++
++    h = CreateFileW( source, GENERIC_READ, 0, NULL, OPEN_EXISTING, 0, NULL );
++    if (h == INVALID_HANDLE_VALUE)
++    {
++        free( buf );
++        return FALSE;
++    }
++
++    if (!ReadFile( h, buf, size, &bytesread, NULL ) || bytesread != size)
++    {
++        CloseHandle( h );
++        free( buf );
++        return FALSE;
++    }
++
++    CloseHandle( h );
++
++    h = CreateFileW( dest, GENERIC_READ, 0, NULL, OPEN_EXISTING, 0, NULL );
++    if (h == INVALID_HANDLE_VALUE)
++    {
++        free( buf );
++        return FALSE;
++    }
++
++    if (!ReadFile( h, buf + size, size, &bytesread, NULL ) || bytesread != size)
++    {
++        CloseHandle( h );
++        free( buf );
++        return FALSE;
++    }
++
++    CloseHandle( h );
++
++    result = !memcmp( buf, buf + size, size );
++
++    free( buf );
++    return result;
++}
++
+ /* create the fake dll destination file */
+ static HANDLE create_dest_file( const WCHAR *name, BOOL delete )
+ {
+@@ -960,7 +1043,11 @@ static int install_fake_dll( WCHAR *dest, WCHAR *file, BOOL delete, struct list
+     destname[len] = 0;
+     if (!add_handled_dll( destname )) ret = -1;
+ 
+-    if (ret != -1)
++    if (ret != -1 && fake_dll_matches( file, dest ))
++    {
++        register_fake_dll( dest, data, size, delay_copy );
++    }
++    else if (ret != -1)
+     {
+         HANDLE h = create_dest_file( dest, delete );
+ 
+@@ -992,6 +1079,13 @@ static void delay_copy_files( struct list *delay_copy )
+     LIST_FOR_EACH_ENTRY_SAFE( copy, next, delay_copy, struct delay_copy, entry )
+     {
+         list_remove( &copy->entry );
++
++        if ( fake_dll_matches( copy->src, copy->dest ) )
++        {
++            free( copy );
++            continue;
++        }
++
+         ret = read_file( copy->src, &data, &size );
+         if (ret != 1)
+         {
+@@ -1031,6 +1125,7 @@ static void install_lib_dir( WCHAR *dest, WCHAR *file, const WCHAR *wildcard,
+         if (lstrlenW( data.name ) > max_dll_name_len) continue;
+         if (!wcscmp( data.name, L"." )) continue;
+         if (!wcscmp( data.name, L".." )) continue;
++        if (!wcscmp( data.name, L"amd_ags_x64.dll" )) continue;
+         lstrcpyW( name, data.name );
+         if (default_ext)  /* inside build dir */
+         {
+@@ -1103,6 +1198,7 @@ BOOL create_fake_dll( const WCHAR *name, const WCHAR *source )
+     BOOL ret = FALSE;
+     SIZE_T size;
+     const WCHAR *filename;
++    WCHAR *source_filename;
+     void *buffer;
+     BOOL delete = !wcscmp( source, L"-" );  /* '-' source means delete the file */
+ 
+@@ -1119,24 +1215,54 @@ BOOL create_fake_dll( const WCHAR *name, const WCHAR *source )
+ 
+     add_handled_dll( filename );
+ 
+-    if (!(h = create_dest_file( name, delete ))) return TRUE;  /* not a fake dll */
+-    if (h == INVALID_HANDLE_VALUE) return FALSE;
++    if (delete)
++    {
++        if (!(h = create_dest_file( name, delete ))) return TRUE;  /* not a fake dll */
++        if (h == INVALID_HANDLE_VALUE) return FALSE;
+ 
+-    if (!wcscmp( source, L"*" ))  /* '*' source means create fake file for a non-existent dll */
++        /* '-' source means delete the file */
++        TRACE( "deleting %s\n", debugstr_w(name) );
++        ret = FALSE;
++
++        CloseHandle( h );
++        DeleteFileW( name );
++    }
++    else if (!wcscmp( source, L"*" ))  /* '*' source means create fake file for a non-existent dll */
+     {
++        if (!(h = create_dest_file( name, delete ))) return TRUE;  /* not a fake dll */
++        if (h == INVALID_HANDLE_VALUE) return FALSE;
++
+         ret = build_fake_dll( h, name );
++
++        CloseHandle( h );
++        if (!ret) DeleteFileW( name );
+     }
+-    else if ((buffer = load_fake_dll( source, &size )))
++    else if ((buffer = load_fake_dll( source, &size, &source_filename )))
+     {
+-        DWORD written;
++        if (fake_dll_matches( source_filename, name ))
++        {
++            free( source_filename );
+ 
+-        ret = (WriteFile( h, buffer, size, &written, NULL ) && written == size);
+-        if (ret) register_fake_dll( name, buffer, size, &delay_copy );
+-        else ERR( "failed to write to %s (error=%lu)\n", debugstr_w(name), GetLastError() );
+-    }
++            register_fake_dll( name, buffer, size, &delay_copy );
++            ret = TRUE;
++        }
++        else
++        {
++            DWORD written;
+ 
+-    CloseHandle( h );
+-    if (!ret) DeleteFileW( name );
++            free( source_filename );
++
++            if (!(h = create_dest_file( name, FALSE ))) return TRUE;  /* not a fake dll */
++            if (h == INVALID_HANDLE_VALUE) return FALSE;
++
++            ret = (WriteFile( h, buffer, size, &written, NULL ) && written == size);
++            if (ret) register_fake_dll( name, buffer, size, &delay_copy );
++            else ERR( "failed to write to %s (error=%lu)\n", debugstr_w(name), GetLastError() );
++
++            CloseHandle( h );
++            if (!ret) DeleteFileW( name );
++        }
++    }
+ 
+     delay_copy_files( &delay_copy );
+     return ret;
+diff --git a/dlls/setupapi/query.c b/dlls/setupapi/query.c
+index 60b7c95290f4475447233494ccd6eb4f5a4c45ea..01b415fed5110c4096492738520cc6430f0033d6 100644
+--- a/dlls/setupapi/query.c
++++ b/dlls/setupapi/query.c
+@@ -693,8 +693,27 @@ BOOL WINAPI SetupGetInfDriverStoreLocationW(
+     PCWSTR LocaleName, PWSTR ReturnBuffer, DWORD ReturnBufferSize,
+     PDWORD RequiredSize)
+ {
++
+     FIXME("stub: %s %p %s %p %lu %p\n", debugstr_w(FileName), AlternativePlatformInfo, debugstr_w(LocaleName), ReturnBuffer, ReturnBufferSize, RequiredSize);
+ 
++    if (FileName && !wcscmp(L"igd_faux.inf", FileName) && ReturnBuffer) {
++        WCHAR igd_full_path[MAX_PATH];
++
++        WARN("HACK: requesting location of igd_faux.inf\n");
++
++        GetSystemDirectoryW(igd_full_path, ARRAY_SIZE(igd_full_path));
++        wcscat(igd_full_path, L"\\DriverStore\\FileRepository\\igd_faux.inf_1\\igd_faux.inf");
++
++        if (ReturnBufferSize <= wcslen(igd_full_path)) {
++            SetLastError(ERROR_INSUFFICIENT_BUFFER);
++            return FALSE;
++        }
++
++        WARN(" -> %s\n", debugstr_w(igd_full_path));
++        wcscpy(ReturnBuffer, igd_full_path);
++        return TRUE;
++    }
++
+     SetLastError(ERROR_CALL_NOT_IMPLEMENTED);
+     return FALSE;
+ }
+diff --git a/dlls/shell32/shellpath.c b/dlls/shell32/shellpath.c
+index bf13a7351f013cb7276332ef2eb86d01fda8c6c9..e7bedb98f47838b811ff507c3abf8a973deabb08 100644
+--- a/dlls/shell32/shellpath.c
++++ b/dlls/shell32/shellpath.c
+@@ -2674,180 +2674,6 @@ end:
+     return hr;
+ }
+ 
+-static char *xdg_config;
+-static DWORD xdg_config_len;
+-
+-static BOOL WINAPI init_xdg_dirs( INIT_ONCE *once, void *param, void **context )
+-{
+-    const WCHAR *var, *fmt = L"\\??\\unix%s/user-dirs.dirs";
+-    char *p;
+-    WCHAR *name, *ptr;
+-    HANDLE file;
+-    DWORD len;
+-
+-    if (!(var = _wgetenv( L"WINE_HOST_XDG_CONFIG_HOME" )) || var[0] != '/')
+-    {
+-        if (!(var = _wgetenv( L"WINEHOMEDIR" ))) return TRUE;
+-        fmt = L"%s/.config/user-dirs.dirs";
+-    }
+-    len = lstrlenW(var) + lstrlenW(fmt);
+-    name = malloc( len * sizeof(WCHAR) );
+-    swprintf( name, len, fmt, var );
+-    name[1] = '\\';  /* change \??\ to \\?\ */
+-    for (ptr = name; *ptr; ptr++) if (*ptr == '/') *ptr = '\\';
+-
+-    file = CreateFileW( name, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, 0 );
+-    free( name );
+-    if (file != INVALID_HANDLE_VALUE)
+-    {
+-        len = GetFileSize( file, NULL );
+-        if (!(xdg_config = malloc( len + 1 ))) return TRUE;
+-        if (!ReadFile( file, xdg_config, len, &xdg_config_len, NULL ))
+-        {
+-            free( xdg_config );
+-            xdg_config = NULL;
+-        }
+-        else
+-        {
+-            for (p = xdg_config; p < xdg_config + xdg_config_len; p++) if (*p == '\n') *p = 0;
+-            *p = 0;  /* append null to simplify string parsing */
+-        }
+-        CloseHandle( file );
+-    }
+-    return TRUE;
+-}
+-
+-static char *get_xdg_path( const char *var )
+-{
+-    static INIT_ONCE once;
+-    char *p, *ret = NULL;
+-    int i;
+-
+-    InitOnceExecuteOnce( &once, init_xdg_dirs, NULL, NULL );
+-    if (!xdg_config) return NULL;
+-
+-    for (p = xdg_config; p < xdg_config + xdg_config_len; p += strlen(p) + 1)
+-    {
+-        while (*p == ' ' || *p == '\t') p++;
+-        if (strncmp( p, var, strlen(var) )) continue;
+-        p += strlen(var);
+-        while (*p == ' ' || *p == '\t') p++;
+-        if (*p != '=') continue;
+-        p++;
+-        while (*p == ' ' || *p == '\t') p++;
+-        if (*p != '"') continue;
+-        p++;
+-        if (*p != '/' && strncmp( p, "$HOME/", 6 )) continue;
+-
+-        if (!(ret = malloc( strlen(p) + 1 ))) break;
+-        for (i = 0; *p && *p != '"'; i++, p++)
+-        {
+-            if (*p == '\\' && p[1]) p++;
+-            ret[i] = *p;
+-        }
+-        ret[i] = 0;
+-        if (*p != '"')
+-        {
+-            free( ret );
+-            ret = NULL;
+-        }
+-        break;
+-    }
+-    return ret;
+-}
+-
+-static BOOL link_folder( HANDLE mgr, const UNICODE_STRING *path, const char *link )
+-{
+-    struct mountmgr_shell_folder *ioctl;
+-    DWORD len = sizeof(*ioctl) + path->Length + strlen(link) + 1;
+-    BOOL ret;
+-
+-    if (!(ioctl = malloc( len ))) return FALSE;
+-    ioctl->create_backup = FALSE;
+-    ioctl->folder_offset = sizeof(*ioctl);
+-    ioctl->folder_size = path->Length;
+-    memcpy( (char *)ioctl + ioctl->folder_offset, path->Buffer, ioctl->folder_size );
+-    ioctl->symlink_offset = ioctl->folder_offset + ioctl->folder_size;
+-    strcpy( (char *)ioctl + ioctl->symlink_offset, link );
+-
+-    ret = DeviceIoControl( mgr, IOCTL_MOUNTMGR_DEFINE_SHELL_FOLDER, ioctl, len, NULL, 0, NULL, NULL );
+-    free( ioctl );
+-    return ret;
+-}
+-
+-/******************************************************************************
+- * create_link
+- *
+- * Sets up a symbolic link for one of the 'My Whatever' shell folders to point
+- * into the corresponding XDG directory.
+- */
+-static void create_link( const WCHAR *path, const char *xdg_name, const char *default_name )
+-{
+-    UNICODE_STRING nt_name;
+-    char *target = NULL;
+-    HANDLE mgr;
+-
+-    if ((mgr = CreateFileW( MOUNTMGR_DOS_DEVICE_NAME, GENERIC_READ | GENERIC_WRITE,
+-                            FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING,
+-                            0, 0 )) == INVALID_HANDLE_VALUE)
+-    {
+-        FIXME( "failed to connect to mount manager\n" );
+-        return;
+-    }
+-
+-    nt_name.Buffer = NULL;
+-    if (!RtlDosPathNameToNtPathName_U( path, &nt_name, NULL, NULL )) goto done;
+-
+-    if ((target = get_xdg_path( xdg_name )))
+-    {
+-        if (link_folder( mgr, &nt_name, target )) goto done;
+-    }
+-    link_folder( mgr, &nt_name, default_name );
+-
+-done:
+-    RtlFreeUnicodeString( &nt_name );
+-    free( target );
+-    CloseHandle( mgr );
+-}
+-
+-/******************************************************************************
+- * _SHCreateSymbolicLink  [Internal]
+- *
+- * Sets up a symbolic link for one of the special shell folders to point into
+- * the users home directory.
+- *
+- * PARAMS
+- *  nFolder [I] CSIDL identifying the folder.
+- */
+-static void _SHCreateSymbolicLink(int nFolder, const WCHAR *path)
+-{
+-    DWORD folder = nFolder & CSIDL_FOLDER_MASK;
+-
+-    switch (folder) {
+-        case CSIDL_PERSONAL:
+-            create_link( path, "XDG_DOCUMENTS_DIR", "$HOME/Documents" );
+-            break;
+-        case CSIDL_DESKTOPDIRECTORY:
+-            create_link( path, "XDG_DESKTOP_DIR", "$HOME/Desktop" );
+-            break;
+-        case CSIDL_MYPICTURES:
+-            create_link( path, "XDG_PICTURES_DIR", "$HOME/Pictures" );
+-            break;
+-        case CSIDL_MYVIDEO:
+-            create_link( path, "XDG_VIDEOS_DIR", "$HOME/Movies" );
+-            break;
+-        case CSIDL_MYMUSIC:
+-            create_link( path, "XDG_MUSIC_DIR", "$HOME/Music" );
+-            break;
+-        case CSIDL_DOWNLOADS:
+-            create_link( path, "XDG_DOWNLOAD_DIR", "$HOME/Downloads" );
+-            break;
+-        case CSIDL_TEMPLATES:
+-            create_link( path, "XDG_TEMPLATES_DIR", "$HOME/Templates" );
+-            break;
+-    }
+-}
+-
+ /******************************************************************************
+  * SHGetFolderPathW			[SHELL32.@]
+  *
+@@ -3036,11 +2862,6 @@ HRESULT WINAPI SHGetFolderPathAndSubDirW(
+         goto end;
+     }
+ 
+-    /* create symbolic links rather than directories for specific
+-     * user shell folders */
+-    if (!pszSubPath)
+-        _SHCreateSymbolicLink(folder, szBuildPath);
+-
+     /* create directory/directories */
+     ret = SHCreateDirectoryExW(hwndOwner, szBuildPath, NULL);
+     if (ret && ret != ERROR_ALREADY_EXISTS)
+@@ -3095,6 +2916,8 @@ static HRESULT _SHRegisterFolders(HKEY hRootKey, HANDLE hToken,
+  LPCWSTR szUserShellFolderPath, LPCWSTR szShellFolderPath, const UINT folders[],
+  UINT foldersLen)
+ {
++    static const WCHAR WineVistaPathsW[] = {'_','_','W','i','n','e','V','i','s','t','a','P','a','t','h','s',0};
++
+     const WCHAR *szValueName;
+     WCHAR buffer[40];
+     UINT i;
+@@ -3103,6 +2926,7 @@ static HRESULT _SHRegisterFolders(HKEY hRootKey, HANDLE hToken,
+     HKEY hUserKey = NULL, hKey = NULL;
+     DWORD dwType, dwPathLen;
+     LONG ret;
++    DWORD already_vista_paths = 0;
+ 
+     TRACE("%p,%p,%s,%p,%u\n", hRootKey, hToken,
+      debugstr_w(szUserShellFolderPath), folders, foldersLen);
+@@ -3116,6 +2940,12 @@ static HRESULT _SHRegisterFolders(HKEY hRootKey, HANDLE hToken,
+         if (ret)
+             hr = HRESULT_FROM_WIN32(ret);
+     }
++
++    /* check if the registry has already been updated to the vista+ style paths */
++    dwPathLen = sizeof(already_vista_paths);
++    RegQueryValueExW(hUserKey, WineVistaPathsW, NULL, &dwType,
++            (LPBYTE)&already_vista_paths, &dwPathLen);
++
+     for (i = 0; SUCCEEDED(hr) && i < foldersLen; i++)
+     {
+         dwPathLen = MAX_PATH * sizeof(WCHAR);
+@@ -3128,9 +2958,10 @@ static HRESULT _SHRegisterFolders(HKEY hRootKey, HANDLE hToken,
+             szValueName = &buffer[0];
+         }
+ 
+-        if (RegQueryValueExW(hUserKey, szValueName, NULL,
+-         &dwType, (LPBYTE)path, &dwPathLen) || (dwType != REG_SZ &&
+-         dwType != REG_EXPAND_SZ))
++        if (!already_vista_paths ||
++                RegQueryValueExW(hUserKey, szValueName, NULL, &dwType,
++                    (LPBYTE)path, &dwPathLen) ||
++                (dwType != REG_SZ && dwType != REG_EXPAND_SZ))
+         {
+             *path = '\0';
+             if (CSIDL_Data[folders[i]].type == CSIDL_Type_User)
+@@ -3171,6 +3002,11 @@ static HRESULT _SHRegisterFolders(HKEY hRootKey, HANDLE hToken,
+              hToken, SHGFP_TYPE_DEFAULT, path);
+         }
+     }
++
++    already_vista_paths = 1;
++    RegSetValueExW(hUserKey, WineVistaPathsW, 0, REG_DWORD,
++            (LPBYTE)&already_vista_paths, sizeof(already_vista_paths));
++
+     if (hUserKey)
+         RegCloseKey(hUserKey);
+     if (hKey)
+@@ -3320,6 +3156,23 @@ static HRESULT create_extra_folders(void)
+         hr = SHGetFolderPathAndSubDirW(0, CSIDL_MYPICTURES | CSIDL_FLAG_CREATE, NULL,
+                                        SHGFP_TYPE_DEFAULT, L"Screenshots", path);
+     }
++
++
++    /* Proton HACK: In older Proton versions, duplicate Stuff directories were
++     * created at both %PROFILE%\Music and %PROFILE\Documents\Music. Due to
++     * some bugs when downgrading to those older Proton versions, create those
++     * missing Documents directories here, too. */
++    SHGetFolderPathAndSubDirW(0, CSIDL_PERSONAL | CSIDL_FLAG_CREATE, NULL,
++                                   SHGFP_TYPE_DEFAULT, L"Downloads", path);
++    SHGetFolderPathAndSubDirW(0, CSIDL_PERSONAL | CSIDL_FLAG_CREATE, NULL,
++                                   SHGFP_TYPE_DEFAULT, L"Music", path);
++    SHGetFolderPathAndSubDirW(0, CSIDL_PERSONAL | CSIDL_FLAG_CREATE, NULL,
++                                   SHGFP_TYPE_DEFAULT, L"Pictures", path);
++    SHGetFolderPathAndSubDirW(0, CSIDL_PERSONAL | CSIDL_FLAG_CREATE, NULL,
++                                   SHGFP_TYPE_DEFAULT, L"Templates", path);
++    SHGetFolderPathAndSubDirW(0, CSIDL_PERSONAL | CSIDL_FLAG_CREATE, NULL,
++                                   SHGFP_TYPE_DEFAULT, L"Videos", path);
++
+     return hr;
+ }
+ 
+diff --git a/dlls/shell32/shlexec.c b/dlls/shell32/shlexec.c
+index d2a6d5700d49b5656accecdffef1064ca25e4a18..0b1a7198eea4db626283acad130ab96b17d0e1a9 100644
+--- a/dlls/shell32/shlexec.c
++++ b/dlls/shell32/shlexec.c
+@@ -1206,13 +1206,13 @@ static HKEY ShellExecute_GetClassKey( const SHELLEXECUTEINFOW *sei )
+         if (r != ERROR_SUCCESS )
+             return hkey;
+ 
+-        r = RegQueryValueExW( hkey, NULL, 0, &type, NULL, &sz );
++        r = RegQueryValueExW( hkey, L"", 0, &type, NULL, &sz );
+         if ( r == ERROR_SUCCESS && type == REG_SZ )
+         {
+             sz += sizeof (WCHAR);
+             cls = malloc( sz );
+             cls[0] = 0;
+-            RegQueryValueExW( hkey, NULL, 0, &type, (LPBYTE) cls, &sz );
++            RegQueryValueExW( hkey, L"", 0, &type, (LPBYTE) cls, &sz );
+         }
+ 
+         RegCloseKey( hkey );
+diff --git a/dlls/uiautomationcore/uia_provider.c b/dlls/uiautomationcore/uia_provider.c
+index aa930e79fd6af99cbb30983bd49fc063b1c3aa91..ca3de7e6ce0f91f9377af8bca605605129a816e0 100644
+--- a/dlls/uiautomationcore/uia_provider.c
++++ b/dlls/uiautomationcore/uia_provider.c
+@@ -1141,16 +1141,28 @@ static HRESULT msaa_acc_get_focus(struct msaa_provider *prov, struct msaa_provid
+ 
+     if (V_VT(&v) == VT_DISPATCH)
+     {
++        IAccessible2 *ia2 = NULL;
++
+         hr = IDispatch_QueryInterface(V_DISPATCH(&v), &IID_IAccessible, (void **)&focus_acc);
+         VariantClear(&v);
+         if (FAILED(hr))
+             return hr;
+ 
+-        hr = WindowFromAccessibleObject(focus_acc, &hwnd);
+-        if (FAILED(hr) || !hwnd)
++        if ((ia2 = msaa_acc_get_ia2(focus_acc)))
+         {
+-            IAccessible_Release(focus_acc);
+-            return hr;
++            hr = IAccessible2_get_windowHandle(ia2, &hwnd);
++            if (FAILED(hr))
++                WARN("IA2 get_windowHandle failed with hr %#lx\n", hr);
++            IAccessible2_Release(ia2);
++        }
++        if (!hwnd)
++        {
++            hr = WindowFromAccessibleObject(focus_acc, &hwnd);
++            if (FAILED(hr) || !hwnd)
++            {
++                IAccessible_Release(focus_acc);
++                return hr;
++            }
+         }
+     }
+ 
+@@ -1463,9 +1475,18 @@ HRESULT create_msaa_provider(IAccessible *acc, LONG child_id, HWND hwnd, BOOL ro
+     {
+         HRESULT hr;
+ 
+-        hr = WindowFromAccessibleObject(acc, &msaa_prov->hwnd);
+-        if (FAILED(hr))
+-            WARN("WindowFromAccessibleObject failed with hr %#lx\n", hr);
++        if (msaa_prov->ia2)
++        {
++            hr = IAccessible2_get_windowHandle(msaa_prov->ia2, &msaa_prov->hwnd);
++            if (FAILED(hr))
++                WARN("IA2 get_windowHandle failed with hr %#lx\n", hr);
++        }
++        if (!msaa_prov->hwnd)
++        {
++            hr = WindowFromAccessibleObject(acc, &msaa_prov->hwnd);
++            if (FAILED(hr))
++                WARN("WindowFromAccessibleObject failed with hr %#lx\n", hr);
++        }
+     }
+     else
+         msaa_prov->hwnd = hwnd;
+diff --git a/dlls/windows.perception.stub/holographic_space.c b/dlls/windows.perception.stub/holographic_space.c
+index 8e523fe6fd61e213ba8d13b8fed80faf0da0d906..07fb38f29925dd106e9e871ea7c99f5dfea097fc 100644
+--- a/dlls/windows.perception.stub/holographic_space.c
++++ b/dlls/windows.perception.stub/holographic_space.c
+@@ -361,6 +361,10 @@ static HRESULT WINAPI holographic_space_interop_CreateForWindow( IHolographicSpa
+         *holographic_space = NULL;
+         return E_INVALIDARG;
+     }
++
++    FIXME( "HACK: Setting WS_EX_NOACTIVATE for %p.\n", window );
++    SetWindowLongW( window, GWL_EXSTYLE, WS_EX_NOACTIVATE );
++
+     if (!(impl = calloc( 1, sizeof( *impl ) ))) return E_OUTOFMEMORY;
+ 
+     impl->IHolographicSpace_iface.lpVtbl = &holographic_space_vtbl;
+diff --git a/dlls/windows.ui/inputpane.c b/dlls/windows.ui/inputpane.c
+index 9a34f041d5c18c9f0cd3a7455621e013ef4c521d..6626d4be2cd0e34046387f01f551bbe2e2677ae2 100644
+--- a/dlls/windows.ui/inputpane.c
++++ b/dlls/windows.ui/inputpane.c
+@@ -30,6 +30,8 @@ struct inputpane
+     IInputPane IInputPane_iface;
+     IInputPane2 IInputPane2_iface;
+     LONG ref;
++
++    HWND tabtip_hwnd;
+ };
+ 
+ static inline struct inputpane *impl_from_IInputPane( IInputPane *iface )
+@@ -155,16 +157,28 @@ static const struct IInputPaneVtbl inputpane_vtbl =
+ 
+ DEFINE_IINSPECTABLE( inputpane2, IInputPane2, struct inputpane, IInputPane_iface );
+ 
++#define WM_TABTIP_OSK_TOGGLE (WM_USER + 1)
+ static HRESULT WINAPI inputpane2_TryShow( IInputPane2 *iface, boolean *result )
+ {
++    struct inputpane *impl = impl_from_IInputPane2( iface );
++
+     FIXME( "iface %p, result %p stub!\n", iface, result );
++
+     *result = FALSE;
++
++    PostMessageW(impl->tabtip_hwnd, WM_TABTIP_OSK_TOGGLE, TRUE, 0);
++
+     return S_OK;
+ }
+ 
+ static HRESULT WINAPI inputpane2_TryHide( IInputPane2 *iface, boolean *result )
+ {
++    struct inputpane *impl = impl_from_IInputPane2( iface );
++
+     FIXME( "iface %p, result %p stub!\n", iface, result );
++
++    PostMessageW(impl->tabtip_hwnd, WM_TABTIP_OSK_TOGGLE, FALSE, 0);
++
+     return S_OK;
+ }
+ 
+@@ -285,6 +299,8 @@ static HRESULT WINAPI factory_ActivateInstance( IActivationFactory *iface, IInsp
+     impl->IInputPane2_iface.lpVtbl = &inputpane2_vtbl;
+     impl->ref = 1;
+ 
++    impl->tabtip_hwnd = FindWindowW(L"IPTip_Main_Window", L"Input");
++
+     *instance = (IInspectable *)&impl->IInputPane_iface;
+     return S_OK;
+ }
+diff --git a/programs/belauncher/Makefile.in b/programs/belauncher/Makefile.in
+new file mode 100644
+index 0000000000000000000000000000000000000000..927983f742393fb1e7afb081fe63294f936b0763
+--- /dev/null
++++ b/programs/belauncher/Makefile.in
+@@ -0,0 +1,7 @@
++MODULE    = belauncher.exe
++IMPORTS   = shlwapi shcore
++
++EXTRADLLFLAGS = -mwindows -municode
++
++SOURCES = \
++        main.c \
+diff --git a/programs/belauncher/main.c b/programs/belauncher/main.c
+new file mode 100644
+index 0000000000000000000000000000000000000000..a2b0666ad916f7042175c558b9a248bfc23da70a
+--- /dev/null
++++ b/programs/belauncher/main.c
+@@ -0,0 +1,220 @@
++#define WIN32_LEAN_AND_MEAN
++#include <windows.h>
++#include <io.h>
++#include <shlwapi.h>
++#include <shellapi.h>
++
++#include "wine/debug.h"
++
++WINE_DEFAULT_DEBUG_CHANNEL(belauncher);
++
++int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE hPrevInst, LPWSTR cmdline, int cmdshow)
++{
++    char *configs, *config, *arch_32_exe = NULL, *arch_64_exe = NULL, *game_exe = NULL, *be_arg = NULL;
++    WCHAR orig_path[MAX_PATH], path[MAX_PATH], *p, config_path[MAX_PATH], game_exeW[MAX_PATH], **argvW;
++    LARGE_INTEGER launcher_cfg_size;
++    unsigned char battleye_status;
++    int game_exe_len, arg_len, path_len;
++    PROCESS_INFORMATION pi;
++    HANDLE launcher_cfg;
++    LPWSTR launch_cmd;
++    STARTUPINFOW si = { sizeof(si) };
++    HANDLE orig_launcher_process = NULL;
++    int i, argc;
++    DWORD size;
++    BOOL wow64;
++
++    battleye_status = 0x3; /* Starting */
++    _write(1, &battleye_status, 1);
++
++    *path = 0;
++    *orig_path = 0;
++    if ((size = GetEnvironmentVariableW(L"PROTON_ORIG_LAUNCHER_NAME", orig_path, ARRAY_SIZE(orig_path)))
++            && size <= ARRAY_SIZE(orig_path))
++    {
++        wcscpy(path, orig_path);
++        WINE_TRACE("PROTON_ORIG_LAUNCHER_NAME %s.\n", wine_dbgstr_w(path));
++
++        for (p = path + wcslen(path); p != path; --p)
++            if (*p == '\\') break;
++        if (*p == '\\')
++            ++p;
++        *p = 0;
++    }
++
++    wcscpy(config_path, path);
++    wcscat(config_path, L"Battleye\\BELauncher.ini");
++    launcher_cfg = CreateFileW(config_path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
++    if (launcher_cfg == INVALID_HANDLE_VALUE)
++    {
++        *path = 0;
++        launcher_cfg = CreateFileW(L"Battleye\\BELauncher.ini", GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
++    }
++    if (launcher_cfg == INVALID_HANDLE_VALUE)
++    {
++        WINE_ERR("BELauncher.ini not found.\n");
++        goto start_failed;
++    }
++
++    if(!GetFileSizeEx(launcher_cfg, &launcher_cfg_size) || launcher_cfg_size.u.HighPart)
++    {
++        CloseHandle(launcher_cfg);
++        goto start_failed;
++    }
++
++    configs = HeapAlloc( GetProcessHeap(), 0, launcher_cfg_size.u.LowPart);
++
++    if (!ReadFile(launcher_cfg, configs, launcher_cfg_size.u.LowPart, &size, NULL) || size != launcher_cfg_size.u.LowPart)
++    {
++        CloseHandle(launcher_cfg);
++        HeapFree( GetProcessHeap(), 0, configs );
++        goto start_failed;
++    }
++
++    CloseHandle(launcher_cfg);
++
++    config = configs;
++    do
++    {
++        if (!strncmp(config, "32BitExe=", 9))
++            arch_32_exe = config + 9;
++
++        if (!strncmp(config, "64BitExe=", 9))
++            arch_64_exe = config + 9;
++
++        if (!strncmp(config, "BEArg=", 6))
++            be_arg = config + 6;
++    }
++    while ((config = strchr(config, '\n')) && *(config++));
++
++    *game_exeW = 0;
++    game_exe_len = 0;
++
++    WINE_TRACE("cmdline %s.\n", wine_dbgstr_w(cmdline));
++    if ((argvW = CommandLineToArgvW(cmdline, &argc)))
++    {
++        if (argc && iswdigit(argvW[0][0]) && _wtoi(argvW[0]) == 4)
++        {
++            WINE_TRACE("uninstall cmd, exiting.\n");
++            return 0;
++        }
++        if (argc && iswdigit(argvW[0][0]) && _wtoi(argvW[0]) == 1)
++        {
++            WINE_ERR("install cmd, exiting.\n");
++            return 0;
++        }
++
++        for (i = 0; i < argc; ++i)
++        {
++            if (!wcscmp(argvW[i], L"-exe") && i < argc - 1)
++            {
++                wcscpy(game_exeW, argvW[i + 1]);
++                game_exe_len = wcslen(game_exeW);
++                break;
++            }
++        }
++    }
++
++    if (!*game_exeW)
++    {
++        if (arch_64_exe && (sizeof(void *) == 8 || (IsWow64Process(GetCurrentProcess(), &wow64) && wow64)))
++            game_exe = arch_64_exe;
++        else if (arch_32_exe)
++            game_exe = arch_32_exe;
++        else
++        {
++            HeapFree( GetProcessHeap(), 0, configs );
++            WINE_ERR("Failed to find game executable name from BattlEye config.\n");
++            goto start_failed;
++        }
++
++        if (strchr(game_exe, '\r'))
++            *(strchr(game_exe, '\r')) = 0;
++        if (strchr(game_exe, '\n'))
++            *(strchr(game_exe, '\n')) = 0;
++        game_exe_len = MultiByteToWideChar(CP_ACP, 0, game_exe, -1, game_exeW, ARRAY_SIZE(game_exeW));
++        if (!game_exe_len)
++        {
++            WINE_ERR("Failed to convert game_exe %s.\n", wine_dbgstr_a(game_exe));
++            goto start_failed;
++        }
++        --game_exe_len;
++    }
++
++    if (!be_arg) arg_len = 0;
++    else
++    {
++        if (strchr(be_arg, '\r'))
++            *(strchr(be_arg, '\r')) = 0;
++        if (strchr(be_arg, '\n'))
++            *(strchr(be_arg, '\n')) = 0;
++        arg_len = MultiByteToWideChar(CP_ACP, 0, be_arg, -1, NULL, 0) - 1;
++    }
++
++    if (*orig_path)
++    {
++        WINE_TRACE("Launching original launcher %s.\n", debugstr_w(orig_path));
++        if (!CreateProcessW(orig_path, NULL, NULL, NULL, FALSE, CREATE_SUSPENDED, NULL, NULL, &si, &pi))
++        {
++            DWORD err = GetLastError();
++
++            WINE_ERR("CreateProcessW failed for original launcher %s, err %lu.\n", debugstr_w(orig_path), err);
++            return err;
++        }
++        CloseHandle(pi.hThread);
++        orig_launcher_process = pi.hProcess;
++    }
++
++    WINE_TRACE("Launching game executable %s for BattlEye.\n", game_exe);
++    battleye_status = 0x9; /* Launching Game */
++    _write(1, &battleye_status, 1);
++
++    if (PathIsRelativeW(game_exeW))
++        path_len = wcslen(path);
++    else
++        path_len = 0;
++
++    launch_cmd = HeapAlloc(GetProcessHeap(), 0, (path_len + game_exe_len + 1 + wcslen(cmdline) + 1 + arg_len + 1) * sizeof(WCHAR));
++
++    memcpy(launch_cmd, path, path_len * sizeof(*path));
++
++    memcpy(launch_cmd + path_len, game_exeW, game_exe_len * sizeof(*launch_cmd));
++    launch_cmd[path_len + game_exe_len] = ' ';
++
++    wcscpy(launch_cmd + path_len + game_exe_len + 1, cmdline);
++    launch_cmd[path_len + game_exe_len + 1 + wcslen(cmdline)] = ' ';
++
++    if (!MultiByteToWideChar(CP_ACP, 0, be_arg, -1, launch_cmd + path_len + game_exe_len + 1 + wcslen(cmdline) + 1, arg_len + 1))
++        launch_cmd[path_len + game_exe_len + 1 + wcslen(cmdline)] = 0;
++
++    WINE_TRACE("game_exe %s.\n", wine_dbgstr_w(game_exeW));
++    WINE_TRACE("path %s, be_arg %s.\n", wine_dbgstr_w(path), wine_dbgstr_a(be_arg));
++    WINE_TRACE("launch_cmd %s.\n", wine_dbgstr_w(launch_cmd));
++
++    if (!CreateProcessW(NULL, launch_cmd, NULL, NULL, FALSE, CREATE_NEW_CONSOLE, NULL, NULL, &si, &pi))
++    {
++        DWORD err = GetLastError();
++
++        WINE_ERR("CreateProcessW failed, error %lu.\n", err);
++        if (orig_launcher_process)
++            TerminateProcess(orig_launcher_process, err);
++        battleye_status = 0xA; /* Launch Failed */
++        _write(1, &battleye_status, 1);
++        return err;
++    }
++    HeapFree( GetProcessHeap(), 0, launch_cmd );
++    CloseHandle(pi.hThread);
++
++    WaitForSingleObject(pi.hProcess, INFINITE);
++    CloseHandle(pi.hProcess);
++
++    if (orig_launcher_process)
++        TerminateProcess(orig_launcher_process, 0);
++    return 0;
++
++start_failed:
++    WINE_ERR("Failed.\n");
++    battleye_status = 0x4; /* Start Failed */
++    _write(1, &battleye_status, 1);
++    return 0;
++}
+diff --git a/programs/cmd/builtins.c b/programs/cmd/builtins.c
+index 899449bcc45237caa6056f5d880120816019509e..d06d1cde888c7a767162b7b7e2c06083329f219b 100644
+--- a/programs/cmd/builtins.c
++++ b/programs/cmd/builtins.c
+@@ -3288,6 +3288,11 @@ RETURN_CODE WCMD_shift(const WCHAR *args)
+ 
+ /****************************************************************************
+  * WCMD_start
++ *
++ * Start a program with ShellExecute.
++ *
++ * Big part of the code is just copied from programs/start/start.c
++ * This implementation doesn't contain Wine-specific extensions.
+  */
+ RETURN_CODE WCMD_start(WCHAR *args)
+ {
+@@ -3414,6 +3419,7 @@ RETURN_CODE WCMD_start(WCHAR *args)
+     return return_code;
+ }
+ 
++
+ /****************************************************************************
+  * WCMD_title
+  *
+diff --git a/programs/cmd/cmd.rc b/programs/cmd/cmd.rc
+index bc738faa5e92bdf30a746b421e09ed16ec92c8f3..ead40fc829684f751ccf12f45d84d14b4ad4d813 100644
+--- a/programs/cmd/cmd.rc
++++ b/programs/cmd/cmd.rc
+@@ -408,4 +408,5 @@ Enter HELP <command> for further information on any of the above commands.\n"
+   WCMD_ENDOFFILE, "End of file"
+   WCMD_NUMCOPIED, "%t%1!u! file(s) copied\n"
+   WCMD_NOCOPYTOSELF, "File cannot be copied onto itself.\n"
++  WCMD_STRING_UNIXFAIL, "Could not translate the specified Unix filename to a DOS filename.\n"
+ }
+diff --git a/programs/cmd/tests/test_builtins.bat.exp b/programs/cmd/tests/test_builtins.bat.exp
+index 77ca71c8778e92f0253e5a035fd4f31aad2d47c4..c4bdd167ef42fe5d75d5d4fcf9ec5e6b213cfb77 100644
+--- a/programs/cmd/tests/test_builtins.bat.exp
++++ b/programs/cmd/tests/test_builtins.bat.exp
+@@ -58,7 +58,7 @@ SUCCESS 0
+ FAILURE 255
+ FAILURE 255
+ --- success/failure for START command
+-@todo_wine@FAILURE 1
++FAILURE 1
+ foo@space@
+ SUCCESS 1024
+ @todo_wine@SUCCESS 666
+diff --git a/programs/cmd/tests/test_builtins.cmd.exp b/programs/cmd/tests/test_builtins.cmd.exp
+index 86cfa6856e1bdf71fbc31e768e06fb9f5f70ef53..7c2a422741f9e8be61e795ea2a16aedbc50b712b 100644
+--- a/programs/cmd/tests/test_builtins.cmd.exp
++++ b/programs/cmd/tests/test_builtins.cmd.exp
+@@ -578,7 +578,7 @@ SUCCESS 0
+ FAILURE 255
+ FAILURE 255
+ --- success/failure for START command
+-@todo_wine@FAILURE 1
++FAILURE 1
+ foo@space@
+ SUCCESS 1024
+ @todo_wine@SUCCESS 666
+diff --git a/programs/cmd/wcmd.h b/programs/cmd/wcmd.h
+index 91bf2ff3dded60b23f59d2bc99cf0861ffa5d048..9dca4d8b7fa6089f1f25e49df8d1f858f0190203 100644
+--- a/programs/cmd/wcmd.h
++++ b/programs/cmd/wcmd.h
+@@ -285,6 +285,18 @@ enum read_parse_line WCMD_ReadAndParseLine(CMD_NODE **output);
+ void node_dispose_tree(CMD_NODE *cmds);
+ RETURN_CODE node_execute(CMD_NODE *node);
+ 
++struct search_command
++{
++    WCHAR path[MAX_PATH];
++    BOOL has_path; /* if input has path part (ie cannot be a builtin command) */
++    BOOL has_extension; /* if extension was given to input */
++    BOOL is_command_file; /* when has_path is set, tells whether its a command file, or an external executable */
++    int cmd_index; /* potential index to builtin command */
++    size_t end_command; /* offset in passed command string where command ends (followed by optional separator and then arguments) */
++};
++
++RETURN_CODE WCMD_search_command(WCHAR *command, struct search_command *sc, BOOL fast);
++
+ RETURN_CODE WCMD_call_batch(const WCHAR *, WCHAR *);
+ RETURN_CODE WCMD_call_command(WCHAR *command);
+ RETURN_CODE WCMD_run_builtin_command(int cmd_index, WCHAR *cmd);
+@@ -536,3 +548,4 @@ extern WCHAR version_string[];
+ #define WCMD_ENDOFFILE        1049
+ #define WCMD_NUMCOPIED        1050
+ #define WCMD_NOCOPYTOSELF     1051
++#define WCMD_STRING_UNIXFAIL  1052
+diff --git a/programs/cmd/wcmdmain.c b/programs/cmd/wcmdmain.c
+index 29485322fdcf5a28798a2c3601a99b50736304c8..be5478b714090fed05e964761282d2dffbfde5a8 100644
+--- a/programs/cmd/wcmdmain.c
++++ b/programs/cmd/wcmdmain.c
+@@ -1891,16 +1891,6 @@ static RETURN_CODE run_command_file(const WCHAR *file, WCHAR *full_cmdline)
+     return return_code;
+ }
+ 
+-struct search_command
+-{
+-    WCHAR path[MAX_PATH];
+-    BOOL has_path; /* if input has path part (ie cannot be a builtin command) */
+-    BOOL has_extension; /* if extension was given to input */
+-    BOOL is_command_file; /* when has_path is set, tells whether its a command file, or an external executable */
+-    int cmd_index; /* potential index to builtin command */
+-    size_t end_command; /* offset in passed command string where command ends (followed by optional separator and then arguments) */
+-};
+-
+ static BOOL search_in_pathext(WCHAR *path)
+ {
+     static struct
+@@ -2164,6 +2154,11 @@ static RETURN_CODE search_command(const WCHAR *command, struct search_command *s
+     return RETURN_CODE_CANT_LAUNCH;
+ }
+ 
++RETURN_CODE WCMD_search_command(WCHAR *command, struct search_command *sc, BOOL fast)
++{
++    return search_command(command, sc, fast);
++}
++
+ BOOL WCMD_split_command_build(const WCHAR *from, struct split_command *split_command)
+ {
+     struct search_command sc;
+@@ -2521,7 +2516,7 @@ static RETURN_CODE execute_single_command(const WCHAR *command)
+ 
+     TRACE("Command: '%s'\n", wine_dbgstr_w(cmd));
+ 
+-    return_code = search_command(cmd, &sc, TRUE);
++    return_code = WCMD_search_command(cmd, &sc, TRUE);
+     if (return_code != NO_ERROR && sc.cmd_index == WCMD_EXIT + 1)
+     {
+         /* Not found anywhere - give up */
+@@ -2573,7 +2568,7 @@ RETURN_CODE WCMD_call_command(WCHAR *command)
+   struct search_command sc;
+   RETURN_CODE return_code;
+ 
+-  return_code = search_command(command, &sc, FALSE);
++  return_code = WCMD_search_command(command, &sc, FALSE);
+   if (return_code == NO_ERROR)
+   {
+       if (!*sc.path) return NO_ERROR;
+@@ -4647,7 +4642,7 @@ static RETURN_CODE spawn_pipe_sub_command(CMD_NODE *node, HANDLE *child)
+             struct search_command sc;
+ 
+             /* command isn't delayed expanded... */
+-            return_code = search_command(node->command, &sc, TRUE);
++            return_code = WCMD_search_command(node->command, &sc, TRUE);
+             if (return_code != NO_ERROR && sc.cmd_index == WCMD_EXIT + 1)
+                 return RETURN_CODE_CANT_LAUNCH;
+             if ((sc.cmd_index <= WCMD_EXIT && (return_code != NO_ERROR || (!sc.has_path && !sc.has_extension))) ||
+@@ -5030,7 +5025,7 @@ static void parse_command_line_parameters(struct cmd_parameters *parameters)
+         {
+             struct search_command sc;
+ 
+-            if (search_command(parameters->initial_command, &sc, TRUE) != NO_ERROR) /* no command found */
++            if (WCMD_search_command(parameters->initial_command, &sc, TRUE) != NO_ERROR) /* no command found */
+             {
+                 WINE_TRACE("Binary not found, dropping back to old behaviour\n");
+                 opt_s = TRUE;
+diff --git a/programs/dotnetfx35/Makefile.in b/programs/dotnetfx35/Makefile.in
+new file mode 100644
+index 0000000000000000000000000000000000000000..91d0876db6131d6e214c67a6f7632daf49f36167
+--- /dev/null
++++ b/programs/dotnetfx35/Makefile.in
+@@ -0,0 +1,7 @@
++MODULE    = dotnetfx35.exe
++IMPORTS   =
++
++EXTRADLLFLAGS = -mwindows -mno-cygwin
++
++SOURCES = \
++	main.c
+diff --git a/programs/dotnetfx35/main.c b/programs/dotnetfx35/main.c
+new file mode 100644
+index 0000000000000000000000000000000000000000..cd6df5bcf41693ae15f575d170a8cd751876eb98
+--- /dev/null
++++ b/programs/dotnetfx35/main.c
+@@ -0,0 +1,32 @@
++/*
++ * Fake dotnetfx35.exe installer
++ *
++ * Copyright 2020 Rémi Bernon
++ *
++ * This library is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU Lesser General Public
++ * License as published by the Free Software Foundation; either
++ * version 2.1 of the License, or (at your option) any later version.
++ *
++ * This library is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++ * Lesser General Public License for more details.
++ *
++ * You should have received a copy of the GNU Lesser General Public
++ * License along with this library; if not, write to the Free Software
++ * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
++ */
++
++#include <stdio.h>
++#include <windows.h>
++
++#include "wine/debug.h"
++
++WINE_DEFAULT_DEBUG_CHANNEL(dotnetfx);
++
++int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
++{
++    FIXME("stub!");
++    return 0;
++}
+diff --git a/programs/dxdiag/main.c b/programs/dxdiag/main.c
+index b6ea5306d06a167daaa6007ff6509d43a4632bbb..47909dcf2c637e6d20186b6708726349921412b9 100644
+--- a/programs/dxdiag/main.c
++++ b/programs/dxdiag/main.c
+@@ -72,7 +72,13 @@ static BOOL process_file_name(const WCHAR *cmdline, enum output_type output_type
+         endptr = cmdline + lstrlenW(cmdline);
+ 
+     len = endptr - cmdline;
+-    if (len == 0 || len >= filename_len)
++    if (len == 0)
++    {
++        *filename = 0;
++        return TRUE;
++    }
++
++    if (len >= filename_len)
+         return FALSE;
+ 
+     memcpy(filename, cmdline, len * sizeof(WCHAR));
+diff --git a/programs/dxdiag/output.c b/programs/dxdiag/output.c
+index a8eb733ba4b27efca9068fd67a311cca07a75fa3..63d091395b0fc8fa7f7f56e4c77466258583c3d9 100644
+--- a/programs/dxdiag/output.c
++++ b/programs/dxdiag/output.c
+@@ -149,8 +149,12 @@ static BOOL output_text_information(struct dxdiag_information *dxdiag_info, cons
+ 
+     fill_system_text_output_table(dxdiag_info, output_table[0].fields);
+ 
+-    hFile = CreateFileW(filename, GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE,
+-                        NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
++    if (filename && *filename)
++        hFile = CreateFileW(filename, GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE,
++                            NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
++    else
++        hFile = GetStdHandle(STD_OUTPUT_HANDLE);
++
+     if (hFile == INVALID_HANDLE_VALUE)
+     {
+         WINE_ERR("File creation failed, last error %lu\n", GetLastError());
+@@ -207,7 +211,7 @@ static HRESULT save_xml_document(IXMLDOMDocument *xmldoc, const WCHAR *filename)
+     VARIANT destVar;
+     HRESULT hr;
+ 
+-    if (!bstr)
++    if (!bstr || !filename || !*filename)
+         return E_OUTOFMEMORY;
+ 
+     V_VT(&destVar) = VT_BSTR;
+diff --git a/programs/explorer/desktop.c b/programs/explorer/desktop.c
+index ce70c5dd79dd41836deb5014c4fcf3d48b04f55d..c4189cb042e4b0a7c5e8d2ce2e4b580c8f9e076b 100644
+--- a/programs/explorer/desktop.c
++++ b/programs/explorer/desktop.c
+@@ -1193,6 +1193,77 @@ static void set_shell_window( HWND hwnd )
+     SetShellWindow( hwnd );
+ }
+ 
++static HANDLE start_tabtip_process(void)
++{
++    static const WCHAR tabtip_started_event[] = L"TABTIP_STARTED_EVENT";
++    PROCESS_INFORMATION pi;
++    STARTUPINFOW si = { sizeof(si) };
++    HANDLE wait_handles[2];
++
++    if (!CreateProcessW(L"C:\\windows\\system32\\tabtip.exe", NULL,
++                        NULL, NULL, TRUE, DETACHED_PROCESS, NULL, NULL, &si, &pi))
++    {
++        WINE_ERR("Couldn't start tabtip.exe: error %lu\n", GetLastError());
++        return FALSE;
++    }
++    CloseHandle(pi.hThread);
++
++    wait_handles[0] = CreateEventW(NULL, TRUE, FALSE, tabtip_started_event);
++    wait_handles[1] = pi.hProcess;
++
++    /* wait for the event to become available or the process to exit */
++    if ((WaitForMultipleObjects(2, wait_handles, FALSE, INFINITE)) == WAIT_OBJECT_0 + 1)
++    {
++        DWORD exit_code;
++        GetExitCodeProcess(pi.hProcess, &exit_code);
++        WINE_ERR("Unexpected termination of tabtip.exe - exit code %ld\n", exit_code);
++        CloseHandle(wait_handles[0]);
++        return pi.hProcess;
++    }
++
++    CloseHandle(wait_handles[0]);
++    return pi.hProcess;
++}
++
++static HANDLE start_xalia_process(void)
++{
++    PROCESS_INFORMATION pi;
++    STARTUPINFOW si = { sizeof(si) };
++    WCHAR use_envvar[2];
++    LPWSTR path;
++    LPCWSTR path_suffix = L"/../xalia/xalia.exe";
++    DWORD ret, buffersize;
++
++    /* check if xalia is enabled */
++    ret = GetEnvironmentVariableW(L"PROTON_USE_XALIA", use_envvar, ARRAY_SIZE(use_envvar));
++    if (!ret || (ret <= ARRAY_SIZE(use_envvar) && lstrcmpW(use_envvar, L"0") == 0))
++        return NULL;
++
++    /* locate xalia.exe */
++    ret = GetEnvironmentVariableW(L"WINEDATADIR", NULL, 0);
++    if (ret == 0)
++        return NULL;
++
++    buffersize = ret + lstrlenW(path_suffix);
++    path = HeapAlloc(GetProcessHeap(), 0, buffersize * sizeof(*path));
++
++    GetEnvironmentVariableW(L"WINEDATADIR", path, ret);
++    if (!memcmp(path, L"\\??\\", 8))  path[1] = '\\';  /* change \??\ into \\?\ */
++    lstrcatW(path, path_suffix);
++
++    /* setup environment */
++    SetEnvironmentVariableW(L"XALIA_WINE_SYSTEM_PROCESS", L"1");
++
++    if (!CreateProcessW(path, NULL,
++                        NULL, NULL, TRUE, DETACHED_PROCESS, NULL, NULL, &si, &pi))
++    {
++        WINE_ERR("Couldn't start xalia.exe: error %lu\n", GetLastError());
++        return NULL;
++    }
++    CloseHandle(pi.hThread);
++    return pi.hProcess;
++}
++
+ /* main desktop management function */
+ void manage_desktop( WCHAR *arg )
+ {
+@@ -1210,6 +1281,17 @@ void manage_desktop( WCHAR *arg )
+     HANDLE thread;
+     DWORD id;
+     NTSTATUS status;
++    HANDLE tabtip = NULL, xalia = NULL;
++
++    {
++        char s[1024];
++        if (!__wine_get_unix_env("EXPLORER_LD_PRELOAD", s, sizeof(s)))
++        {
++            TRACE("EXPLORER_LD_PRELOAD %s.\n", s);
++            __wine_set_unix_env("LD_PRELOAD", s);
++            __wine_set_unix_env("EXPLORER_LD_PRELOAD", NULL);
++        }
++    }
+ 
+     /* get the rest of the command line (if any) */
+     while (*p && !is_whitespace(*p)) p++;
+@@ -1326,6 +1408,11 @@ void manage_desktop( WCHAR *arg )
+     /* run the desktop message loop */
+     if (hwnd)
+     {
++        /* FIXME: hack, run tabtip.exe on startup. */
++        tabtip = start_tabtip_process();
++
++        xalia = start_xalia_process();
++
+         TRACE( "desktop message loop starting on hwnd %p\n", hwnd );
+         while (GetMessageW( &msg, 0, 0, 0 )) DispatchMessageW( &msg );
+         TRACE( "desktop message loop exiting for hwnd %p\n", hwnd );
+@@ -1333,6 +1420,20 @@ void manage_desktop( WCHAR *arg )
+ 
+     if (pShellDDEInit) pShellDDEInit( FALSE );
+ 
++    if (tabtip)
++    {
++        TerminateProcess( tabtip, 0 );
++        WaitForSingleObject( tabtip, INFINITE );
++        CloseHandle( tabtip );
++    }
++
++    if (xalia)
++    {
++        TerminateProcess( xalia, 0 );
++        WaitForSingleObject( xalia, INFINITE );
++        CloseHandle( xalia );
++    }
++
+     ExitProcess( 0 );
+ }
+ 
+diff --git a/programs/explorer/systray.c b/programs/explorer/systray.c
+index 69d3ec61b6a02cb70a13fd812600033dd6a91997..8fd9ea4b439f8a128e834e521c6c92a5198d98ad 100644
+--- a/programs/explorer/systray.c
++++ b/programs/explorer/systray.c
+@@ -1259,7 +1259,7 @@ void initialize_systray( BOOL arg_using_root, BOOL arg_enable_shell, BOOL arg_sh
+     else
+     {
+         SIZE size = get_window_size();
+-        tray_window = CreateWindowExW( 0, shell_traywnd_class.lpszClassName, L"", WS_CAPTION | WS_SYSMENU,
++        tray_window = CreateWindowExW( WS_EX_NOACTIVATE, shell_traywnd_class.lpszClassName, L"", WS_CAPTION | WS_SYSMENU,
+                                        CW_USEDEFAULT, CW_USEDEFAULT, size.cx, size.cy, 0, 0, 0, 0 );
+         NtUserMessageCall( tray_window, WINE_SYSTRAY_DOCK_INIT, 0, 0, NULL, NtUserSystemTrayCall, FALSE );
+     }
+diff --git a/programs/getminidump/Makefile.in b/programs/getminidump/Makefile.in
+new file mode 100644
+index 0000000000000000000000000000000000000000..56d148dfb9d27a241018740bf78e52083893182a
+--- /dev/null
++++ b/programs/getminidump/Makefile.in
+@@ -0,0 +1,7 @@
++MODULE  = getminidump.exe
++IMPORTS = shcore dbghelp
++
++EXTRADLLFLAGS = -mwindows -municode
++
++SOURCES = \
++	main.c
+diff --git a/programs/getminidump/main.c b/programs/getminidump/main.c
+new file mode 100644
+index 0000000000000000000000000000000000000000..3cc5010797a2401825da7867ed5596cb656011cb
+--- /dev/null
++++ b/programs/getminidump/main.c
+@@ -0,0 +1,60 @@
++/*
++ * Copyright 2022 Nikolay Sivov for CodeWeavers
++ *
++ * This library is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU Lesser General Public
++ * License as published by the Free Software Foundation; either
++ * version 2.1 of the License, or (at your option) any later version.
++ *
++ * This library is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++ * Lesser General Public License for more details.
++ *
++ * You should have received a copy of the GNU Lesser General Public
++ * License along with this library; if not, write to the Free Software
++ * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
++ */
++
++#include <stdio.h>
++#include <stdlib.h>
++
++#include <windows.h>
++#include <dbghelp.h>
++#include <shellapi.h>
++
++int APIENTRY wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, WCHAR *cmdline, int nCmdShow)
++{
++    HANDLE process, dumpfile;
++    WCHAR **argv, *ptr;
++    DWORD pid;
++    int argc;
++    BOOL ret;
++
++    argv = CommandLineToArgvW(cmdline, &argc);
++    if (argc < 1) return 1;
++
++    ptr = argv[0];
++    if (ptr[0] == '0' && towlower(ptr[1]) == 'x')
++        pid = wcstoul(ptr, NULL, 16);
++    else
++        pid = wcstoul(ptr, NULL, 10);
++
++    process = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, pid);
++    if (!process)
++        return 2;
++
++    dumpfile = CreateFileW(L"minidump.dmp", GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
++    if (dumpfile == INVALID_HANDLE_VALUE)
++    {
++        CloseHandle(process);
++        return 3;
++    }
++
++    ret = MiniDumpWriteDump(process, pid, dumpfile, MiniDumpNormal | MiniDumpWithFullMemory, NULL, NULL, NULL);
++
++    CloseHandle(dumpfile);
++    CloseHandle(process);
++
++    return ret ? 0 : 4;
++}
+diff --git a/programs/services/services.c b/programs/services/services.c
+index 0830a75016bea380e1c40759262f9d1a800ecc01..c6ceadb3753e44aee0c70e64f80911f417d6db45 100644
+--- a/programs/services/services.c
++++ b/programs/services/services.c
+@@ -1026,22 +1026,39 @@ found:
+ 
+     ZeroMemory(&si, sizeof(STARTUPINFOW));
+     si.cb = sizeof(STARTUPINFOW);
+-    if (!(service_entry->config.dwServiceType & SERVICE_INTERACTIVE_PROCESS))
++    if (!(service_entry->config.dwServiceType & SERVICE_INTERACTIVE_PROCESS)
++        && service_entry->config.lpDisplayName && wcscmp(service_entry->config.lpDisplayName, L"Arc Service"))
+     {
+         si.lpDesktop = (WCHAR *)L"__wineservice_winstation\\Default";
+     }
++    else if (!(service_entry->config.dwServiceType & SERVICE_INTERACTIVE_PROCESS))
++    {
++        FIXME("HACK: Creating service %s on default desktop.\n", debugstr_w(service_entry->config.lpDisplayName));
++    }
+ 
+     if (!environment && OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY | TOKEN_DUPLICATE, &token))
+     {
+-        WCHAR val[16];
+-        CreateEnvironmentBlock(&environment, token, FALSE);
+-        if (GetEnvironmentVariableW( L"WINEBOOTSTRAPMODE", val, ARRAY_SIZE(val) ))
++        static const WCHAR *preserve[] =
+         {
+-            UNICODE_STRING name = RTL_CONSTANT_STRING(L"WINEBOOTSTRAPMODE");
+-            UNICODE_STRING value;
++            L"WINEBOOTSTRAPMODE",
++            L"PROTON_DISABLE_HIDRAW",
++            L"PROTON_ENABLE_HIDRAW",
++            L"FEX_APP_DATA_LOCATION",
++            L"FEX_APP_CONFIG_LOCATION",
++            L"FEX_APP_CONFIG",
++        };
++        WCHAR buffer[1024];
+ 
+-            RtlInitUnicodeString( &value, val );
+-            RtlSetEnvironmentVariable( (WCHAR **)&environment, &name, &value );
++        CreateEnvironmentBlock(&environment, token, FALSE);
++        for (size_t i = 0; i < ARRAY_SIZE(preserve); i++)
++        {
++            if (GetEnvironmentVariableW( preserve[i], buffer, ARRAY_SIZE(buffer) ))
++            {
++                UNICODE_STRING value, name;
++                RtlInitUnicodeString( &name, preserve[i] );
++                RtlInitUnicodeString( &value, buffer );
++                RtlSetEnvironmentVariable( (WCHAR **)&environment, &name, &value );
++            }
+         }
+         CloseHandle(token);
+     }
+@@ -1160,6 +1177,12 @@ DWORD service_start(struct service_entry *service, DWORD service_argc, LPCWSTR *
+     BOOL shared_process;
+     DWORD err;
+ 
++    if (service->name && (!wcscmp(service->name, L"edgeupdate") || !wcscmp(service->name, L"edgeupdatem")))
++    {
++        ERR( "HACK: not starting %s.\n", wine_dbgstr_w(service->name));
++        return ERROR_SUCCESS;
++    }
++
+     err = service_start_process(service, &process, &shared_process);
+     if (err == ERROR_SUCCESS)
+     {
+diff --git a/programs/tabtip/Makefile.in b/programs/tabtip/Makefile.in
+new file mode 100644
+index 0000000000000000000000000000000000000000..5070b74fc4cb817a15335a49c07dd030c08abcc4
+--- /dev/null
++++ b/programs/tabtip/Makefile.in
+@@ -0,0 +1,7 @@
++MODULE    = tabtip.exe
++IMPORTS   = ole32 user32 uiautomationcore shell32 oleaut32
++
++EXTRADLLFLAGS = -mconsole -municode
++
++SOURCES = \
++	tabtip.c
+diff --git a/programs/tabtip/tabtip.c b/programs/tabtip/tabtip.c
+new file mode 100644
+index 0000000000000000000000000000000000000000..3fcdb2d86f3694fe5e931d0fb0c9ef4a43211b94
+--- /dev/null
++++ b/programs/tabtip/tabtip.c
+@@ -0,0 +1,463 @@
++/*
++ * Copyright 2021 Connor McAdams
++ *
++ * This library is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU Lesser General Public
++ * License as published by the Free Software Foundation; either
++ * version 2.1 of the License, or (at your option) any later version.
++ *
++ * This library is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++ * Lesser General Public License for more details.
++ *
++ * You should have received a copy of the GNU Lesser General Public
++ * License along with this library; if not, write to the Free Software
++ * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
++ */
++
++#include "windows.h"
++#define COBJMACROS
++#include <initguid.h>
++#include "uiautomation.h"
++#include "ole2.h"
++#include "strsafe.h"
++#include "oleacc.h"
++#include "shellapi.h"
++#include <wchar.h>
++#include <winternl.h>
++
++#include "wine/debug.h"
++#ifndef UNICODE
++#define UNICODE
++#endif
++
++WINE_DEFAULT_DEBUG_CHANNEL(tabtip);
++
++#define WM_TABTIP_OSK_TOGGLE (WM_USER + 1)
++static BOOL keyboard_up;
++static BOOL use_steam_osk;
++static unsigned int steam_app_id;
++
++struct str_id_pair {
++    int id;
++    const char *str;
++};
++
++static const struct str_id_pair uia_control_type_id_strs[] = {
++    { UIA_ButtonControlTypeId,       "UIA_ButtonControlTypeId", },
++    { UIA_CalendarControlTypeId,     "UIA_CalendarControlTypeId", },
++    { UIA_CheckBoxControlTypeId,     "UIA_CheckBoxControlTypeId", },
++    { UIA_ComboBoxControlTypeId,     "UIA_ComboBoxControlTypeId", },
++    { UIA_EditControlTypeId,         "UIA_EditControlTypeId", },
++    { UIA_HyperlinkControlTypeId,    "UIA_HyperlinkControlTypeId", },
++    { UIA_ImageControlTypeId,        "UIA_ImageControlTypeId", },
++    { UIA_ListItemControlTypeId,     "UIA_ListItemControlTypeId", },
++    { UIA_ListControlTypeId,         "UIA_ListControlTypeId", },
++    { UIA_MenuControlTypeId,         "UIA_MenuControlTypeId", },
++    { UIA_MenuBarControlTypeId,      "UIA_MenuBarControlTypeId", },
++    { UIA_MenuItemControlTypeId,     "UIA_MenuItemControlTypeId", },
++    { UIA_ProgressBarControlTypeId,  "UIA_ProgressBarControlTypeId", },
++    { UIA_RadioButtonControlTypeId,  "UIA_RadioButtonControlTypeId", },
++    { UIA_ScrollBarControlTypeId,    "UIA_ScrollBarControlTypeId", },
++    { UIA_SliderControlTypeId,       "UIA_SliderControlTypeId", },
++    { UIA_SpinnerControlTypeId,      "UIA_SpinnerControlTypeId", },
++    { UIA_StatusBarControlTypeId,    "UIA_StatusBarControlTypeId", },
++    { UIA_TabControlTypeId,          "UIA_TabControlTypeId", },
++    { UIA_TabItemControlTypeId,      "UIA_TabItemControlTypeId", },
++    { UIA_TextControlTypeId,         "UIA_TextControlTypeId", },
++    { UIA_ToolBarControlTypeId,      "UIA_ToolBarControlTypeId", },
++    { UIA_ToolTipControlTypeId,      "UIA_ToolTipControlTypeId", },
++    { UIA_TreeControlTypeId,         "UIA_TreeControlTypeId", },
++    { UIA_TreeItemControlTypeId,     "UIA_TreeItemControlTypeId", },
++    { UIA_CustomControlTypeId,       "UIA_CustomControlTypeId", },
++    { UIA_GroupControlTypeId,        "UIA_GroupControlTypeId", },
++    { UIA_ThumbControlTypeId,        "UIA_ThumbControlTypeId", },
++    { UIA_DataGridControlTypeId,     "UIA_DataGridControlTypeId", },
++    { UIA_DataItemControlTypeId,     "UIA_DataItemControlTypeId", },
++    { UIA_DocumentControlTypeId,     "UIA_DocumentControlTypeId", },
++    { UIA_SplitButtonControlTypeId,  "UIA_SplitButtonControlTypeId", },
++    { UIA_WindowControlTypeId,       "UIA_WindowControlTypeId", },
++    { UIA_PaneControlTypeId,         "UIA_PaneControlTypeId", },
++    { UIA_HeaderControlTypeId,       "UIA_HeaderControlTypeId", },
++    { UIA_HeaderItemControlTypeId,   "UIA_HeaderItemControlTypeId", },
++    { UIA_TableControlTypeId,        "UIA_TableControlTypeId", },
++    { UIA_TitleBarControlTypeId,     "UIA_TitleBarControlTypeId", },
++    { UIA_SeparatorControlTypeId,    "UIA_SeparatorControlTypeId", },
++    { UIA_SemanticZoomControlTypeId, "UIA_SemanticZoomControlTypeId", },
++    { UIA_AppBarControlTypeId,       "UIA_AppBarControlTypeId", },
++};
++
++static int __cdecl str_id_pair_compare(const void *a, const void *b)
++{
++    const int *id = a;
++    const struct str_id_pair *pair = b;
++
++    return ((*id) > pair->id) - ((*id) < pair->id);
++}
++
++#define get_str_for_id(id, id_pair) \
++    get_str_from_id_pair( (id), (id_pair), (ARRAY_SIZE(id_pair)) )
++static const char *get_str_from_id_pair(int id, const struct str_id_pair *id_pair, int id_pair_size)
++{
++    const struct str_id_pair *pair;
++
++    if ((pair = bsearch(&id, id_pair, id_pair_size, sizeof(*pair), str_id_pair_compare)))
++        return pair->str;
++
++    return "";
++}
++
++static void tabtip_toggle_steam_osk(BOOL raise, const RECT *rect);
++static const WCHAR tabtip_window_class_name[]  = L"IPTip_Main_Window";
++static LRESULT CALLBACK tabtip_win_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
++{
++    /* Try to invoke the OSK. */
++    if (msg == WM_TABTIP_OSK_TOGGLE)
++    {
++        tabtip_toggle_steam_osk((BOOL)wparam, NULL);
++    }
++
++    return DefWindowProcW(hwnd, msg, wparam, lparam);
++}
++
++#define MAX_LINK_BUF 4096
++struct osk_link_data {
++    WCHAR link_buf[MAX_LINK_BUF];
++    WCHAR *link_buf_pos;
++    int args_count;
++};
++
++static void osk_link_init(struct osk_link_data *data, const WCHAR *link)
++{
++    data->link_buf_pos = data->link_buf;
++    data->link_buf_pos += wsprintfW(data->link_buf, L"%s", link);
++    data->args_count = 0;
++}
++
++#define MAX_ARG_BUF 512
++static const WCHAR max_int_arg_str[] = L"=-0000000000";
++static const WCHAR separator_arg_start_str[] = L"?";
++static const WCHAR separator_arg_cont_str[] = L"&";
++static const int max_separator_str_len = max(ARRAY_SIZE(separator_arg_start_str), ARRAY_SIZE(separator_arg_cont_str));
++static void osk_link_add_int_arg(struct osk_link_data *data, const WCHAR *arg, int arg_val)
++{
++    const WCHAR *separator_str = !data->args_count ? separator_arg_start_str : separator_arg_cont_str;
++    WCHAR arg_buf[MAX_ARG_BUF] = { 0 };
++    int arg_buf_len;
++
++    if ((lstrlenW(arg) + ARRAY_SIZE(max_int_arg_str)) >= MAX_ARG_BUF)
++    {
++        ERR("Arg would overflow buffer, suggest upping argument buffer size.\n");
++        return;
++    }
++
++    arg_buf_len = wsprintfW(arg_buf, L"%s=%d", arg, arg_val);
++    if ((arg_buf_len + (MAX_LINK_BUF - (data->link_buf_pos - data->link_buf)) + max_separator_str_len) >= MAX_LINK_BUF)
++    {
++        ERR("Adding another arg would overflow buffer, suggest upping link buffer size.\n");
++        return;
++    }
++
++    data->link_buf_pos += wsprintfW(data->link_buf_pos, L"%s%s", separator_str, arg_buf);
++    data->args_count++;
++}
++
++/*
++ * IUIAutomationFocusChangedEventHandler vtbl.
++ */
++static HRESULT WINAPI FocusChangedHandler_QueryInterface(IUIAutomationFocusChangedEventHandler *iface,
++        REFIID riid, void **ppv)
++{
++    *ppv = NULL;
++    if (IsEqualIID(riid, &IID_IUIAutomationFocusChangedEventHandler) || IsEqualIID(riid, &IID_IUnknown))
++        *ppv = iface;
++    else
++        return E_NOINTERFACE;
++
++    IUIAutomationFocusChangedEventHandler_AddRef(iface);
++    return S_OK;
++}
++
++static ULONG WINAPI FocusChangedHandler_AddRef(IUIAutomationFocusChangedEventHandler* iface)
++{
++    return 2;
++}
++
++static ULONG WINAPI FocusChangedHandler_Release(IUIAutomationFocusChangedEventHandler* iface)
++{
++    return 1;
++}
++
++static void tabtip_toggle_steam_osk(BOOL raise, const RECT *rect)
++{
++    struct osk_link_data link_data = { 0 };
++
++    if (!use_steam_osk)
++        return;
++
++    if (raise)
++    {
++        osk_link_init(&link_data, L"steam://open/keyboard");
++        /* Requested in CW-Bug-Id: #21613. */
++        if (steam_app_id) osk_link_add_int_arg(&link_data, L"AppID", steam_app_id);
++        if (rect && (rect->left || rect->top || rect->right || rect->bottom))
++        {
++            osk_link_add_int_arg(&link_data, L"XPosition", rect->left);
++            osk_link_add_int_arg(&link_data, L"YPosition", rect->top);
++            osk_link_add_int_arg(&link_data, L"Width", (rect->right - rect->left));
++            osk_link_add_int_arg(&link_data, L"Height", (rect->bottom - rect->top));
++            osk_link_add_int_arg(&link_data, L"Mode", 0);
++        }
++
++        WINE_TRACE("Keyboard up!\n");
++        keyboard_up = TRUE;
++    }
++    else if (!raise && keyboard_up)
++    {
++        osk_link_init(&link_data, L"steam://close/keyboard");
++        /* Requested in CW-Bug-Id: #21613. */
++        if (steam_app_id) osk_link_add_int_arg(&link_data, L"AppID", steam_app_id);
++
++        WINE_TRACE("Keyboard down!\n");
++        keyboard_up = FALSE;
++    }
++
++    if (link_data.link_buf_pos && (link_data.link_buf_pos != link_data.link_buf))
++        ShellExecuteW(NULL, NULL, link_data.link_buf, NULL, NULL, SW_SHOWNOACTIVATE);
++}
++
++static HRESULT WINAPI FocusChangedHandler_HandleFocusChangedEvent(IUIAutomationFocusChangedEventHandler *iface,
++        IUIAutomationElement *sender)
++{
++    BOOL is_readonly, has_kbd_focus;
++    RECT rect = { 0 };
++    BSTR name = NULL;
++    int control_type;
++    HRESULT hr;
++    VARIANT v;
++
++    WINE_TRACE("sender %p\n", sender);
++
++    /* Should never happen, handle it anyways just in case. */
++    if (!sender)
++        return S_OK;
++
++    hr = IUIAutomationElement_get_CachedBoundingRectangle(sender, &rect);
++    if (FAILED(hr)) WINE_ERR("Failed to get cached bounding rect, hr %#lx\n", hr);
++
++    hr = IUIAutomationElement_get_CachedControlType(sender, &control_type);
++    if (FAILED(hr)) WINE_ERR("Failed to get cached control type, hr %#lx\n", hr);
++
++    hr = IUIAutomationElement_get_CachedName(sender, &name);
++    if (FAILED(hr)) WINE_ERR("Failed to get cached name, hr %#lx\n", hr);
++
++    hr = IUIAutomationElement_get_CachedHasKeyboardFocus(sender, &has_kbd_focus);
++    if (FAILED(hr)) WINE_ERR("Failed to get cached has keyboard focus property, hr %#lx\n", hr);
++
++    VariantInit(&v);
++    hr = IUIAutomationElement_GetCachedPropertyValueEx(sender, UIA_ValueIsReadOnlyPropertyId, TRUE, &v);
++    if (FAILED(hr)) WINE_ERR("Failed to get cached property value for UIA_ValueIsReadOnlyPropertyId, hr %#lx\n", hr);
++    is_readonly = ((V_VT(&v) == VT_BOOL) && (V_BOOL(&v) == VARIANT_TRUE));
++    VariantClear(&v);
++
++    tabtip_toggle_steam_osk(((control_type == UIA_EditControlTypeId) && has_kbd_focus && !is_readonly), &rect);
++
++    WINE_TRACE("name %s, control_type %d (%s), rect %s, has_kbd_focus %d, is_readonly %d\n", wine_dbgstr_w(name),
++            control_type, get_str_for_id(control_type, uia_control_type_id_strs), wine_dbgstr_rect(&rect),
++            has_kbd_focus, is_readonly);
++    SysFreeString(name);
++
++    return S_OK;
++}
++
++static const IUIAutomationFocusChangedEventHandlerVtbl FocusChangedHandlerVtbl = {
++    FocusChangedHandler_QueryInterface,
++    FocusChangedHandler_AddRef,
++    FocusChangedHandler_Release,
++    FocusChangedHandler_HandleFocusChangedEvent,
++};
++
++static IUIAutomationFocusChangedEventHandler FocusChangedHandler = { &FocusChangedHandlerVtbl };
++
++static const int uia_cache_props[] = { UIA_BoundingRectanglePropertyId, UIA_ControlTypePropertyId, UIA_NamePropertyId,
++                                       UIA_HasKeyboardFocusPropertyId, UIA_ValueIsReadOnlyPropertyId, };
++static HRESULT add_uia_event_handler(IUIAutomation **uia_iface)
++{
++    IUIAutomationCacheRequest *cache_req = NULL;
++    IUIAutomationCondition *true_cond = NULL;
++    HRESULT hr;
++    int i;
++
++    hr = CoCreateInstance(&CLSID_CUIAutomation8, NULL, CLSCTX_INPROC_SERVER, &IID_IUIAutomation, (void **)uia_iface);
++    if (FAILED(hr))
++    {
++        ERR("Failed to create IUIAutomation interface, hr %#lx\n", hr);
++        return hr;
++    }
++
++    hr = IUIAutomation_CreateCacheRequest(*uia_iface, &cache_req);
++    if (FAILED(hr))
++        goto exit;
++
++    hr = IUIAutomation_CreateTrueCondition(*uia_iface, &true_cond);
++    if (FAILED(hr))
++        goto exit;
++
++    hr = IUIAutomationCacheRequest_put_TreeFilter(cache_req, true_cond);
++    if (FAILED(hr))
++        goto exit;
++
++    for (i = 0; i < ARRAY_SIZE(uia_cache_props); i++)
++    {
++        hr = IUIAutomationCacheRequest_AddProperty(cache_req, uia_cache_props[i]);
++        if (FAILED(hr))
++        {
++            ERR("Failed to add prop_id %d to cache req, hr %#lx\n", uia_cache_props[i], hr);
++            goto exit;
++        }
++    }
++
++    hr = IUIAutomation_AddFocusChangedEventHandler(*uia_iface, cache_req, &FocusChangedHandler);
++    if (FAILED(hr))
++        ERR("Failed to add focus changed event handler, hr %#lx\n", hr);
++
++exit:
++    if (cache_req)
++        IUIAutomationCacheRequest_Release(cache_req);
++    if (true_cond)
++        IUIAutomationCondition_Release(true_cond);
++
++    return hr;
++}
++
++static const char *osk_disable_appids[] = {
++    /*
++     * Both games spawn a short lived window containing an edit control
++     * that is never visible to the user. In order to avoid this
++     * triggering the OSK to popup briefly, just disable OSK auto popup
++     * for these games. CW-Bug-Id: #21421.
++     */
++    "1182900", /* A Plague Tale: Requiem */
++    "752590", /* A Plague Tale: Innocence */
++};
++
++static void tabtip_use_osk_check(void)
++{
++    const char *var = getenv("SteamDeck");
++
++    if (var && !strcmp(var, "1"))
++        use_steam_osk = TRUE;
++    else
++        use_steam_osk = FALSE;
++
++    if ((var = getenv("SteamAppId")))
++    {
++        int i;
++
++        for (i = 0; i < ARRAY_SIZE(osk_disable_appids); i++)
++        {
++            if (!strcmp(var, osk_disable_appids[i]))
++            {
++                WINE_TRACE("Disabling OSK auto-popup for appid %s\n", var);
++                use_steam_osk = FALSE;
++                break;
++            }
++        }
++        steam_app_id = strtol(var, NULL, 10);
++    }
++
++    WINE_TRACE("use_steam_osk=%d\n", use_steam_osk);
++}
++
++int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int nCmdShow)
++{
++    HANDLE wine_exit_event, started_event;
++    IUIAutomation *uia_iface = NULL;
++    WNDCLASSW wc = { };
++    int ret = 0;
++    HWND hwnd;
++
++    keyboard_up = FALSE;
++    tabtip_use_osk_check();
++
++    wine_exit_event = started_event = NULL;
++    NtSetInformationProcess( GetCurrentProcess(), ProcessWineMakeProcessSystem,
++                             &wine_exit_event, sizeof(HANDLE *) );
++    started_event = CreateEventW(NULL, TRUE, FALSE, L"TABTIP_STARTED_EVENT");
++    if (!wine_exit_event || !started_event)
++    {
++        ERR("Failed to create event handles!\n");
++        ret = -1;
++        goto exit;
++    }
++
++    if (FAILED(CoInitializeEx(NULL, COINIT_MULTITHREADED)))
++    {
++        ERR("CoInitialize failed!\n");
++        ret = -1;
++        goto exit;
++    }
++
++    SetEvent(started_event);
++
++    if (FAILED(add_uia_event_handler(&uia_iface)))
++    {
++        ret = -1;
++        goto exit;
++    }
++
++    wc.lpfnWndProc   = tabtip_win_proc;
++    wc.hInstance     = hInstance;
++    wc.lpszClassName = tabtip_window_class_name;
++    RegisterClassW(&wc);
++
++    hwnd = CreateWindowExW(0, tabtip_window_class_name,
++            L"Input", WS_OVERLAPPEDWINDOW, 4, 4, 0, 0, NULL,
++            NULL, hInstance, NULL);
++
++    if (!hwnd)
++    {
++        ERR("Failed to create hwnd!\n");
++        UnregisterClassW(tabtip_window_class_name, hInstance);
++        ret = -1;
++        goto exit;
++    }
++
++    while (MsgWaitForMultipleObjects(1, &wine_exit_event, FALSE, INFINITE, QS_ALLINPUT) != WAIT_OBJECT_0)
++    {
++        BOOL quit = FALSE;
++        MSG msg;
++
++        while (PeekMessageW(&msg, 0, 0, 0, PM_REMOVE))
++        {
++            switch (msg.message)
++            {
++            case WM_QUIT: /* Unlikely to ever happen, but handle anyways. */
++                quit = TRUE;
++                break;
++
++            default:
++                TranslateMessage(&msg);
++                DispatchMessageW(&msg);
++                break;
++            }
++        }
++
++        if (quit)
++            break;
++    }
++
++exit:
++    if (uia_iface)
++    {
++        IUIAutomation_RemoveAllEventHandlers(uia_iface);
++        IUIAutomation_Release(uia_iface);
++    }
++
++    CoUninitialize();
++    if (wine_exit_event) CloseHandle(wine_exit_event);
++    if (started_event) CloseHandle(started_event);
++
++    return ret;
++}
+diff --git a/programs/wineboot/Makefile.in b/programs/wineboot/Makefile.in
+index 6e0c91dbaf6bdeabdbec520c93bf46a085675b56..ba71e04679547b6c749bff5204e57b6852385d9e 100644
+--- a/programs/wineboot/Makefile.in
++++ b/programs/wineboot/Makefile.in
+@@ -1,6 +1,6 @@
+ MODULE    = wineboot.exe
+ IMPORTS   = uuid rpcrt4 advapi32 ws2_32 kernelbase
+-DELAYIMPORTS = shell32 shlwapi version user32 gdi32 setupapi newdev wininet
++DELAYIMPORTS = shell32 shlwapi version user32 gdi32 setupapi newdev wininet crypt32
+ ENABLE_ARCHS = $(HOST_ARCH)
+ 
+ EXTRADLLFLAGS = -mconsole
+diff --git a/programs/wineboot/wineboot.c b/programs/wineboot/wineboot.c
+index 7dda9ec3cfa0ecd2cb80bfb01bdc82ffc351b169..25f0b580e62048ceb34dec0b65a0c607d7a9d1e6 100644
+--- a/programs/wineboot/wineboot.c
++++ b/programs/wineboot/wineboot.c
+@@ -67,6 +67,7 @@
+ #include <winternl.h>
+ #include <ddk/wdm.h>
+ #include <sddl.h>
++#include <ntsecapi.h>
+ #include <wine/svcctl.h>
+ #include <wine/list.h>
+ #include <wine/asm.h>
+@@ -79,6 +80,7 @@
+ #include <setupapi.h>
+ #include <wininet.h>
+ #include <newdev.h>
++#include <wincrypt.h>
+ #include "resource.h"
+ 
+ WINE_DEFAULT_DEBUG_CHANNEL(wineboot);
+@@ -287,7 +289,13 @@ static UINT64 read_tsc_frequency(void)
+     }
+     while (error > 500 && --retries);
+ 
+-    if (!retries) WARN( "TSC frequency calibration failed, unstable TSC?\n" );
++    if (!retries)
++    {
++        FIXME( "TSC frequency calibration failed, unstable TSC?");
++        FIXME( "time0 %I64u ns, time1 %I64u ns\n", time0 * 100, time1 * 100 );
++        FIXME( "tsc2 - tsc0 %I64u, tsc3 - tsc1 %I64u\n", tsc2 - tsc0, tsc3 - tsc1 );
++        FIXME( "freq0 %I64u Hz, freq2 %I64u Hz, error %I64u ppm\n", freq0, freq1, error );
++    }
+     else
+     {
+         freq = (freq0 + freq1) / 2;
+@@ -299,10 +307,18 @@ static UINT64 read_tsc_frequency(void)
+ 
+ #elif defined(__aarch64__)
+ 
++#define FEX_TSC_SCALE_MAXIMUM 1000000000
++
+ static UINT64 read_tsc_frequency(void)
+ {
+     UINT64 tsc_frequency;
+     __asm__ volatile( "mrs %[Res], CNTFRQ_EL0" : [Res] "=r" (tsc_frequency) );
++
++    /* FEX hack in order to support games relying on this to read the x86 TSC
++     * frequency which FEX scales as below, assumes SmallTSCScale is enabled. */
++    while (tsc_frequency < FEX_TSC_SCALE_MAXIMUM)
++            tsc_frequency <<= 1;
++
+     return tsc_frequency;
+ }
+ 
+@@ -865,6 +881,14 @@ static void create_computer_name_keys(void)
+ 
+ static void create_volatile_environment_registry_key(void)
+ {
++    static const WCHAR *preserve[] =
++    {
++        L"DXVK_ENABLE_NVAPI",
++        L"DXVK_NVAPI_ALLOW_OTHER_DRIVERS",
++        L"DXVK_NVAPI_DRIVER_VERSION",
++    };
++    const WCHAR *str;
++    unsigned int i;
+     WCHAR path[MAX_PATH];
+     WCHAR computername[MAX_COMPUTERNAME_LENGTH + 1 + 2];
+     DWORD size;
+@@ -909,6 +933,12 @@ static void create_volatile_environment_registry_key(void)
+     }
+ 
+     set_reg_value( hkey, L"SESSIONNAME", L"Console" );
++
++    for (i = 0; i < ARRAY_SIZE(preserve); ++i)
++    {
++        if ((str = _wgetenv( preserve[i] ))) set_reg_value( hkey, preserve[i], str );
++    }
++
+     RegCloseKey( hkey );
+ }
+ 
+@@ -1495,64 +1525,6 @@ static BOOL start_services_process(void)
+     return TRUE;
+ }
+ 
+-static void set_wait_dialog_text( HWND hwnd, HWND text, const WCHAR *string )
+-{
+-    RECT win_rect, old_rect, new_rect;
+-    HDC hdc = GetDC( text );
+-
+-    GetClientRect( text, &old_rect );
+-    new_rect = old_rect;
+-    SelectObject( hdc, (HFONT)SendMessageW( text, WM_GETFONT, 0, 0 ));
+-    DrawTextW( hdc, string, -1, &new_rect, DT_CALCRECT | DT_EDITCONTROL | DT_WORDBREAK | DT_NOPREFIX );
+-    ReleaseDC( text, hdc );
+-    if (new_rect.bottom > old_rect.bottom)
+-    {
+-        GetWindowRect( hwnd, &win_rect );
+-        win_rect.bottom += new_rect.bottom - old_rect.bottom;
+-        SetWindowPos( hwnd, 0, 0, 0, win_rect.right - win_rect.left, win_rect.bottom - win_rect.top,
+-                      SWP_NOMOVE | SWP_NOACTIVATE | SWP_NOZORDER );
+-        SetWindowPos( text, 0, 0, 0, new_rect.right, new_rect.bottom,
+-                      SWP_NOMOVE | SWP_NOACTIVATE | SWP_NOZORDER );
+-    }
+-    SendMessageW( text, WM_SETTEXT, 0, (LPARAM)string );
+-}
+-
+-static INT_PTR CALLBACK wait_dlgproc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
+-{
+-    switch (msg)
+-    {
+-    case WM_INITDIALOG:
+-        {
+-            DWORD len, icon_size;
+-            RECT rect;
+-            WCHAR *buffer, text[1024];
+-            const WCHAR *name = (WCHAR *)lp;
+-            HICON icon;
+-
+-            GetClientRect( GetDlgItem( hwnd, IDC_WAITICON ), &rect );
+-            icon_size = min( rect.right, rect.bottom );
+-            icon = LoadImageW( 0, (LPCWSTR)IDI_WINLOGO, IMAGE_ICON, icon_size, icon_size, LR_SHARED );
+-            SendDlgItemMessageW( hwnd, IDC_WAITICON, STM_SETICON, (WPARAM)icon, 0 );
+-            SendDlgItemMessageW( hwnd, IDC_WAITTEXT, WM_GETTEXT, 1024, (LPARAM)text );
+-            len = lstrlenW(text) + lstrlenW(name) + 1;
+-            buffer = malloc( len * sizeof(WCHAR) );
+-            swprintf( buffer, len, text, name );
+-            set_wait_dialog_text( hwnd, GetDlgItem( hwnd, IDC_WAITTEXT ), buffer );
+-            free( buffer );
+-        }
+-        break;
+-    }
+-    return 0;
+-}
+-
+-static HWND show_wait_window(void)
+-{
+-    HWND hwnd = CreateDialogParamW( GetModuleHandleW(0), MAKEINTRESOURCEW(IDD_WAITDLG), 0,
+-                                    wait_dlgproc, (LPARAM)prettyprint_configdir() );
+-    ShowWindow( hwnd, SW_SHOWNORMAL );
+-    return hwnd;
+-}
+-
+ static HANDLE start_rundll32( const WCHAR *inf_path, const WCHAR *install, WORD machine )
+ {
+     WCHAR app[MAX_PATH + ARRAY_SIZE(L"\\rundll32.exe" )];
+@@ -1672,6 +1644,55 @@ static void update_user_profile(void)
+     LocalFree(sid);
+ }
+ 
++static void update_win_version(void)
++{
++    static const WCHAR win10_buildW[] = L"19045";
++    static const WCHAR win10_ntW[] = L"6.3";
++
++    HKEY cv_h;
++    DWORD type, sz;
++    WCHAR current_version[256];
++
++    if(RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"Software\\Microsoft\\Windows NT\\CurrentVersion",
++                0, KEY_ALL_ACCESS, &cv_h) == ERROR_SUCCESS){
++        /* get the current windows version */
++        sz = sizeof(current_version);
++        if(RegQueryValueExW(cv_h, L"CurrentVersion", NULL, &type, (BYTE *)current_version, &sz) == ERROR_SUCCESS &&
++                type == REG_SZ){
++            if(!wcscmp(current_version, L"6.3") || !wcscmp(current_version, L"10.0")){
++                RegSetValueExW(cv_h, L"CurrentVersion", 0, REG_SZ, (const BYTE *)win10_ntW, sizeof(win10_ntW));
++                RegSetValueExW(cv_h, L"CurrentBuild", 0, REG_SZ, (const BYTE *)win10_buildW, sizeof(win10_buildW));
++                RegSetValueExW(cv_h, L"CurrentBuildNumber", 0, REG_SZ, (const BYTE *)win10_buildW, sizeof(win10_buildW));
++            }
++        }
++        RegCloseKey(cv_h);
++    }
++
++    if(RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"Software\\Wow6432Node\\Microsoft\\Windows NT\\CurrentVersion",
++                0, KEY_ALL_ACCESS, &cv_h) == ERROR_SUCCESS){
++        /* get the current windows version */
++        sz = sizeof(current_version);
++        if(RegQueryValueExW(cv_h, L"CurrentVersion", NULL, &type, (BYTE *)current_version, &sz) == ERROR_SUCCESS &&
++                type == REG_SZ){
++            if(!wcscmp(current_version, L"6.3") || !wcscmp(current_version, L"10.0")){
++                RegSetValueExW(cv_h, L"CurrentVersion", 0, REG_SZ, (const BYTE *)win10_ntW, sizeof(win10_ntW));
++                RegSetValueExW(cv_h, L"CurrentBuild", 0, REG_SZ, (const BYTE *)win10_buildW, sizeof(win10_buildW));
++                RegSetValueExW(cv_h, L"CurrentBuildNumber", 0, REG_SZ, (const BYTE *)win10_buildW, sizeof(win10_buildW));
++            }
++        }
++        RegCloseKey(cv_h);
++    }
++}
++
++static void update_root_certs(void)
++{
++    HCERTSTORE store;
++
++    store = CertOpenStore( CERT_STORE_PROV_SYSTEM_REGISTRY_W, 0, 0, CERT_STORE_OPEN_EXISTING_FLAG
++                           | CERT_STORE_READONLY_FLAG | CERT_SYSTEM_STORE_LOCAL_MACHINE, L"Root");
++    CertCloseStore( store, 0 );
++}
++
+ /* execute rundll32 on the wine.inf file if necessary */
+ static void update_wineprefix( BOOL force )
+ {
+@@ -1701,7 +1722,6 @@ static void update_wineprefix( BOOL force )
+ 
+         if ((process = start_rundll32( inf_path, L"PreInstall", IMAGE_FILE_MACHINE_TARGET_HOST )))
+         {
+-            HWND hwnd = show_wait_window();
+             for (;;)
+             {
+                 if (process)
+@@ -1722,10 +1742,11 @@ static void update_wineprefix( BOOL force )
+                     process = start_rundll32( inf_path, L"Wow64Install", machines[count].Machine );
+                 count++;
+             }
+-            DestroyWindow( hwnd );
+         }
+         install_root_pnp_devices();
+         update_user_profile();
++        update_win_version();
++        update_root_certs();
+ 
+         TRACE( "wine: configuration in %s has been updated.\n", debugstr_w(prettyprint_configdir()) );
+     }
+@@ -1827,6 +1848,52 @@ static void usage( int status )
+     exit( status );
+ }
+ 
++static void create_digitalproductid(void)
++{
++    BYTE digital_product_id[0xa4];
++    char product_id[256];
++    LSTATUS status;
++    unsigned int i;
++    DWORD size;
++    DWORD type;
++    HKEY key;
++
++    if ((status = RegOpenKeyExW( HKEY_LOCAL_MACHINE, L"Software\\Microsoft\\Windows NT\\CurrentVersion",
++                       0, KEY_ALL_ACCESS, &key )))
++        return;
++    size = sizeof(product_id);
++    status = RegQueryValueExA( key, "ProductId", NULL, &type, (BYTE *)product_id, &size );
++    if (status) goto done;
++    if (!size) goto done;
++    if (product_id[size - 1])
++    {
++        if (size == sizeof(product_id)) goto done;
++        product_id[size++] = 0;
++    }
++
++    if (!RegQueryValueExA( key, "DigitalProductId", NULL, &type, NULL, &size ) && size == sizeof(digital_product_id))
++    {
++        if (RegQueryValueExA( key, "DigitalProductId", NULL, &type, digital_product_id, &size ))
++            goto done;
++        for (i = 0; i < size; ++i)
++            if (digital_product_id[i]) break;
++        if (i < size) goto done;
++    }
++
++    memset( digital_product_id, 0, sizeof(digital_product_id) );
++    *(DWORD *)digital_product_id = sizeof(digital_product_id);
++    digital_product_id[4] = 3;
++    strcpy( (char *)digital_product_id + 8, product_id );
++    *(DWORD *)(digital_product_id + 0x20) = 0x0cec;
++    *(DWORD *)(digital_product_id + 0x34) = 0x0cec;
++    strcpy( (char *)digital_product_id + 0x24, "[TH] X19-99481" );
++    digital_product_id[0x42] = 8;
++    RtlGenRandom( digital_product_id + 0x38, 0x18 );
++    RegSetValueExA( key, "DigitalProductId", 0, REG_BINARY, digital_product_id, sizeof(digital_product_id) );
++done:
++    RegCloseKey( key );
++}
++
+ int __cdecl main( int argc, char *argv[] )
+ {
+     /* First, set the current directory to SystemRoot */
+@@ -1937,6 +2004,7 @@ int __cdecl main( int argc, char *argv[] )
+     }
+     if (init || update) update_wineprefix( update );
+ 
++    create_digitalproductid();
+     create_volatile_environment_registry_key();
+     create_known_dlls();
+     initialize_internet();
+diff --git a/programs/winebrowser/main.c b/programs/winebrowser/main.c
+index 9e00b11127496e9d01b31cbe1741db6f504a7512..df3373147a98248552952222d276965900443ac8 100644
+--- a/programs/winebrowser/main.c
++++ b/programs/winebrowser/main.c
+@@ -62,6 +62,17 @@ static char *strdup_unixcp( const WCHAR *str )
+     return ret;
+ }
+ 
++static void restore_system_environment(void)
++{
++    const char* orig_ld_path = getenv("ORIG_LD_LIBRARY_PATH");
++
++    if (orig_ld_path)
++    {
++        __wine_set_unix_env("LD_LIBRARY_PATH", orig_ld_path);
++        __wine_set_unix_env("ORIG_LD_LIBRARY_PATH", NULL);
++    }
++}
++
+ /* try to launch a unix app from a comma separated string of app names */
+ static int launch_app( const WCHAR *candidates, const WCHAR *argv1 )
+ {
+@@ -71,6 +82,11 @@ static int launch_app( const WCHAR *candidates, const WCHAR *argv1 )
+ 
+     if (!(cmdline = strdup_unixcp( argv1 ))) return 1;
+ 
++    /* PROTON HACK: Restore ORIG_LD_LIBRARY_PATH to LD_LIBRARY_PATH.
++     * System programs may not work correctly with our libraries, in
++     * particular gio on Ubuntu 19.04 is broken by our libgio. */
++    restore_system_environment();
++
+     while (*candidates)
+     {
+         WCHAR **args = CommandLineToArgvW( candidates, &count );
+diff --git a/programs/winedbg/debugger.h b/programs/winedbg/debugger.h
+index 3ceef9c3e7c6327866d8e4cb95c908cbdb350bca..3a64b43a74babac7355949f463f4aac316deaeff 100644
+--- a/programs/winedbg/debugger.h
++++ b/programs/winedbg/debugger.h
+@@ -313,6 +313,8 @@ extern  dbg_ctx_t               dbg_context;
+ extern  BOOL                    dbg_interactiveP;
+ extern  HANDLE                  dbg_houtput;
+ extern  struct list             dbg_process_list;
++extern  HANDLE                  dbg_crash_report_file;
++extern  BOOL                    dbg_use_wine_dbg_output;
+ 
+ struct dbg_internal_var
+ {
+diff --git a/programs/winedbg/tgt_active.c b/programs/winedbg/tgt_active.c
+index f3041e3578c3efb87f1f41496c97c2d04067a852..c4923d0c580bef9c49eb1ecf5bc3da2ebd2c16ca 100644
+--- a/programs/winedbg/tgt_active.c
++++ b/programs/winedbg/tgt_active.c
+@@ -22,6 +22,8 @@
+ #include <stdio.h>
+ #include <string.h>
+ #include <stdarg.h>
++#include <time.h>
++#include <sys/stat.h>
+ 
+ #include "debugger.h"
+ #include "psapi.h"
+@@ -848,6 +850,48 @@ static HANDLE create_temp_file(void)
+                         NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_DELETE_ON_CLOSE, 0 );
+ }
+ 
++static HANDLE create_crash_report_file(void)
++{
++    const char *dir = getenv("WINE_CRASH_REPORT_DIR");
++    const char *sgi;
++    char timestr[32];
++    char name[MAX_PATH], *c;
++    time_t t;
++    struct tm lt;
++
++    if(!dir || dir[0] == 0)
++        return INVALID_HANDLE_VALUE;
++
++    strcpy(name, dir);
++
++    for(c = name + 1; *c; ++c){
++        if(*c == '/'){
++            *c = 0;
++            CreateDirectoryA(name, NULL);
++            *c = '/';
++        }
++    }
++    CreateDirectoryA(name, NULL);
++
++    sgi = getenv("SteamGameId");
++
++    t = time(NULL);
++    lt = *localtime(&t);
++    strftime(timestr, ARRAY_SIZE(timestr), "%Y-%m-%d_%H:%M:%S", &lt);
++
++    /* /path/to/crash/reports/2021-05-18_13:21:15_appid-976310_crash.log */
++    snprintf(name, ARRAY_SIZE(name),
++            "%s%s/%s_appid-%s_crash.log",
++            dir[0] == '/' ? "Z:/" : "",
++            dir,
++            timestr,
++            sgi ? sgi : "0"
++            );
++
++    return CreateFileA( name, GENERIC_WRITE, FILE_SHARE_READ,
++                        NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0 );
++}
++
+ /******************************************************************
+  *		dbg_active_attach
+  *
+@@ -938,6 +982,10 @@ enum dbg_start dbg_active_auto(int argc, char* argv[])
+         if (event) thread = display_crash_details( event );
+         if (thread) dbg_houtput = output = create_temp_file();
+         break;
++    case TRUE:
++        dbg_use_wine_dbg_output = TRUE;
++        dbg_crash_report_file = create_crash_report_file();
++        break;
+     }
+ 
+     input = parser_generate_command_file("echo Modules:", "info share",
+diff --git a/programs/winedbg/winedbg.c b/programs/winedbg/winedbg.c
+index be2a3494493185e508507ec6f9e58bf417e6a3c8..cd1f2d340b2fe1006607b3765da020b2c233af24 100644
+--- a/programs/winedbg/winedbg.c
++++ b/programs/winedbg/winedbg.c
+@@ -83,6 +83,8 @@ dbg_ctx_t               dbg_context;
+ BOOL    	        dbg_interactiveP = FALSE;
+ HANDLE                  dbg_houtput = 0;
+ struct list             dbg_process_list = LIST_INIT(dbg_process_list);
++HANDLE                  dbg_crash_report_file = INVALID_HANDLE_VALUE;
++BOOL                    dbg_use_wine_dbg_output = FALSE;
+ 
+ struct dbg_internal_var         dbg_internal_vars[DBG_IV_LAST];
+ 
+@@ -93,6 +95,9 @@ static void dbg_outputA(const char* buffer, int len)
+ 
+     DWORD w, i;
+ 
++    if (dbg_use_wine_dbg_output)
++        __wine_dbg_output(buffer);
++
+     while (len > 0)
+     {
+         unsigned int count = min( len, sizeof(line_buff) - line_pos );
+@@ -106,7 +111,10 @@ static void dbg_outputA(const char* buffer, int len)
+             if (len > 0) i = line_pos;  /* buffer is full, flush anyway */
+             else break;
+         }
+-        WriteFile(dbg_houtput, line_buff, i, &w, NULL);
++        if (!dbg_use_wine_dbg_output)
++            WriteFile(dbg_houtput, line_buff, i, &w, NULL);
++        if (dbg_crash_report_file != INVALID_HANDLE_VALUE)
++            WriteFile(dbg_crash_report_file, line_buff, i, &w, NULL);
+         memmove( line_buff, line_buff + i, line_pos - i );
+         line_pos -= i;
+     }
+diff --git a/programs/winemenubuilder/winemenubuilder.c b/programs/winemenubuilder/winemenubuilder.c
+index bed26d54bca79d47e4e229ccb0170d0bd90bd6f7..77f019edc0a4833dcf0c2083d93d5c5ade926479 100644
+--- a/programs/winemenubuilder/winemenubuilder.c
++++ b/programs/winemenubuilder/winemenubuilder.c
+@@ -1084,7 +1084,8 @@ static HRESULT platform_write_icon(IStream *icoStream, ICONDIRENTRY *iconDirEntr
+     LARGE_INTEGER zero;
+ 
+     *nativeIdentifier = compute_native_identifier(exeIndex, icoPathW, destFilename);
+-    iconsDir = heap_wprintf(L"%s\\icons\\hicolor", xdg_data_dir);
++    iconsDir = heap_wprintf(L"%s", L"c:\\proton_shortcuts\\icons");
++    create_directories(iconsDir);
+ 
+     for (i = 0; i < numEntries; i++)
+     {
+@@ -1252,6 +1253,7 @@ static BOOL write_desktop_entry(const WCHAR *link, const WCHAR *location, const
+     int needs_chmod = FALSE;
+     const WCHAR *name;
+     const WCHAR *prefix = _wgetenv( L"WINECONFIGDIR" );
++    WCHAR *shortcuts_dir;
+ 
+     WINE_TRACE("(%s,%s,%s,%s,%s,%s,%s,%s,%s)\n", wine_dbgstr_w(link), wine_dbgstr_w(location),
+                wine_dbgstr_w(linkname), wine_dbgstr_w(path), wine_dbgstr_w(args),
+@@ -1259,11 +1261,12 @@ static BOOL write_desktop_entry(const WCHAR *link, const WCHAR *location, const
+                wine_dbgstr_w(wmclass));
+ 
+     name = PathFindFileNameW( linkname );
+-    if (!location)
+-    {
+-        location = heap_wprintf(L"%s\\%s.desktop", xdg_desktop_dir, name);
+-        needs_chmod = TRUE;
+-    }
++
++    shortcuts_dir = heap_wprintf(L"%s", L"c:\\proton_shortcuts");
++    create_directories(shortcuts_dir);
++    location = heap_wprintf(L"%s\\%s.desktop", shortcuts_dir, name);
++    heap_free(shortcuts_dir);
++    needs_chmod = TRUE;
+ 
+     file = _wfopen( location, L"wb" );
+     if (file == NULL)
+@@ -1310,100 +1313,6 @@ static BOOL write_desktop_entry(const WCHAR *link, const WCHAR *location, const
+     return TRUE;
+ }
+ 
+-static BOOL write_directory_entry(const WCHAR *directory, const WCHAR *location)
+-{
+-    FILE *file;
+-
+-    WINE_TRACE("(%s,%s)\n", wine_dbgstr_w(directory), wine_dbgstr_w(location));
+-
+-    file = _wfopen( location, L"wb" );
+-    if (file == NULL)
+-        return FALSE;
+-
+-    fprintf(file, "[Desktop Entry]\n");
+-    fprintf(file, "Type=Directory\n");
+-    if (wcscmp(directory, L"wine") == 0)
+-    {
+-        fprintf(file, "Name=Wine\n");
+-        fprintf(file, "Icon=wine\n");
+-    }
+-    else
+-    {
+-        fprintf(file, "Name=%s\n", wchars_to_utf8_chars(directory));
+-        fprintf(file, "Icon=folder\n");
+-    }
+-
+-    fclose(file);
+-    return TRUE;
+-}
+-
+-static BOOL write_menu_file(const WCHAR *windows_link, const WCHAR *link)
+-{
+-    WCHAR tempfilename[MAX_PATH];
+-    FILE *tempfile = NULL;
+-    WCHAR *filename, *lastEntry, *menuPath;
+-    int i;
+-    int count = 0;
+-    BOOL ret = FALSE;
+-
+-    WINE_TRACE("(%s)\n", wine_dbgstr_w(link));
+-
+-    GetTempFileNameW( xdg_menu_dir, L"mnu", 0, tempfilename );
+-    if (!(tempfile = _wfopen( tempfilename, L"wb" ))) return FALSE;
+-
+-    fprintf(tempfile, "<!DOCTYPE Menu PUBLIC \"-//freedesktop//DTD Menu 1.0//EN\"\n");
+-    fprintf(tempfile, "\"http://www.freedesktop.org/standards/menu-spec/menu-1.0.dtd\">\n");
+-    fprintf(tempfile, "<Menu>\n");
+-    fprintf(tempfile, "  <Name>Applications</Name>\n");
+-
+-    filename = heap_wprintf(L"wine\\%s.desktop", link);
+-    lastEntry = filename;
+-    for (i = 0; filename[i]; i++)
+-    {
+-        if (filename[i] == '\\')
+-        {
+-            WCHAR *dir_file_name;
+-            const char *prefix = count ? "" : "wine-";
+-
+-            filename[i] = 0;
+-            fprintf(tempfile, "  <Menu>\n");
+-            fprintf(tempfile, "    <Name>%s%s</Name>\n",
+-                    prefix, wchars_to_xml_text(filename));
+-            fprintf(tempfile, "    <Directory>%s%s.directory</Directory>\n",
+-                    prefix, wchars_to_xml_text(filename));
+-            dir_file_name = heap_wprintf(L"%s\\desktop-directories\\%s%s.directory",
+-                                         xdg_data_dir, count ? L"" : L"wine-", filename);
+-            if (GetFileAttributesW( dir_file_name ) == INVALID_FILE_ATTRIBUTES)
+-                write_directory_entry(lastEntry, dir_file_name);
+-            free(dir_file_name);
+-            filename[i] = '-';
+-            lastEntry = &filename[i+1];
+-            ++count;
+-        }
+-    }
+-    filename[i] = 0;
+-
+-    fprintf(tempfile, "    <Include>\n");
+-    fprintf(tempfile, "      <Filename>%s</Filename>\n", wchars_to_xml_text(filename));
+-    fprintf(tempfile, "    </Include>\n");
+-    for (i = 0; i < count; i++)
+-         fprintf(tempfile, "  </Menu>\n");
+-    fprintf(tempfile, "</Menu>\n");
+-
+-    menuPath = heap_wprintf(L"%s\\%s", xdg_menu_dir, filename);
+-    lstrcpyW(menuPath + lstrlenW(menuPath) - lstrlenW(L".desktop"), L".menu");
+-
+-    fclose(tempfile);
+-    ret = MoveFileExW( tempfilename, menuPath, MOVEFILE_REPLACE_EXISTING );
+-    if (ret)
+-        register_menus_entry(menuPath, windows_link);
+-    else
+-        DeleteFileW( tempfilename );
+-    free(filename);
+-    free(menuPath);
+-    return ret;
+-}
+-
+ static BOOL write_menu_entry(const WCHAR *windows_link, const WCHAR *link, const WCHAR *path, const WCHAR *args,
+                              const WCHAR *descr, const WCHAR *workdir, const WCHAR *icon, const WCHAR *wmclass)
+ {
+@@ -1433,12 +1342,6 @@ static BOOL write_menu_entry(const WCHAR *windows_link, const WCHAR *link, const
+         goto end;
+     }
+ 
+-    if (!write_menu_file(windows_link, link))
+-    {
+-        WINE_WARN("couldn't make menu file %s\n", wine_dbgstr_w(filename));
+-        ret = FALSE;
+-    }
+-
+ end:
+     free(desktopPath);
+     free(filename);
+@@ -2853,20 +2756,7 @@ static BOOL init_xdg(void)
+ 
+ static BOOL associations_enabled(void)
+ {
+-    BOOL ret = TRUE;
+-    HKEY hkey;
+-    BYTE buf[32];
+-    DWORD len;
+-
+-    if ((hkey = open_associations_reg_key()))
+-    {
+-        len = sizeof(buf);
+-        if (!RegQueryValueExA(hkey, "Enable", NULL, NULL, buf, &len))
+-            ret = IS_OPTION_TRUE(buf[0]);
+-        RegCloseKey( hkey );
+-    }
+-
+-    return ret;
++    return FALSE;
+ }
+ 
+ /***********************************************************************

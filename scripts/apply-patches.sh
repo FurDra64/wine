@@ -99,14 +99,19 @@ if [[ "$CHECK" == 1 ]]; then
         shopt -u nullglob
         for seed_f in "${seed_files[@]}"; do
             while IFS= read -r hdr || [[ -n "$hdr" ]]; do
-                rel="${hdr#--- a/}"
-                rel="${rel%%$'\t'*}"
+                if [[ "$hdr" == 'diff --git a/'* ]]; then
+                    rel="${hdr#diff --git a/}"
+                    rel="${rel%% *}"
+                else
+                    rel="${hdr#--- a/}"
+                    rel="${rel%%$'\t'*}"
+                fi
                 [[ "$rel" == "/dev/null" || "$rel" == "$hdr" ]] && continue
                 if [[ -f "$DESTDIR/$rel" && ! -f "$SHADOW/$rel" ]]; then
                     mkdir -p "$SHADOW/$(dirname "$rel")"
                     cp -p "$DESTDIR/$rel" "$SHADOW/$rel"
                 fi
-            done < <(grep '^--- ' "$seed_f" || true)
+            done < <(grep -E '^(diff --git|---) ' "$seed_f" || true)
         done
     done
 fi
@@ -129,7 +134,7 @@ for ps in "${ORDER[@]}"; do
                     exit 1
                 fi
             else
-                if ! (cd "$SHADOW" && git apply -p1 --whitespace=fix "$f" > /dev/null); then
+                if ! (cd "$SHADOW" && git apply -p1 --whitespace=nowarn "$f" > /dev/null); then
                     echo "FAILED patchset=$ps file=$base" >&2
                     exit 1
                 fi
@@ -140,7 +145,7 @@ for ps in "${ORDER[@]}"; do
                 exit 1
             fi
         else
-            if ! git -C "$DESTDIR" apply -p1 --whitespace=fix "$f"; then
+            if ! git -C "$DESTDIR" apply -p1 --whitespace=nowarn "$f"; then
                 echo "FAILED patchset=$ps file=$base" >&2
                 exit 1
             fi

@@ -1,0 +1,5 @@
+Feature: valve-native-overrides
+Description: Vendor native DLL stubs (AMD/Intel/NVIDIA/ICU) for Valve delta. Valve-only delta vs upstream 11.21 (2528aff2620); snapshot 8329ab787e2197feadf0b4f1536a69eb69f03a45.
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: valve-device-input

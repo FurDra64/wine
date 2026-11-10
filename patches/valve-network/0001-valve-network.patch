@@ -1,0 +1,1272 @@
+diff --git a/dlls/bcrypt/bcrypt_main.c b/dlls/bcrypt/bcrypt_main.c
+index ddbe428664e4578ea5982e6806023f51a4942e4a..6ddccaeec9cd329b3f05f3504fbc3f8a85c0e354 100644
+--- a/dlls/bcrypt/bcrypt_main.c
++++ b/dlls/bcrypt/bcrypt_main.c
+@@ -4176,6 +4176,9 @@ NTSTATUS WINAPI BCryptSecretAgreement( BCRYPT_KEY_HANDLE privkey_handle, BCRYPT_
+     if (!privkey || !pubkey || privkey->alg_id != pubkey->alg_id || !(privkey->flags & KEY_FLAG_PRIVATE))
+         return STATUS_INVALID_HANDLE;
+     if (!ret_handle) return STATUS_INVALID_PARAMETER;
++    if (privkey->alg_id != pubkey->alg_id) return STATUS_INVALID_PARAMETER;
++    if (privkey->alg_id == ALG_ID_DH && !(privkey->flags & pubkey->flags & KEY_FLAG_FINALIZED)) return STATUS_INVALID_PARAMETER;
++    if (privkey->a.bitlen != pubkey->a.bitlen) return STATUS_INVALID_PARAMETER;
+ 
+     if (!(secret = calloc( 1, sizeof(*secret) ))) return STATUS_NO_MEMORY;
+     secret->hdr.magic = MAGIC_SECRET;
+diff --git a/dlls/bcrypt/tests/bcrypt.c b/dlls/bcrypt/tests/bcrypt.c
+index ab3f034f4e0fec38cf97ab2da96426b2e264f8a6..0ad8c0a5e5d927614f03795f5a01859d05ac8b7e 100644
+--- a/dlls/bcrypt/tests/bcrypt.c
++++ b/dlls/bcrypt/tests/bcrypt.c
+@@ -3665,9 +3665,12 @@ static void test_ECDH_alg(const struct ecdh_test *t)
+         goto raw_secret_end;
+     }
+     ok(status == STATUS_SUCCESS, "got %#lx\n", status);
+-    if (status != STATUS_SUCCESS) goto raw_secret_end;
+ 
+     ok(size == (t->bitlen + 7) / 8, "size of secret key incorrect, got %lu, expected 32\n", size);
++    if (!size)
++        goto raw_secret_end;
++
++
+     buf = malloc(size);
+     status = BCryptDeriveKey(secret, BCRYPT_KDF_RAW_SECRET, NULL, buf, size, &size, 0);
+     ok(status == STATUS_SUCCESS, "got %#lx\n", status);
+@@ -4116,11 +4119,6 @@ static void test_DH(void)
+ 
+     status = BCryptFinalizeKeyPair(key, 0);
+     ok(status == STATUS_SUCCESS, "got %#lx\n", status);
+-    if (status != STATUS_SUCCESS)
+-    {
+-        BCryptDestroyKey(key);
+-        return;
+-    }
+ 
+     size = 0;
+     status = BCryptExportKey(key, NULL, BCRYPT_DH_PUBLIC_BLOB, NULL, 0, &size, 0);
+@@ -5002,8 +5000,8 @@ static void test_SecretAgreement(void)
+         status = BCryptDeriveKey(secret, NULL, NULL, NULL, 0, &size, 0);
+         ok(status == STATUS_INVALID_PARAMETER, "got %#lx\n", status);
+ 
+-        status = BCryptDeriveKey(secret, L"HASH", NULL, NULL, 0, &size, 0);
+-        ok(status == STATUS_SUCCESS, "got %#lx\n", status);
++    status = BCryptDeriveKey(secret, L"HASH", NULL, NULL, 0, &size, 0);
++    ok(status == STATUS_SUCCESS, "got %#lx\n", status);
+ 
+         status = BCryptDestroyHash(secret);
+         ok(status == STATUS_INVALID_PARAMETER, "got %#lx\n", status);
+@@ -5760,6 +5758,380 @@ static void test_CHACHA20_POLY1305(void)
+     ok(status == STATUS_SUCCESS, "got %#lx\n", status);
+ }
+ 
++static void test_dh_SecretAgreement(void)
++{
++    static BCryptBuffer hash_param_buffers[] =
++    {
++        {
++            sizeof(BCRYPT_SHA256_ALGORITHM),
++            KDF_HASH_ALGORITHM,
++            (void *)BCRYPT_SHA256_ALGORITHM,
++        }
++    };
++
++    static BCryptBufferDesc hash_params =
++    {
++        BCRYPTBUFFER_VERSION,
++        ARRAY_SIZE(hash_param_buffers),
++        hash_param_buffers,
++    };
++
++    static const ULONG private_key_data[] =
++    {
++        0xc4caf69c, 0x57b4db27, 0x36f7135f, 0x5ccba686, 0xc37b8819, 0x1d35c9b2, 0xbb07a1cf, 0x0c5d1c1b,
++        0xc79acb10, 0x31dfdabb, 0x702e02b9, 0x1efab345, 0x262a8074, 0x5edf7698, 0x9b9dc630, 0x13c34b93,
++        0xacbc928b, 0xb79eed8c, 0x7413dce9, 0xa5521280, 0x88d8e695, 0xa310269f, 0xca7c5719, 0xcd0c775b,
++        0x9a6e2cf2, 0x9e235c51, 0xf49db62d, 0x28e72424, 0x4a44da5a, 0x3d98268d, 0x8e4d2be3, 0x254e44e6,
++
++        0x18a67e55, 0x572e13a1, 0x46f81ca8, 0xc331c9b9, 0xf8fe3dd4, 0x8a889e5a, 0x6c0505fd, 0xbd97a121,
++        0xed2dbd67, 0xf39efa8e, 0x36f9c287, 0xf6bbfa6c, 0x461e42ad, 0x17dc170e, 0xc002dc2e, 0x4813d9a4,
++        0x0b6fabb8, 0x6a9e1860, 0xa8a8cbd9, 0xb7ed6b5d, 0xabb34d23, 0xf2fbe1fd, 0x8670df1e, 0xba7fa4e6,
++        0xf7039712, 0x94448f30, 0xe10c812e, 0x3e311976, 0xcfdd72c4, 0xbdbea98f, 0xc9a540d6, 0x89646d57,
++
++        0x7ab63b33, 0x03a1e9b6, 0x947f7a9b, 0x5ae59eeb, 0x1d12eb05, 0x3f425d92, 0xe028c6ba, 0xbf90ddc9,
++        0xb554f55a, 0x7aeb88b6, 0x4a443a5f, 0xbab35111, 0x82c78a0c, 0x298dd482, 0x02937cb1, 0xc94cdc2e,
++        0x59b010eb, 0x3bbc0a2b, 0xd845fee0, 0x04c1d0db, 0x0c8c9424, 0x1cafd4b2, 0x9aa7aed9, 0x6a478486,
++        0xa8841fd7, 0xbfeff40a, 0x8fd7bcc5, 0x3bb28977, 0x2b9a7955, 0xa55cd2e4, 0x1b6ad657, 0x067cdf21,
++
++        0x06f36920, 0x63280e1b, 0xf17d930f, 0xa06e74a8, 0x463b3a6f, 0x2a464507, 0x93f8a982, 0x8f620a7d,
++        0xeda32d11, 0x9706a6d4, 0x33dce588, 0x75a1c446, 0x048ab567, 0xd735aafa, 0x806f7c1c, 0xdcb9651a,
++        0x26acf3b4, 0x45f91cc9, 0x2a0de6fc, 0xf3c03d0c, 0xf5aee0aa, 0x3eeaaf36, 0x18ccee61, 0x83faa783,
++        0x4b2b5250, 0xf4ccea22, 0x5ac0714b, 0x3f0b2bc6, 0x481b13ce, 0x12040ea7, 0x66e0bbed, 0x158e1a67,
++    };
++    static const ULONG raw_shared_secret[] =
++    {
++        0x375d89b5, 0x35a9c270, 0xfbc5ba82, 0x09eb3069, 0xd50965b0, 0xace510f7, 0x981e8731, 0x80a76115,
++        0xf386d348, 0xca17b8df, 0x0b0e84ec, 0xf81f756e, 0x5030fa20, 0x03113b71, 0x97b7e879, 0x899b5fae,
++        0xe6913299, 0x09270076, 0x39bc813a, 0xde3ef070, 0x65ad5b3a, 0x2b7c4ba4, 0x86c98ef9, 0x3236feaf,
++        0x3e0253f7, 0x0489d2dd, 0x97669a3d, 0x50242fca, 0x5d4aecb1, 0xcf2d805f, 0x2258afff, 0x750e92cd,
++    };
++    static const ULONG sha1_shared_secret[] =
++    {
++        0x0babba9c, 0x0bdeacbd, 0x04e36574, 0xdd504dcd, 0x0cd88db0,
++    };
++    static const ULONG sha256_shared_secret[] =
++    {
++        0x3213db5b, 0x8cc8250b, 0xc829eaab, 0x00933709, 0x68160aa9, 0xfb9f1e20, 0xf92368e6, 0x2b8e18eb,
++    };
++
++    BCRYPT_DH_PARAMETER_HEADER *dh_header;
++    BCRYPT_SECRET_HANDLE secret, secret2;
++    BCRYPT_DH_KEY_BLOB *dh_key_blob;
++    static const ULONG length = 1024;
++    BCRYPT_KEY_HANDLE key, key2;
++    BCRYPT_ALG_HANDLE alg;
++    UCHAR buffer[2048];
++    NTSTATUS status;
++    unsigned int i;
++    ULONG size;
++
++    status = BCryptOpenAlgorithmProvider(&alg, BCRYPT_DH_ALGORITHM, NULL, 0);
++    ok(!status, "got %08lx\n", status);
++    if (status)
++        return;
++
++    key = NULL;
++
++    status = BCryptGenerateKeyPair(alg, &key, 256, 0);
++    ok(status == STATUS_INVALID_PARAMETER, "got %08lx\n", status);
++
++    status = BCryptGenerateKeyPair(alg, &key, length, 0);
++    ok(status == STATUS_SUCCESS, "got %08lx\n", status);
++    ok(key != NULL, "key not set\n");
++
++    memset(buffer, 0xcc, sizeof(buffer));
++    status = BCryptGetProperty(key, BCRYPT_DH_PARAMETERS, buffer, sizeof(buffer), &size, 0);
++    ok(status == STATUS_INVALID_HANDLE, "got %08lx\n", status);
++
++    status = BCryptExportKey(key, NULL, BCRYPT_DH_PUBLIC_BLOB, buffer, sizeof(buffer), &size, 0);
++    ok(status == STATUS_INVALID_HANDLE, "got %08lx\n", status);
++
++    status = BCryptFinalizeKeyPair(key, 0);
++    ok(status == STATUS_SUCCESS, "got %08lx\n", status);
++
++    size = 0xdeadbeef;
++    status = BCryptGetProperty(key, BCRYPT_DH_PARAMETERS, NULL, sizeof(buffer), &size, 0);
++    ok(status == STATUS_SUCCESS, "got %08lx\n", status);
++    ok(size == sizeof(BCRYPT_DH_PARAMETER_HEADER) + length / 8 * 2, "Got unexpected size %lu.\n", size);
++
++    size = 0xdeadbeef;
++    status = BCryptGetProperty(key, BCRYPT_DH_PARAMETERS, buffer, 28, &size, 0);
++    ok(status == STATUS_BUFFER_TOO_SMALL, "got %08lx\n", status);
++    ok(size == sizeof(BCRYPT_DH_PARAMETER_HEADER) + length / 8 * 2, "Got unexpected size %lu.\n", size);
++
++    size = 0xdeadbeef;
++    status = BCryptGetProperty(key, BCRYPT_DH_PARAMETERS, buffer, sizeof(buffer), &size, 0);
++    ok(status == STATUS_SUCCESS, "got %08lx\n", status);
++    ok(size == sizeof(BCRYPT_DH_PARAMETER_HEADER) + length / 8 * 2, "Got unexpected size %lu.\n", size);
++
++    dh_header = (BCRYPT_DH_PARAMETER_HEADER *)buffer;
++    ok(dh_header->cbLength == sizeof(*dh_header) + length / 8 * 2, "Got unexpected length %lu.\n", dh_header->cbLength);
++    ok(dh_header->cbKeyLength == length / 8, "Got unexpected length %lu.\n", dh_header->cbKeyLength);
++    ok(dh_header->dwMagic == BCRYPT_DH_PARAMETERS_MAGIC, "Got unexpected magic %#lx.\n", dh_header->dwMagic);
++
++    status = BCryptDestroyKey(key);
++    ok(status == STATUS_SUCCESS, "got %08lx\n", status);
++
++    dh_key_blob = (BCRYPT_DH_KEY_BLOB *)buffer;
++    dh_key_blob->dwMagic = BCRYPT_DH_PRIVATE_MAGIC;
++    dh_key_blob->cbKey = length / 8;
++    memcpy(dh_key_blob + 1, private_key_data, sizeof(private_key_data));
++    size = sizeof(buffer);
++    status = BCryptImportKeyPair(alg, NULL, BCRYPT_DH_PRIVATE_BLOB, &key, buffer, size, 0);
++    ok(status == STATUS_INVALID_PARAMETER, "got %08lx\n", status);
++    size = sizeof(*dh_key_blob) + length / 8 * 4;
++    status = BCryptImportKeyPair(alg, NULL, BCRYPT_DH_PRIVATE_BLOB, &key, buffer, size, 0);
++    ok(status == STATUS_SUCCESS, "got %08lx\n", status);
++
++    status = BCryptFinalizeKeyPair(key, 0);
++    ok(status == STATUS_INVALID_HANDLE, "got %08lx\n", status);
++
++    memset(buffer, 0xcc, sizeof(buffer));
++    size = 0xdeadbeef;
++    status = BCryptExportKey(key, NULL, BCRYPT_DH_PUBLIC_BLOB, NULL, 0, &size, 0);
++    ok(status == STATUS_SUCCESS, "got %08lx\n", status);
++    ok(size == sizeof(BCRYPT_DH_KEY_BLOB) + length / 8 * 3, "Got unexpected size %lu.\n", size);
++
++    size = 0xdeadbeef;
++    status = BCryptExportKey(key, NULL, BCRYPT_DH_PUBLIC_BLOB, buffer, sizeof(buffer), &size, 0);
++    ok(status == STATUS_SUCCESS, "got %08lx\n", status);
++    ok(size == sizeof(BCRYPT_DH_KEY_BLOB) + length / 8 * 3, "Got unexpected size %lu.\n", size);
++    dh_key_blob = (BCRYPT_DH_KEY_BLOB *)buffer;
++    ok(dh_key_blob->dwMagic == BCRYPT_DH_PUBLIC_MAGIC, "Got unexpected magic %#lx.\n", dh_key_blob->dwMagic);
++    ok(dh_key_blob->cbKey == length / 8, "Got unexpected length %lu.\n", dh_key_blob->cbKey);
++    ok(!memcmp(dh_key_blob + 1, private_key_data, length / 8 * 3), "Key data does not match.\n");
++
++    status = BCryptImportKeyPair(alg, NULL, BCRYPT_DH_PUBLIC_BLOB, &key2, buffer, size, 0);
++    ok(status == STATUS_SUCCESS, "got %#lx.\n", status);
++    status = BCryptFinalizeKeyPair(key2, 0);
++    ok(status == STATUS_INVALID_HANDLE, "got %#lx.\n", status);
++    status = BCryptSecretAgreement(key2, key2, &secret, 0);
++    todo_wine ok(status == STATUS_INVALID_PARAMETER, "got %08lx\n", status);
++    BCryptDestroyKey(key2);
++
++    status = BCryptGenerateKeyPair(alg, &key2, length, 0);
++    ok(status == STATUS_SUCCESS, "got %08lx\n", status);
++    dh_header = (BCRYPT_DH_PARAMETER_HEADER *)buffer;
++    dh_header->dwMagic = BCRYPT_DH_PARAMETERS_MAGIC;
++    dh_header->cbLength = sizeof(*dh_header) + length / 8 * 2;
++    dh_header->cbKeyLength = length / 8;
++    memcpy(dh_header + 1, private_key_data, length / 8 * 2);
++    status = BCryptSetProperty(key2, BCRYPT_DH_PARAMETERS, buffer, dh_header->cbLength, 0);
++    ok(status == STATUS_SUCCESS, "got %08lx\n", status);
++    status = BCryptSetProperty(key2, BCRYPT_DH_PARAMETERS, buffer, dh_header->cbLength, 0);
++    ok(status == STATUS_SUCCESS, "got %08lx\n", status);
++    status = BCryptFinalizeKeyPair(key2, 0);
++    ok(status == STATUS_SUCCESS, "got %08lx\n", status);
++    if (0)
++    {
++        /* Crashes on Windows. */
++        BCryptSetProperty(key2, BCRYPT_DH_PARAMETERS, buffer, dh_header->cbLength, 0);
++    }
++
++    status = BCryptExportKey(key2, NULL, BCRYPT_DH_PUBLIC_BLOB, buffer, sizeof(buffer), &size, 0);
++    ok(status == STATUS_SUCCESS, "got %08lx\n", status);
++    ok(size == sizeof(BCRYPT_DH_KEY_BLOB) + length / 8 * 3, "Got unexpected size %lu.\n", size);
++    ok(dh_key_blob->dwMagic == BCRYPT_DH_PUBLIC_MAGIC, "Got unexpected dwMagic %#lx.\n", dh_key_blob->dwMagic);
++    ok(dh_key_blob->cbKey == length / 8, "Got unexpected length %lu.\n", dh_key_blob->cbKey);
++    ok(!memcmp(dh_key_blob + 1, private_key_data, length / 8 * 2), "DH parameters do not match.\n");
++    ok(memcmp((BYTE *)(dh_key_blob + 1) + length / 8 * 2, (BYTE *)private_key_data + length / 8 * 2, length / 8),
++            "Random public key data matches.\n");
++
++    memset(buffer, 0xcc, sizeof(buffer));
++    status = BCryptExportKey(key, NULL, BCRYPT_DH_PRIVATE_BLOB, buffer, sizeof(buffer), &size, 0);
++    ok(status == STATUS_SUCCESS, "got %08lx\n", status);
++    dh_key_blob = (BCRYPT_DH_KEY_BLOB *)buffer;
++    ok(size == sizeof(BCRYPT_DH_KEY_BLOB) + length / 8 * 4, "Got unexpected size %lu.\n", size);
++    ok(dh_key_blob->dwMagic == BCRYPT_DH_PRIVATE_MAGIC, "Got unexpected dwMagic %#lx.\n", dh_key_blob->dwMagic);
++    ok(dh_key_blob->cbKey == length / 8, "Got unexpected length %lu.\n", dh_key_blob->cbKey);
++    ok(!memcmp(dh_key_blob + 1, private_key_data, length / 8 * 4), "Private key data does not match.\n");
++
++    status = BCryptSecretAgreement(NULL, key, &secret, 0);
++    ok(status == STATUS_INVALID_HANDLE, "got %08lx\n", status);
++
++    status = BCryptSecretAgreement(key, NULL, &secret, 0);
++    ok(status == STATUS_INVALID_HANDLE, "got %08lx\n", status);
++
++    status = BCryptSecretAgreement(key, key, NULL, 0);
++    ok(status == STATUS_INVALID_PARAMETER, "got %08lx\n", status);
++
++    status = BCryptSecretAgreement(key, key, &secret, 0);
++    ok(status == STATUS_SUCCESS, "got %08lx\n", status);
++
++    status = BCryptDeriveKey(NULL, L"HASH", NULL, NULL, 0, &size, 0);
++    ok(status == STATUS_INVALID_HANDLE, "got %08lx\n", status);
++
++    status = BCryptDeriveKey(key, L"HASH", NULL, NULL, 0, &size, 0);
++    ok(status == STATUS_INVALID_HANDLE, "got %08lx\n", status);
++
++    status = BCryptDeriveKey(secret, NULL, NULL, NULL, 0, &size, 0);
++    ok(status == STATUS_INVALID_PARAMETER, "got %08lx\n", status);
++
++    size = 0xdeadbeef;
++    status = BCryptDeriveKey(secret, L"HASH", NULL, NULL, 0, &size, 0);
++    ok(size == 20, "Got unexpected size %lu.\n", size);
++
++    size = 0xdeadbeef;
++    status = BCryptDeriveKey(secret, BCRYPT_KDF_RAW_SECRET, NULL, NULL, 0, &size, 0);
++    ok(status == STATUS_SUCCESS, "got %08lx\n", status);
++    ok(size == length / 8, "Got unexpected size %lu.\n", size);
++
++    status = BCryptDeriveKey(secret, BCRYPT_KDF_RAW_SECRET, NULL, buffer, 128, &size, 0);
++    ok(status == STATUS_SUCCESS, "got %08lx\n", status);
++    ok(size == length / 8, "Got unexpected size %lu.\n", size);
++    ok(!memcmp(buffer, raw_shared_secret, size), "Raw shared secret data does not match.\n");
++
++    size = sizeof(buffer);
++    memset(buffer, 0xcc, sizeof(buffer));
++    status = BCryptDeriveKey(secret, BCRYPT_KDF_HASH, NULL, buffer, 128, &size, 0);
++    ok(status == STATUS_SUCCESS, "got %08lx\n", status);
++    ok(size == 20, "Got unexpected size %lu.\n", size);
++    ok(!memcmp(buffer, sha1_shared_secret, sizeof(sha1_shared_secret)), "sha1 shared secret data does not match.\n");
++
++    size = sizeof(buffer);
++    status = BCryptDeriveKey(secret, BCRYPT_KDF_HASH, &hash_params, buffer, size, &size, 0);
++    ok(status == STATUS_SUCCESS, "got %08lx\n", status);
++    ok(size == 32, "Got unexpected size %lu.\n", size);
++    ok(!memcmp(buffer, sha256_shared_secret, sizeof(sha256_shared_secret)), "sha1 shared secret data does not match.\n");
++
++    for (i = size; i < sizeof(buffer); ++i)
++        if (buffer[i] != 0xcc)
++            break;
++    ok(i == sizeof(buffer), "Buffer modified at %i, value %#x.\n", i, buffer[i]);
++
++    status = BCryptDestroySecret(secret);
++    ok(status == STATUS_SUCCESS, "got %08lx\n", status);
++
++    status = BCryptSecretAgreement(key, key2, &secret, 0);
++    ok(status == STATUS_SUCCESS, "got %08lx\n", status);
++    status = BCryptSecretAgreement(key2, key, &secret2, 0);
++    ok(status == STATUS_SUCCESS, "got %08lx\n", status);
++
++    status = BCryptDeriveKey(secret, BCRYPT_KDF_RAW_SECRET, NULL, buffer, 128, &size, 0);
++    ok(status == STATUS_SUCCESS, "got %08lx\n", status);
++    status = BCryptDeriveKey(secret, BCRYPT_KDF_RAW_SECRET, NULL, buffer + size, 128, &size, 0);
++    ok(status == STATUS_SUCCESS, "got %08lx\n", status);
++    ok(!memcmp(buffer, buffer + size, size), "Shared secrets do not match.\n");
++
++    status = BCryptDestroyHash(secret);
++    ok(status == STATUS_INVALID_PARAMETER, "got %08lx\n", status);
++
++    status = BCryptDestroyKey(secret);
++    ok(status == STATUS_INVALID_HANDLE, "got %08lx\n", status);
++
++    status = BCryptDestroySecret(NULL);
++    ok(status == STATUS_INVALID_HANDLE, "got %08lx\n", status);
++
++    status = BCryptDestroySecret(alg);
++    ok(status == STATUS_INVALID_HANDLE, "got %08lx\n", status);
++
++    status = BCryptDestroySecret(secret);
++    ok(status == STATUS_SUCCESS, "got %08lx\n", status);
++
++    status = BCryptDestroyKey(key);
++    ok(status == STATUS_SUCCESS, "got %08lx\n", status);
++    status = BCryptDestroyKey(key2);
++    ok(status == STATUS_SUCCESS, "got %08lx\n", status);
++
++    status = BCryptCloseAlgorithmProvider(alg, 0);
++    ok(status == STATUS_SUCCESS, "got %08lx\n", status);
++}
++
++static void test_dh_SecretAgreement_values(void)
++{
++    static const ULONG private_key_data[] =
++    {
++        0xffffffff, 0xffffffff, 0xa2da0fc9, 0x34c26821, 0x8b62c6c4, 0xd11cdc80, 0x084e0229, 0x74cc678a,
++        0xa6be0b02, 0x229b133b, 0x79084a51, 0xdd04348e, 0xb31995ef, 0x1b433acd, 0x6d0a2b30, 0x37145ff2,
++        0x6d35e14f, 0x45c2516d, 0x76b585e4, 0xc67e5e62, 0xe9424cf4, 0x6bed37a6, 0xb65cff0b, 0xedb706f4,
++        0xfb6b38ee, 0xa59f895a, 0x11249fae, 0xe61f4b7c, 0x51662849, 0x8153e6ec, 0xffffffff, 0xffffffff,
++
++        0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
++        0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
++        0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
++        0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x02000000,
++
++        0xa0c3c734, 0xc130c92d, 0x5265abf8, 0xff409f17, 0xbcdce187, 0xff64dae3, 0x170560aa, 0xb2423ed8,
++        0x9ee5a8b9, 0x92548030, 0x02bba1f9, 0x823e39a4, 0x69c438f5, 0xf91016ac, 0x89bfd166, 0x7f996446,
++        0x86224203, 0x15bf689c, 0x619354a4, 0x0c1d3a1f, 0x11bcf3d2, 0x58aae029, 0x41c69824, 0x3fafc179,
++        0xa742747c, 0x60658c7a, 0xd3b0bde4, 0x78d3f08b, 0x6cefa061, 0x33752536, 0xe84d4901, 0x48cd73f4,
++
++        0x8d449700, 0x1f95120e, 0xceb31745, 0x3663177b, 0xbd9bb2d5, 0x9c23c0d9, 0x814d34f8, 0xbc54edb0,
++        0xb874659a, 0x3bac8a30, 0xa1f3dd46, 0x1705c900, 0xbc46fefe, 0x7d13875b, 0x3064351a, 0x4bd89a1c,
++        0x9e938761, 0x931949db, 0x34490719, 0x84fb08ca, 0xa9dd355a, 0x5b3f5061, 0x2ac96663, 0xc594429e,
++        0xbe58395d, 0x2f7d872a, 0x303d37b3, 0xa3a9b606, 0x735a6732, 0xa095bd95, 0x3d55a7c3, 0x00e54635,
++    };
++    static const ULONG peer_key_data[] =
++    {
++        0xffffffff, 0xffffffff, 0xa2da0fc9, 0x34c26821, 0x8b62c6c4, 0xd11cdc80, 0x084e0229, 0x74cc678a,
++        0xa6be0b02, 0x229b133b, 0x79084a51, 0xdd04348e, 0xb31995ef, 0x1b433acd, 0x6d0a2b30, 0x37145ff2,
++        0x6d35e14f, 0x45c2516d, 0x76b585e4, 0xc67e5e62, 0xe9424cf4, 0x6bed37a6, 0xb65cff0b, 0xedb706f4,
++        0xfb6b38ee, 0xa59f895a, 0x11249fae, 0xe61f4b7c, 0x51662849, 0x8153e6ec, 0xffffffff, 0xffffffff,
++
++        0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
++        0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
++        0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
++        0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x02000000,
++
++        0x3bf7404b, 0x6284fffe, 0x97c0d565, 0xd830c658, 0xcc21bf39, 0xcae45bb6, 0x019df7df, 0xbf4cd293,
++        0x6bf1989d, 0x78a81f52, 0xa4ed861c, 0x6bacf493, 0xa3e700d1, 0xd06cc206, 0x411b9727, 0x01e9c9ab,
++        0x9b7e6efa, 0xf46bb25d, 0xd1027242, 0x6130787c, 0xa7b87d8b, 0xfee41492, 0x50db6213, 0x321199b6,
++        0x7dace53a, 0xe8b1ec51, 0x2181b113, 0x3b33e3c0, 0x5b3a2d67, 0xbd34f0c1, 0x7037c542, 0x4a8d5540,
++    };
++    static const ULONG raw_shared_secret[] =
++    {
++        0x0815f37d, 0x19ee74ab, 0x9f63f123, 0xe1b3f10c, 0xbcc9be83, 0xaddf5b9d, 0x28174e72, 0xf8a33825,
++        0xfc74e47d, 0x2c950888, 0xf5b776d9, 0xfc712fef, 0x5b213b32, 0x489a9829, 0xfc0a4d1d, 0x6e641d3b,
++        0x3bb2ff57, 0x63500318, 0x081ee54f, 0xf33a2805, 0xb3759e98, 0xa9a64afe, 0x964b8897, 0x04691bbc,
++        0x80f4aae1, 0x617405ee, 0xab71724d, 0x6c10c214, 0x6f60b96f, 0xdc777b0b, 0x22f40d4f, 0x8a1c4eb5,
++    };
++
++    BCRYPT_DH_KEY_BLOB *dh_key_blob;
++    static const ULONG length = 1024;
++    BCRYPT_KEY_HANDLE key, key2;
++    BCRYPT_SECRET_HANDLE secret;
++    BCRYPT_ALG_HANDLE alg;
++    UCHAR buffer[2048];
++    NTSTATUS status;
++    ULONG size;
++
++    status = BCryptOpenAlgorithmProvider(&alg, BCRYPT_DH_ALGORITHM, NULL, 0);
++    ok(!status, "got %08lx\n", status);
++
++    dh_key_blob = (BCRYPT_DH_KEY_BLOB *)buffer;
++    dh_key_blob->dwMagic = BCRYPT_DH_PRIVATE_MAGIC;
++    dh_key_blob->cbKey = length / 8;
++    memcpy(dh_key_blob + 1, private_key_data, sizeof(private_key_data));
++
++    size = sizeof(*dh_key_blob) + length / 8 * 4;
++    status = BCryptImportKeyPair(alg, NULL, BCRYPT_DH_PRIVATE_BLOB, &key, buffer, size, 0);
++    ok(status == STATUS_SUCCESS, "got %08lx\n", status);
++
++    dh_key_blob = (BCRYPT_DH_KEY_BLOB *)buffer;
++    dh_key_blob->dwMagic = BCRYPT_DH_PUBLIC_MAGIC;
++    dh_key_blob->cbKey = length / 8;
++    memcpy(dh_key_blob + 1, peer_key_data, sizeof(peer_key_data));
++
++    size = sizeof(*dh_key_blob) + length / 8 * 3;
++    status = BCryptImportKeyPair(alg, NULL, BCRYPT_DH_PUBLIC_BLOB, &key2, buffer, size, 0);
++    ok(status == STATUS_SUCCESS, "got %08lx\n", status);
++
++    status = BCryptSecretAgreement(key, key2, &secret, 0);
++    ok(status == STATUS_SUCCESS, "got %08lx\n", status);
++
++    status = BCryptDeriveKey(secret, BCRYPT_KDF_RAW_SECRET, NULL, buffer, 128, &size, 0);
++    ok(status == STATUS_SUCCESS, "got %08lx\n", status);
++    ok(size == length / 8, "Got unexpected size %lu.\n", size);
++    ok(!memcmp(buffer, raw_shared_secret, size), "Raw shared secret data does not match.\n");
++
++    status = BCryptDestroySecret(secret);
++    ok(status == STATUS_SUCCESS, "got %08lx\n", status);
++    status = BCryptDestroyKey(key);
++    ok(status == STATUS_SUCCESS, "got %08lx\n", status);
++    status = BCryptDestroyKey(key2);
++    ok(status == STATUS_SUCCESS, "got %08lx\n", status);
++}
++
+ START_TEST(bcrypt)
+ {
+     HMODULE module;
+@@ -5804,6 +6176,8 @@ START_TEST(bcrypt)
+     test_TLS_PRF();
+     test_HKDF();
+     test_CHACHA20_POLY1305();
++    test_dh_SecretAgreement();
++    test_dh_SecretAgreement_values();
+ 
+     FreeLibrary(module);
+ }
+diff --git a/dlls/crypt32/crypt32_private.h b/dlls/crypt32/crypt32_private.h
+index 05d14a6d7c99a4e0f54f9362f9f131cdd5397f9e..798882676873db4c7d6d88557f4dc7ce9bd3b386 100644
+--- a/dlls/crypt32/crypt32_private.h
++++ b/dlls/crypt32/crypt32_private.h
+@@ -31,16 +31,8 @@ BOOL cng_prepare_signature(const char *alg_oid, BYTE *encoded_sig, DWORD encoded
+  * NULL on failure. */
+ WCHAR *CRYPT32_AllocateUniqueContainerName(void);
+ 
+-/* Encodes attributes as a SET OF while preserving the order in which they
+- * appear in attributes->rgAttr, rather than sorting them into DER order.
+- * Needed when hashing PKCS#7 authenticated attributes in order to verify a
+- * signature: the signature covers the attributes exactly as the signer
+- * encoded them, and that encoding is not required to be canonical.
+- * On success *pbEncoded is LocalAlloc'd and the caller frees it.
+- */
+ BOOL CRYPT_AsnEncodePKCSAttributesUnsorted(const CRYPT_ATTRIBUTES *attributes,
+  BYTE **pbEncoded, DWORD *pcbEncoded);
+-
+ /* a few asn.1 tags we need */
+ #define ASN_BOOL            (ASN_UNIVERSAL | ASN_PRIMITIVE | 0x01)
+ #define ASN_BITSTRING       (ASN_UNIVERSAL | ASN_PRIMITIVE | 0x03)
+diff --git a/dlls/crypt32/rootstore.c b/dlls/crypt32/rootstore.c
+index d9d9f51c8a3bcd5df5fbeb91c9c31652d2f55e2f..edfff2dc1627d57d6b42d871570df765f45d7c88 100644
+--- a/dlls/crypt32/rootstore.c
++++ b/dlls/crypt32/rootstore.c
+@@ -599,6 +599,88 @@ static const BYTE rootcertauthority2011[] = {
+ 0xad,0x95,0x54,0xec,0x65,0x22,0x10,0x49,0x17,0xb8,0xc0,0x1e,0xc7,0x0f,0xac,0x54,
+ 0x47 };
+ 
++static const BYTE verisign_g5[] =
++{
++0x30,0x82,0x04,0xd3,0x30,0x82,0x03,0xbb,0xa0,0x03,0x02,0x01,0x02,0x02,0x10,0x18,
++0xda,0xd1,0x9e,0x26,0x7d,0xe8,0xbb,0x4a,0x21,0x58,0xcd,0xcc,0x6b,0x3b,0x4a,0x30,
++0x0d,0x06,0x09,0x2a,0x86,0x48,0x86,0xf7,0x0d,0x01,0x01,0x05,0x05,0x00,0x30,0x81,
++0xca,0x31,0x0b,0x30,0x09,0x06,0x03,0x55,0x04,0x06,0x13,0x02,0x55,0x53,0x31,0x17,
++0x30,0x15,0x06,0x03,0x55,0x04,0x0a,0x13,0x0e,0x56,0x65,0x72,0x69,0x53,0x69,0x67,
++0x6e,0x2c,0x20,0x49,0x6e,0x63,0x2e,0x31,0x1f,0x30,0x1d,0x06,0x03,0x55,0x04,0x0b,
++0x13,0x16,0x56,0x65,0x72,0x69,0x53,0x69,0x67,0x6e,0x20,0x54,0x72,0x75,0x73,0x74,
++0x20,0x4e,0x65,0x74,0x77,0x6f,0x72,0x6b,0x31,0x3a,0x30,0x38,0x06,0x03,0x55,0x04,
++0x0b,0x13,0x31,0x28,0x63,0x29,0x20,0x32,0x30,0x30,0x36,0x20,0x56,0x65,0x72,0x69,
++0x53,0x69,0x67,0x6e,0x2c,0x20,0x49,0x6e,0x63,0x2e,0x20,0x2d,0x20,0x46,0x6f,0x72,
++0x20,0x61,0x75,0x74,0x68,0x6f,0x72,0x69,0x7a,0x65,0x64,0x20,0x75,0x73,0x65,0x20,
++0x6f,0x6e,0x6c,0x79,0x31,0x45,0x30,0x43,0x06,0x03,0x55,0x04,0x03,0x13,0x3c,0x56,
++0x65,0x72,0x69,0x53,0x69,0x67,0x6e,0x20,0x43,0x6c,0x61,0x73,0x73,0x20,0x33,0x20,
++0x50,0x75,0x62,0x6c,0x69,0x63,0x20,0x50,0x72,0x69,0x6d,0x61,0x72,0x79,0x20,0x43,
++0x65,0x72,0x74,0x69,0x66,0x69,0x63,0x61,0x74,0x69,0x6f,0x6e,0x20,0x41,0x75,0x74,
++0x68,0x6f,0x72,0x69,0x74,0x79,0x20,0x2d,0x20,0x47,0x35,0x30,0x1e,0x17,0x0d,0x30,
++0x36,0x31,0x31,0x30,0x38,0x30,0x30,0x30,0x30,0x30,0x30,0x5a,0x17,0x0d,0x33,0x36,
++0x30,0x37,0x31,0x36,0x32,0x33,0x35,0x39,0x35,0x39,0x5a,0x30,0x81,0xca,0x31,0x0b,
++0x30,0x09,0x06,0x03,0x55,0x04,0x06,0x13,0x02,0x55,0x53,0x31,0x17,0x30,0x15,0x06,
++0x03,0x55,0x04,0x0a,0x13,0x0e,0x56,0x65,0x72,0x69,0x53,0x69,0x67,0x6e,0x2c,0x20,
++0x49,0x6e,0x63,0x2e,0x31,0x1f,0x30,0x1d,0x06,0x03,0x55,0x04,0x0b,0x13,0x16,0x56,
++0x65,0x72,0x69,0x53,0x69,0x67,0x6e,0x20,0x54,0x72,0x75,0x73,0x74,0x20,0x4e,0x65,
++0x74,0x77,0x6f,0x72,0x6b,0x31,0x3a,0x30,0x38,0x06,0x03,0x55,0x04,0x0b,0x13,0x31,
++0x28,0x63,0x29,0x20,0x32,0x30,0x30,0x36,0x20,0x56,0x65,0x72,0x69,0x53,0x69,0x67,
++0x6e,0x2c,0x20,0x49,0x6e,0x63,0x2e,0x20,0x2d,0x20,0x46,0x6f,0x72,0x20,0x61,0x75,
++0x74,0x68,0x6f,0x72,0x69,0x7a,0x65,0x64,0x20,0x75,0x73,0x65,0x20,0x6f,0x6e,0x6c,
++0x79,0x31,0x45,0x30,0x43,0x06,0x03,0x55,0x04,0x03,0x13,0x3c,0x56,0x65,0x72,0x69,
++0x53,0x69,0x67,0x6e,0x20,0x43,0x6c,0x61,0x73,0x73,0x20,0x33,0x20,0x50,0x75,0x62,
++0x6c,0x69,0x63,0x20,0x50,0x72,0x69,0x6d,0x61,0x72,0x79,0x20,0x43,0x65,0x72,0x74,
++0x69,0x66,0x69,0x63,0x61,0x74,0x69,0x6f,0x6e,0x20,0x41,0x75,0x74,0x68,0x6f,0x72,
++0x69,0x74,0x79,0x20,0x2d,0x20,0x47,0x35,0x30,0x82,0x01,0x22,0x30,0x0d,0x06,0x09,
++0x2a,0x86,0x48,0x86,0xf7,0x0d,0x01,0x01,0x01,0x05,0x00,0x03,0x82,0x01,0x0f,0x00,
++0x30,0x82,0x01,0x0a,0x02,0x82,0x01,0x01,0x00,0xaf,0x24,0x08,0x08,0x29,0x7a,0x35,
++0x9e,0x60,0x0c,0xaa,0xe7,0x4b,0x3b,0x4e,0xdc,0x7c,0xbc,0x3c,0x45,0x1c,0xbb,0x2b,
++0xe0,0xfe,0x29,0x02,0xf9,0x57,0x08,0xa3,0x64,0x85,0x15,0x27,0xf5,0xf1,0xad,0xc8,
++0x31,0x89,0x5d,0x22,0xe8,0x2a,0xaa,0xa6,0x42,0xb3,0x8f,0xf8,0xb9,0x55,0xb7,0xb1,
++0xb7,0x4b,0xb3,0xfe,0x8f,0x7e,0x07,0x57,0xec,0xef,0x43,0xdb,0x66,0x62,0x15,0x61,
++0xcf,0x60,0x0d,0xa4,0xd8,0xde,0xf8,0xe0,0xc3,0x62,0x08,0x3d,0x54,0x13,0xeb,0x49,
++0xca,0x59,0x54,0x85,0x26,0xe5,0x2b,0x8f,0x1b,0x9f,0xeb,0xf5,0xa1,0x91,0xc2,0x33,
++0x49,0xd8,0x43,0x63,0x6a,0x52,0x4b,0xd2,0x8f,0xe8,0x70,0x51,0x4d,0xd1,0x89,0x69,
++0x7b,0xc7,0x70,0xf6,0xb3,0xdc,0x12,0x74,0xdb,0x7b,0x5d,0x4b,0x56,0xd3,0x96,0xbf,
++0x15,0x77,0xa1,0xb0,0xf4,0xa2,0x25,0xf2,0xaf,0x1c,0x92,0x67,0x18,0xe5,0xf4,0x06,
++0x04,0xef,0x90,0xb9,0xe4,0x00,0xe4,0xdd,0x3a,0xb5,0x19,0xff,0x02,0xba,0xf4,0x3c,
++0xee,0xe0,0x8b,0xeb,0x37,0x8b,0xec,0xf4,0xd7,0xac,0xf2,0xf6,0xf0,0x3d,0xaf,0xdd,
++0x75,0x91,0x33,0x19,0x1d,0x1c,0x40,0xcb,0x74,0x24,0x19,0x21,0x93,0xd9,0x14,0xfe,
++0xac,0x2a,0x52,0xc7,0x8f,0xd5,0x04,0x49,0xe4,0x8d,0x63,0x47,0x88,0x3c,0x69,0x83,
++0xcb,0xfe,0x47,0xbd,0x2b,0x7e,0x4f,0xc5,0x95,0xae,0x0e,0x9d,0xd4,0xd1,0x43,0xc0,
++0x67,0x73,0xe3,0x14,0x08,0x7e,0xe5,0x3f,0x9f,0x73,0xb8,0x33,0x0a,0xcf,0x5d,0x3f,
++0x34,0x87,0x96,0x8a,0xee,0x53,0xe8,0x25,0x15,0x02,0x03,0x01,0x00,0x01,0xa3,0x81,
++0xb2,0x30,0x81,0xaf,0x30,0x0f,0x06,0x03,0x55,0x1d,0x13,0x01,0x01,0xff,0x04,0x05,
++0x30,0x03,0x01,0x01,0xff,0x30,0x0e,0x06,0x03,0x55,0x1d,0x0f,0x01,0x01,0xff,0x04,
++0x04,0x03,0x02,0x01,0x06,0x30,0x6d,0x06,0x08,0x2b,0x06,0x01,0x05,0x05,0x07,0x01,
++0x0c,0x04,0x61,0x30,0x5f,0xa1,0x5d,0xa0,0x5b,0x30,0x59,0x30,0x57,0x30,0x55,0x16,
++0x09,0x69,0x6d,0x61,0x67,0x65,0x2f,0x67,0x69,0x66,0x30,0x21,0x30,0x1f,0x30,0x07,
++0x06,0x05,0x2b,0x0e,0x03,0x02,0x1a,0x04,0x14,0x8f,0xe5,0xd3,0x1a,0x86,0xac,0x8d,
++0x8e,0x6b,0xc3,0xcf,0x80,0x6a,0xd4,0x48,0x18,0x2c,0x7b,0x19,0x2e,0x30,0x25,0x16,
++0x23,0x68,0x74,0x74,0x70,0x3a,0x2f,0x2f,0x6c,0x6f,0x67,0x6f,0x2e,0x76,0x65,0x72,
++0x69,0x73,0x69,0x67,0x6e,0x2e,0x63,0x6f,0x6d,0x2f,0x76,0x73,0x6c,0x6f,0x67,0x6f,
++0x2e,0x67,0x69,0x66,0x30,0x1d,0x06,0x03,0x55,0x1d,0x0e,0x04,0x16,0x04,0x14,0x7f,
++0xd3,0x65,0xa7,0xc2,0xdd,0xec,0xbb,0xf0,0x30,0x09,0xf3,0x43,0x39,0xfa,0x02,0xaf,
++0x33,0x31,0x33,0x30,0x0d,0x06,0x09,0x2a,0x86,0x48,0x86,0xf7,0x0d,0x01,0x01,0x05,
++0x05,0x00,0x03,0x82,0x01,0x01,0x00,0x93,0x24,0x4a,0x30,0x5f,0x62,0xcf,0xd8,0x1a,
++0x98,0x2f,0x3d,0xea,0xdc,0x99,0x2d,0xbd,0x77,0xf6,0xa5,0x79,0x22,0x38,0xec,0xc4,
++0xa7,0xa0,0x78,0x12,0xad,0x62,0x0e,0x45,0x70,0x64,0xc5,0xe7,0x97,0x66,0x2d,0x98,
++0x09,0x7e,0x5f,0xaf,0xd6,0xcc,0x28,0x65,0xf2,0x01,0xaa,0x08,0x1a,0x47,0xde,0xf9,
++0xf9,0x7c,0x92,0x5a,0x08,0x69,0x20,0x0d,0xd9,0x3e,0x6d,0x6e,0x3c,0x0d,0x6e,0xd8,
++0xe6,0x06,0x91,0x40,0x18,0xb9,0xf8,0xc1,0xed,0xdf,0xdb,0x41,0xaa,0xe0,0x96,0x20,
++0xc9,0xcd,0x64,0x15,0x38,0x81,0xc9,0x94,0xee,0xa2,0x84,0x29,0x0b,0x13,0x6f,0x8e,
++0xdb,0x0c,0xdd,0x25,0x02,0xdb,0xa4,0x8b,0x19,0x44,0xd2,0x41,0x7a,0x05,0x69,0x4a,
++0x58,0x4f,0x60,0xca,0x7e,0x82,0x6a,0x0b,0x02,0xaa,0x25,0x17,0x39,0xb5,0xdb,0x7f,
++0xe7,0x84,0x65,0x2a,0x95,0x8a,0xbd,0x86,0xde,0x5e,0x81,0x16,0x83,0x2d,0x10,0xcc,
++0xde,0xfd,0xa8,0x82,0x2a,0x6d,0x28,0x1f,0x0d,0x0b,0xc4,0xe5,0xe7,0x1a,0x26,0x19,
++0xe1,0xf4,0x11,0x6f,0x10,0xb5,0x95,0xfc,0xe7,0x42,0x05,0x32,0xdb,0xce,0x9d,0x51,
++0x5e,0x28,0xb6,0x9e,0x85,0xd3,0x5b,0xef,0xa5,0x7d,0x45,0x40,0x72,0x8e,0xb7,0x0e,
++0x6b,0x0e,0x06,0xfb,0x33,0x35,0x48,0x71,0xb8,0x9d,0x27,0x8b,0xc4,0x65,0x5f,0x0d,
++0x86,0x76,0x9c,0x44,0x7a,0xf6,0x95,0x5c,0xf6,0x5d,0x32,0x08,0x33,0xa4,0x54,0xb6,
++0x18,0x3f,0x68,0x5c,0xf2,0x42,0x4a,0x85,0x38,0x54,0x83,0x5f,0xd1,0xe8,0x2c,0xf2,
++0xac,0x11,0xd6,0xa8,0xed,0x63,0x6a,
++};
++
+ static const struct CONST_BLOB {
+     const BYTE *pb;
+     DWORD       cb;
+@@ -608,6 +690,7 @@ static const struct CONST_BLOB {
+     { rootcertauthority, sizeof(rootcertauthority) },
+     { rootcertauthority2010, sizeof(rootcertauthority2010) },
+     { rootcertauthority2011, sizeof(rootcertauthority2011) },
++    { verisign_g5, sizeof(verisign_g5) },
+ };
+ 
+ static void add_ms_root_certs(HKEY key, HCERTSTORE cached)
+diff --git a/dlls/crypt32/unixlib.c b/dlls/crypt32/unixlib.c
+index e5de77a2eeeb3f96b8b2b92af283a9ec246d313a..2e017dcd7a2735746ff1cfb372eb05f6ca196a77 100644
+--- a/dlls/crypt32/unixlib.c
++++ b/dlls/crypt32/unixlib.c
+@@ -959,6 +959,7 @@ static const char * const CRYPT_knownLocations[] = {
+ 
+ static void load_root_certs(void)
+ {
++    const char *additional_dir;
+     unsigned int i;
+ 
+ #ifdef __APPLE__
+@@ -996,6 +997,9 @@ static void load_root_certs(void)
+ 
+     for (i = 0; i < ARRAY_SIZE(CRYPT_knownLocations) && list_empty(&root_cert_list); i++)
+         import_certs_from_path( CRYPT_knownLocations[i], TRUE );
++
++    if ((additional_dir = getenv( "WINE_ADDITIONAL_CERTS_DIR" )))
++        import_certs_from_path( additional_dir, TRUE );
+ }
+ 
+ static NTSTATUS enum_root_certs( void *args )
+diff --git a/dlls/msv1_0/unixlib.c b/dlls/msv1_0/unixlib.c
+index 805a38508545a796a4f38975fd0cca53e32429b9..7e9c8d84a970c671e3f557c23b5890d7d90fa0fe 100644
+--- a/dlls/msv1_0/unixlib.c
++++ b/dlls/msv1_0/unixlib.c
+@@ -46,7 +46,7 @@
+   extern char **environ;
+ #endif
+ 
+-WINE_DECLARE_DEBUG_CHANNEL(winediag);
++WINE_DECLARE_DEBUG_CHANNEL(ntlm);
+ 
+ #define INITIAL_BUFFER_SIZE 200
+ 
+@@ -201,7 +201,7 @@ static NTSTATUS ntlm_fork( void *args )
+     {
+         ctx->pid = -1;
+         write( pipe_in[1], "BH\n", 3 );
+-        ERR_(winediag)( "Can't start ntlm_auth (%s). "
++        WARN_(ntlm)( "Can't start ntlm_auth (%s). "
+                         "Usually you can find it in the winbind package of your distribution.\n",
+                         strerror(err) );
+         status = STATUS_UNSUCCESSFUL;
+diff --git a/dlls/nsiproxy.sys/device.c b/dlls/nsiproxy.sys/device.c
+index 9d05bdc402236d8f81f1ca903957c746b9a6ba22..1d9991f67a50142bdd4a21e8783ef1600a184280 100644
+--- a/dlls/nsiproxy.sys/device.c
++++ b/dlls/nsiproxy.sys/device.c
+@@ -63,6 +63,7 @@ static NTSTATUS nsiproxy_call( unsigned int code, void *args )
+ enum unix_calls
+ {
+     icmp_get_reply,
++    icmp_listen,
+     icmp_send_echo,
+     nsi_enumerate_all_ex,
+     nsi_get_all_parameters_ex,
+@@ -209,6 +210,12 @@ static struct icmp_data *irp_set_icmp_data( IRP *irp, struct icmp_data *data )
+ 
+ DECLARE_CRITICAL_SECTION( icmp_echo_completion_cs );
+ 
++static DWORD WINAPI icmp_listen_thread_proc( void *arg )
++{
++    nsiproxy_call( icmp_listen, NULL );
++    return 0;
++}
++
+ static void WINAPI icmp_echo_cancel( DEVICE_OBJECT *device, IRP *irp )
+ {
+     struct icmp_data *data;
+@@ -251,6 +258,7 @@ static void CALLBACK icmp_wait_complete( void *arg, BOOLEAN timed_out )
+     params.reply_len = irpsp->Parameters.DeviceIoControl.OutputBufferLength;
+ 
+     status = nsiproxy_call( icmp_get_reply, &params );
++    TRACE( "irp %p, icmp_listen rets %08lx\n", irp, status );
+ 
+     irp->IoStatus.Information = 0;
+     if (irp->Cancel)
+@@ -532,6 +540,8 @@ NTSTATUS WINAPI DriverEntry( DRIVER_OBJECT *driver, UNICODE_STRING *path )
+ 
+     thread = CreateThread( NULL, 0, notification_thread_proc, NULL, 0, NULL );
+     CloseHandle( thread );
++    thread = CreateThread( NULL, 0, icmp_listen_thread_proc, NULL, 0, NULL );
++    CloseHandle( thread );
+ 
+     return STATUS_SUCCESS;
+ }
+diff --git a/dlls/nsiproxy.sys/icmp_echo.c b/dlls/nsiproxy.sys/icmp_echo.c
+index 22f63cf1427a342f0e37c139bd328893cb41cce3..6949e6394e3c7515ef3ef50ad6e2fa5f793d1254 100644
+--- a/dlls/nsiproxy.sys/icmp_echo.c
++++ b/dlls/nsiproxy.sys/icmp_echo.c
+@@ -179,8 +179,6 @@ static struct icmp_data *handle_table[MAX_HANDLES];
+ static pthread_mutex_t handle_lock = PTHREAD_MUTEX_INITIALIZER;
+ static struct icmp_data **next_free, **next_unused = handle_table;
+ 
+-static void icmp_listen( void *args );
+-
+ static icmp_handle handle_alloc( struct icmp_data *data )
+ {
+     struct icmp_data **entry;
+@@ -909,14 +907,7 @@ static void icmp_data_free( struct icmp_data *data )
+ 
+ static void init_listen(void)
+ {
+-    HANDLE thread;
+-
+     pipe( socket_list_update_pipe );
+-
+-    if (PsCreateSystemThread( &thread, THREAD_ALL_ACCESS, NULL, 0, NULL, icmp_listen, NULL ))
+-        ERR( "Could not create listen thread.\n" );
+-    else
+-        NtClose( thread );
+ }
+ 
+ static NTSTATUS icmp_get_socket( struct icmp_send_echo_params *params, struct icmp_socket **ret_socket )
+@@ -1082,7 +1073,7 @@ static ULONG get_rtt( LARGE_INTEGER start )
+     return (now.QuadPart - start.QuadPart) / 10000;
+ }
+ 
+-static void icmp_listen( void *args )
++NTSTATUS icmp_listen( void *args )
+ {
+     struct sockaddr_storage addr;
+     struct icmp_reply_ctx ctx;
+@@ -1131,7 +1122,7 @@ static void icmp_listen( void *args )
+         if (ret < 0)
+         {
+             ERR( "poll(): ret %d, %s.\n", ret, strerror( errno ));
+-            return;
++            return STATUS_UNSUCCESSFUL;
+         }
+ 
+         i = 0;
+@@ -1199,6 +1190,7 @@ skip:
+             icmp_release_socket( s );
+         }
+     }
++    return 0;
+ }
+ 
+ NTSTATUS icmp_get_reply( void *args )
+diff --git a/dlls/nsiproxy.sys/ndis.c b/dlls/nsiproxy.sys/ndis.c
+index 5dde17244d9a6164dcf69b3470d2cb769419c781..fae712757bdbd0c20e31bfbdedba8323335fb883 100644
+--- a/dlls/nsiproxy.sys/ndis.c
++++ b/dlls/nsiproxy.sys/ndis.c
+@@ -105,6 +105,8 @@ struct if_entry
+ static struct list if_list = LIST_INIT( if_list );
+ static pthread_mutex_t if_list_lock = PTHREAD_MUTEX_INITIALIZER;
+ 
++static BOOL have_ethernet_iface;
++
+ static struct if_entry *find_entry_from_index( UINT index )
+ {
+     struct if_entry *entry;
+@@ -275,7 +277,22 @@ static WCHAR *strdupAtoW( const char *str )
+     return ret;
+ }
+ 
+-static struct if_entry *add_entry( UINT index, char *name )
++static int fake_ethernet_adapter(void)
++{
++    static int cached = -1;
++
++    if (cached == -1)
++    {
++        const char *s;
++        if ((s = getenv( "WINE_FAKE_ETH_PRESENCE" )))
++            cached = atoi( s );
++        else
++            cached = (s = getenv( "SteamGameId" )) && !strcmp( s, "1293830" );
++    }
++    return cached;
++}
++
++static struct if_entry *add_entry( UINT index, const char *name )
+ {
+     struct if_entry *entry;
+     int name_len = strlen( name );
+@@ -304,6 +321,10 @@ static struct if_entry *add_entry( UINT index, char *name )
+     memcpy( entry->if_guid.Data4 + 2, "NetDev", 6 );
+ 
+     list_add_tail( &if_list, &entry->entry );
++
++    if (entry->if_luid.Info.IfType == MIB_IF_TYPE_ETHERNET)
++        have_ethernet_iface = TRUE;
++
+     return entry;
+ }
+ 
+@@ -311,6 +332,7 @@ static unsigned int update_if_table( void )
+ {
+     struct if_nameindex *indices, *entry;
+     unsigned int append_count = 0;
++    struct if_entry *if_entry;
+ 
+     indices = if_nameindex();
+     if (!indices)
+@@ -326,6 +348,14 @@ static unsigned int update_if_table( void )
+     }
+ 
+     if_freenameindex( indices );
++
++    if (!have_ethernet_iface && fake_ethernet_adapter() && (if_entry = add_entry( 0xdeadbeef, "eth0faked" )))
++    {
++        if_entry->if_type = if_entry->if_luid.Info.IfType = MIB_IF_TYPE_ETHERNET;
++        have_ethernet_iface = TRUE;
++        ++append_count;
++    }
++
+     return append_count;
+ }
+ 
+diff --git a/dlls/nsiproxy.sys/nsi.c b/dlls/nsiproxy.sys/nsi.c
+index 09ced8f814eeaf0ad745f66b70d40ecd2524ebd3..eb4566155f62d6248a4a811bcafebc73f6f3c007 100644
+--- a/dlls/nsiproxy.sys/nsi.c
++++ b/dlls/nsiproxy.sys/nsi.c
+@@ -344,6 +344,7 @@ static NTSTATUS unix_nsi_get_notification( void *args )
+ const unixlib_entry_t __wine_unix_call_funcs[] =
+ {
+     icmp_get_reply,
++    icmp_listen,
+     icmp_send_echo,
+     unix_nsi_enumerate_all_ex,
+     unix_nsi_get_all_parameters_ex,
+diff --git a/dlls/nsiproxy.sys/unix_private.h b/dlls/nsiproxy.sys/unix_private.h
+index 170bdba665da6bc2d7d435f7d5179230050dba33..7fac3af4f88ae6a5cefb682f327cbc425a3d398d 100644
+--- a/dlls/nsiproxy.sys/unix_private.h
++++ b/dlls/nsiproxy.sys/unix_private.h
+@@ -178,4 +178,5 @@ static inline int ascii_strcasecmp( const char *s1, const char *s2 )
+ }
+ 
+ NTSTATUS icmp_get_reply( void *args );
++NTSTATUS icmp_listen( void *args );
+ NTSTATUS icmp_send_echo( void *args );
+diff --git a/dlls/rsaenh/rsaenh.c b/dlls/rsaenh/rsaenh.c
+index f54eb28fd6bbdfa745f69d22e5da5e0d27fd87cb..327aaa79c5968bc2c1ea023948c4903e1a19e046 100644
+--- a/dlls/rsaenh/rsaenh.c
++++ b/dlls/rsaenh/rsaenh.c
+@@ -1201,9 +1201,20 @@ static void store_key_permissions(HCRYPTKEY hCryptKey, HKEY hKey, DWORD dwKeySpe
+  */
+ static BOOL create_container_key(KEYCONTAINER *pKeyContainer, REGSAM sam, HKEY *phKey)
+ {
++    static DWORD key_options = ~0ul;
+     CHAR szRSABase[sizeof(RSAENH_REGKEY) + MAX_PATH];
+     HKEY hRootKey;
+ 
++    if (key_options == ~0ul)
++    {
++        const char *sgi;
++
++        if ((sgi = getenv("SteamGameId")) && !strcmp(sgi, "1364780"))
++            key_options = REG_OPTION_VOLATILE;
++        else
++            key_options = REG_OPTION_NON_VOLATILE;
++    }
++
+     sprintf(szRSABase, RSAENH_REGKEY, pKeyContainer->szName);
+ 
+     if (pKeyContainer->dwFlags & CRYPT_MACHINE_KEYSET)
+@@ -1214,7 +1225,7 @@ static BOOL create_container_key(KEYCONTAINER *pKeyContainer, REGSAM sam, HKEY *
+     /* @@ Wine registry key: HKLM\Software\Wine\Crypto\RSA */
+     /* @@ Wine registry key: HKCU\Software\Wine\Crypto\RSA */
+     return RegCreateKeyExA(hRootKey, szRSABase, 0, NULL,
+-                           REG_OPTION_NON_VOLATILE, sam, NULL, phKey, NULL)
++                           key_options, sam, NULL, phKey, NULL)
+                            == ERROR_SUCCESS;
+ }
+ 
+diff --git a/dlls/secur32/schannel.c b/dlls/secur32/schannel.c
+index 1e149d70b801637433e79194ca7b6ada5b086ccb..5b1b9fd692e6f3eb5afd663e752496270164c669 100644
+--- a/dlls/secur32/schannel.c
++++ b/dlls/secur32/schannel.c
+@@ -67,6 +67,7 @@ struct schan_context
+     enum control_token control_token;
+     unsigned int alert_type;
+     unsigned int alert_number;
++    BOOL rehandshake_requested;
+ };
+ 
+ static struct schan_handle *schan_handle_table;
+@@ -1028,7 +1029,7 @@ static SECURITY_STATUS establish_context(
+             buffer = &pInput->pBuffers[idx];
+             ptr = buffer->pvBuffer;
+ 
+-            if (buffer->cbBuffer < ctx->header_size)
++            if (buffer->cbBuffer < ctx->header_size && !ctx->rehandshake_requested)
+             {
+                 TRACE("Expected at least %Iu bytes, but buffer only contains %lu bytes.\n",
+                       ctx->header_size, buffer->cbBuffer);
+@@ -1053,7 +1054,7 @@ static SECURITY_STATUS establish_context(
+                 ptr += record_size;
+             }
+ 
+-            if (!expected_size)
++            if (!expected_size && !ctx->rehandshake_requested)
+             {
+                 TRACE("Expected at least %Iu bytes, but buffer only contains %lu bytes.\n",
+                       max(ctx->header_size, record_size), buffer->cbBuffer);
+@@ -1105,6 +1106,7 @@ static SECURITY_STATUS establish_context(
+     params.alert_type = ctx->alert_type;
+     params.alert_number = ctx->alert_number;
+     ctx->control_token = CONTROL_TOKEN_NONE;
++    ctx->rehandshake_requested = FALSE;
+     ret = GNUTLS_CALL( handshake, &params );
+ 
+     if (output_buffer_idx != -1)
+@@ -1736,6 +1738,7 @@ static SECURITY_STATUS SEC_ENTRY schan_DecryptMessage(PCtxtHandle context_handle
+     buffer->BufferType = SECBUFFER_STREAM_HEADER;
+     buffer->cbBuffer = ctx->header_size;
+ 
++    if (status == SEC_I_RENEGOTIATE) ctx->rehandshake_requested = TRUE;
+     return status;
+ }
+ 
+diff --git a/dlls/secur32/schannel_gnutls.c b/dlls/secur32/schannel_gnutls.c
+index 83b9f8faf9d256c5546dbd25b635ad8ac0df5739..cdd2f83989483c1962c8a7c61969a0f8fa0ccf64 100644
+--- a/dlls/secur32/schannel_gnutls.c
++++ b/dlls/secur32/schannel_gnutls.c
+@@ -434,7 +434,7 @@ static int pull_timeout(gnutls_transport_ptr_t transport, unsigned int timeout)
+ 
+ static NTSTATUS set_priority(schan_credentials *cred, gnutls_session_t session)
+ {
+-    char priority[128] = "NORMAL:%LATEST_RECORD_VERSION", *p;
++    char priority[160] = "NORMAL:%LATEST_RECORD_VERSION:%NO_SHUFFLE_EXTENSIONS", *p;
+     BOOL server = !!(cred->credential_use & SECPKG_CRED_INBOUND);
+     const struct protocol_priority_flag *protocols =
+         server ? server_protocol_priority_flags : client_protocol_priority_flags;
+diff --git a/dlls/secur32/secur32.c b/dlls/secur32/secur32.c
+index 4ceb646ba95468393dd6123b89587c6d6478d4a6..af9a7f3f42aa9c263ab6d3ec7692b55f5a934159 100644
+--- a/dlls/secur32/secur32.c
++++ b/dlls/secur32/secur32.c
+@@ -1155,9 +1155,22 @@ BOOLEAN WINAPI GetUserNameExW(
+             return FALSE;
+         }
+ 
++    case NameDisplay:
++        {
++            static const WCHAR wineusernameW[] = {'W','I','N','E','U','S','E','R','N','A','M','E',0};
++
++            DWORD needed = GetEnvironmentVariableW(wineusernameW, NULL, 0);
++            if (*nSize < needed) {
++                *nSize = needed;
++                SetLastError(ERROR_MORE_DATA);
++                return FALSE;
++            }
++            *nSize = GetEnvironmentVariableW(wineusernameW, lpNameBuffer, *nSize);
++            return TRUE;
++        }
++
+     case NameUnknown:
+     case NameFullyQualifiedDN:
+-    case NameDisplay:
+     case NameUniqueId:
+     case NameCanonical:
+     case NameUserPrincipal:
+diff --git a/dlls/webservices/Makefile.in b/dlls/webservices/Makefile.in
+index cfc194738f701e988f1394c51ba53f290c03f720..f32a3f966ea7fca37507776f204f1f12aaa1c4bd 100644
+--- a/dlls/webservices/Makefile.in
++++ b/dlls/webservices/Makefile.in
+@@ -2,6 +2,8 @@ MODULE    = webservices.dll
+ IMPORTLIB = webservices
+ IMPORTS   = winhttp rpcrt4 user32 ws2_32
+ 
++EXTRADLLFLAGS = -Wb,--prefer-native
++
+ VER_FILEDESCRIPTION_STR = "Wine Web Services"
+ VER_PRODUCTVERSION      = 10,0,14393,0
+ 
+diff --git a/dlls/winhttp/net.c b/dlls/winhttp/net.c
+index 05922acca00d73ac7c56750af27aa5aa1c7fa625..4d7a203fc5fa78e84323aa53ecf3a1ff1724ef15 100644
+--- a/dlls/winhttp/net.c
++++ b/dlls/winhttp/net.c
+@@ -309,28 +309,25 @@ void netconn_release( struct netconn *conn )
+     free(conn);
+ }
+ 
+-DWORD netconn_secure_connect( struct netconn *conn, WCHAR *hostname, DWORD security_flags, CredHandle *cred_handle,
+-                              BOOL check_revocation )
++static DWORD netconn_negotiate( struct netconn *conn, WCHAR *hostname, CredHandle *cred_handle,
++                                CtxtHandle *prev_ctx, SecBufferDesc *prev_buf, CtxtHandle *ctx )
+ {
+     SecBuffer out_buf = {0, SECBUFFER_TOKEN, NULL}, in_bufs[2] = {{0, SECBUFFER_TOKEN}, {0, SECBUFFER_EMPTY}};
+     SecBufferDesc out_desc = {SECBUFFER_VERSION, 1, &out_buf}, in_desc = {SECBUFFER_VERSION, 2, in_bufs};
+     BYTE *read_buf;
+     SIZE_T read_buf_size = 2048;
+     ULONG attrs = 0;
+-    CtxtHandle ctx;
+     SSIZE_T size;
+-    const CERT_CONTEXT *cert;
+     SECURITY_STATUS status;
+-    DWORD res = ERROR_SUCCESS;
+ 
+     const DWORD isc_req_flags = ISC_REQ_ALLOCATE_MEMORY|ISC_REQ_USE_SESSION_KEY|ISC_REQ_CONFIDENTIALITY
+         |ISC_REQ_SEQUENCE_DETECT|ISC_REQ_REPLAY_DETECT|ISC_REQ_MANUAL_CRED_VALIDATION;
+ 
+     if (!(read_buf = malloc( read_buf_size ))) return ERROR_OUTOFMEMORY;
+ 
+-    memset( &ctx, 0, sizeof(ctx) );
+-    status = InitializeSecurityContextW(cred_handle, NULL, hostname, isc_req_flags, 0, 0, NULL, 0,
+-            &ctx, &out_desc, &attrs, NULL);
++    status = InitializeSecurityContextW(cred_handle, prev_ctx, hostname, isc_req_flags, 0, 0, prev_buf, 0,
++            ctx, &out_desc, &attrs, NULL);
++    if (!ctx) ctx = prev_ctx;
+ 
+     assert(status != SEC_E_OK);
+ 
+@@ -343,7 +340,7 @@ DWORD netconn_secure_connect( struct netconn *conn, WCHAR *hostname, DWORD secur
+             size = sock_send(conn->socket, out_buf.pvBuffer, out_buf.cbBuffer, NULL);
+             if(size != out_buf.cbBuffer) {
+                 ERR("send failed\n");
+-                res = ERROR_WINHTTP_SECURE_CHANNEL_ERROR;
++                status = ERROR_WINHTTP_SECURE_CHANNEL_ERROR;
+                 break;
+             }
+ 
+@@ -387,63 +384,73 @@ DWORD netconn_secure_connect( struct netconn *conn, WCHAR *hostname, DWORD secur
+ 
+         in_bufs[0].cbBuffer += size;
+         in_bufs[0].pvBuffer = read_buf;
+-        status = InitializeSecurityContextW(cred_handle, &ctx, hostname,  isc_req_flags, 0, 0, &in_desc,
++        status = InitializeSecurityContextW(cred_handle, ctx, hostname, isc_req_flags, 0, 0, &in_desc,
+                 0, NULL, &out_desc, &attrs, NULL);
+         TRACE( "InitializeSecurityContext ret %#lx\n", status );
++        if(status == SEC_E_OK && in_bufs[1].BufferType == SECBUFFER_EXTRA)
++            FIXME("SECBUFFER_EXTRA not supported\n");
++    }
+ 
+-        if(status == SEC_E_OK) {
+-            if(in_bufs[1].BufferType == SECBUFFER_EXTRA)
+-                FIXME("SECBUFFER_EXTRA not supported\n");
++    free(read_buf);
+ 
+-            status = QueryContextAttributesW(&ctx, SECPKG_ATTR_STREAM_SIZES, &conn->ssl_sizes);
+-            if(status != SEC_E_OK) {
+-                WARN("Could not get sizes\n");
+-                break;
+-            }
++    return status;
++}
+ 
+-            status = QueryContextAttributesW(&ctx, SECPKG_ATTR_REMOTE_CERT_CONTEXT, (void*)&cert);
+-            if(status == SEC_E_OK) {
+-                res = netconn_verify_cert(cert, hostname, security_flags, check_revocation, &conn->chain);
+-                CertFreeCertificateContext(cert);
+-                if(res != ERROR_SUCCESS) {
+-                    WARN( "cert verify failed: %lu\n", res );
+-                    break;
+-                }
+-            }else {
+-                WARN("Could not get cert\n");
+-                break;
+-            }
++DWORD netconn_secure_connect( struct netconn *conn, WCHAR *hostname, DWORD security_flags, CredHandle *cred_handle,
++                              BOOL check_revocation )
++{
++    CtxtHandle ctx = {0};
++    const CERT_CONTEXT *cert;
++    SECURITY_STATUS status;
++    DWORD res = ERROR_SUCCESS;
+ 
+-            conn->ssl_read_buf = malloc(conn->ssl_sizes.cbHeader + conn->ssl_sizes.cbMaximumMessage + conn->ssl_sizes.cbTrailer);
+-            if(!conn->ssl_read_buf) {
+-                res = ERROR_OUTOFMEMORY;
+-                break;
+-            }
+-            conn->ssl_write_buf = malloc(conn->ssl_sizes.cbHeader + conn->ssl_sizes.cbMaximumMessage + conn->ssl_sizes.cbTrailer);
+-            if(!conn->ssl_write_buf) {
+-                res = ERROR_OUTOFMEMORY;
+-                break;
+-            }
+-        }
++    status = netconn_negotiate(conn, hostname, cred_handle, NULL, NULL, &ctx);
++    if(status != SEC_E_OK || res != ERROR_SUCCESS)
++        goto failed;
++
++    status = QueryContextAttributesW(&ctx, SECPKG_ATTR_STREAM_SIZES, &conn->ssl_sizes);
++    if(status != SEC_E_OK) {
++        WARN("Could not get sizes\n");
++        goto failed;
+     }
+ 
+-    free(read_buf);
++    status = QueryContextAttributesW(&ctx, SECPKG_ATTR_REMOTE_CERT_CONTEXT, (void*)&cert);
++    if(status != SEC_E_OK) {
++        WARN("Could not get cert\n");
++        goto failed;
++    }
+ 
+-    if(status != SEC_E_OK || res != ERROR_SUCCESS) {
+-        WARN( "Failed to initialize security context: %#lx\n", status );
+-        free(conn->ssl_read_buf);
+-        conn->ssl_read_buf = NULL;
+-        free(conn->ssl_write_buf);
+-        conn->ssl_write_buf = NULL;
+-        DeleteSecurityContext(&ctx);
+-        return ERROR_WINHTTP_SECURE_CHANNEL_ERROR;
++    res = netconn_verify_cert(cert, hostname, security_flags, check_revocation, &conn->chain);
++    CertFreeCertificateContext(cert);
++    if(res != ERROR_SUCCESS) {
++        WARN( "cert verify failed: %lu\n", res );
++        goto failed;
+     }
+ 
++    conn->ssl_read_buf = malloc(conn->ssl_sizes.cbHeader + conn->ssl_sizes.cbMaximumMessage + conn->ssl_sizes.cbTrailer);
++    if(!conn->ssl_read_buf) {
++        res = ERROR_OUTOFMEMORY;
++        goto failed;
++    }
++    conn->ssl_write_buf = malloc(conn->ssl_sizes.cbHeader + conn->ssl_sizes.cbMaximumMessage + conn->ssl_sizes.cbTrailer);
++    if(!conn->ssl_write_buf) {
++        res = ERROR_OUTOFMEMORY;
++        goto failed;
++    }
+ 
+     TRACE("established SSL connection\n");
+     conn->secure = TRUE;
+     conn->ssl_ctx = ctx;
+     return ERROR_SUCCESS;
++
++failed:
++    WARN( "Failed to initialize security context: %#lx\n", status );
++    free(conn->ssl_read_buf);
++    conn->ssl_read_buf = NULL;
++    free(conn->ssl_write_buf);
++    conn->ssl_write_buf = NULL;
++    DeleteSecurityContext(&ctx);
++    return ERROR_WINHTTP_SECURE_CHANNEL_ERROR;
+ }
+ 
+ static DWORD send_ssl_chunk( struct netconn *conn, const void *msg, size_t size, WSAOVERLAPPED *ovr )
+@@ -558,8 +565,23 @@ static DWORD read_ssl_chunk( struct netconn *conn, void *buf, SIZE_T buf_size, S
+             break;
+ 
+         case SEC_I_RENEGOTIATE:
++        {
++            SecBuffer out_buf = {0, SECBUFFER_TOKEN, NULL};
++            SecBufferDesc out_desc = {SECBUFFER_VERSION, 1, &out_buf};
++
+             TRACE("renegotiate\n");
+-            return ERROR_WINHTTP_CLIENT_AUTH_CERT_NEEDED;
++
++            for(i = 0; i < ARRAY_SIZE(bufs); i++) {
++                if(bufs[i].BufferType == SECBUFFER_EXTRA) {
++                    out_buf.cbBuffer = bufs[i].cbBuffer;
++                    out_buf.pvBuffer = bufs[i].pvBuffer;
++                }
++            }
++
++            res = netconn_negotiate(conn, conn->host->hostname, NULL, &conn->ssl_ctx, &out_desc, NULL);
++            if (res != SEC_E_OK) return res;
++            continue;
++        }
+ 
+         case SEC_I_CONTEXT_EXPIRED:
+             TRACE("context expired\n");
+diff --git a/dlls/winhttp/session.c b/dlls/winhttp/session.c
+index dba1853e759578e053311c93ce605c8be5675e7f..b69a6d227e0cf9176f833d8b0d34b5c9cb4dae96 100644
+--- a/dlls/winhttp/session.c
++++ b/dlls/winhttp/session.c
+@@ -1682,6 +1682,11 @@ static BOOL set_option( struct object_header *hdr, DWORD option, void *buffer, D
+         hdr->context = *(DWORD_PTR *)buffer;
+         return TRUE;
+     }
++
++    case WINHTTP_OPTION_DECOMPRESSION:
++        FIXME( "WINHTTP_OPTION_DECOMPRESSION, %#lx stub.\n", *(DWORD *)buffer );
++        return TRUE;
++
+     default:
+         if (hdr->vtbl->set_option) ret = hdr->vtbl->set_option( hdr, option, buffer, buflen );
+         else
+diff --git a/dlls/winhttp/tests/winhttp.c b/dlls/winhttp/tests/winhttp.c
+index 35128a788fb14a3b1998b4e63dc423aa82637895..765ed4d4c06c9aea4ba1f2ba9780ff631e796529 100644
+--- a/dlls/winhttp/tests/winhttp.c
++++ b/dlls/winhttp/tests/winhttp.c
+@@ -3652,6 +3652,13 @@ static void test_websocket(int port)
+     ok(size == sizeof(val64), "got %lu.\n", size);
+     ok(val64 == 4, "request failed unexpectedly %lu\n", status);
+ 
++    val64 = 0xdeadbeeffeedcafe;
++    size = sizeof(val64) * 2;
++    ret = WinHttpQueryHeaders(request, WINHTTP_QUERY_CONTENT_LENGTH | WINHTTP_QUERY_FLAG_NUMBER64, NULL, &val64, &size, NULL);
++    ok(ret, "failed unexpectedly %lu\n", GetLastError());
++    ok(size == sizeof(val64), "got %lu.\n", size);
++    ok(val64 == 4, "request failed unexpectedly %lu\n", status);
++
+     index = 0;
+     size = sizeof(buf);
+     ret = WinHttpQueryHeaders(request, WINHTTP_QUERY_CUSTOM, L"Sec-WebSocket-Accept", buf, &size, &index);
+diff --git a/dlls/wininet/ftp.c b/dlls/wininet/ftp.c
+index 75d742d35da8d14c08cc7dfaf74520e287853252..4b31641b703bd8bc1b0186ee5b90ba273279c77f 100644
+--- a/dlls/wininet/ftp.c
++++ b/dlls/wininet/ftp.c
+@@ -2432,7 +2432,7 @@ HINTERNET FTP_Connect(appinfo_t *hIC, LPCWSTR lpszServerName,
+     socklen_t sock_namelen;
+     BOOL bSuccess = FALSE;
+     ftp_session_t *lpwfs = NULL;
+-    server_addr_t *server_addr;
++    server_addr_t *server_addr = NULL;
+ 
+     TRACE("%p  Server(%s) Port(%d) User(%s) Paswd(%s)\n",
+ 	    hIC, debugstr_w(lpszServerName),
+diff --git a/dlls/wininet/http.c b/dlls/wininet/http.c
+index 5f3a5866badade73e795b2996120a39008328c04..e57cda2a7b3359cbb065ae5d48b4ab918d365880 100644
+--- a/dlls/wininet/http.c
++++ b/dlls/wininet/http.c
+@@ -4977,7 +4977,7 @@ static DWORD open_http_connection(http_request_t *request, BOOL *reusing)
+           request->proxy ? debugstr_w(request->proxy->name) : "(null)");
+     server = request->proxy ? request->proxy : request->server;
+     assert(server->addr);
+-    res = create_netconn(server, &request->hdr, request->security_flags,
++    res = create_netconn(server, &request->hdr, request->hdr.dwContext, request->security_flags,
+                          (request->hdr.ErrorMask & INTERNET_ERROR_MASK_COMBINED_SEC_CERT) != 0,
+                          request->hdr.connect_timeout, &netconn);
+     if(res != ERROR_SUCCESS) {
+diff --git a/dlls/wininet/internet.h b/dlls/wininet/internet.h
+index 89eb86b8ee4bf499ae21cec72ae75fae48b74cd7..2de3a3c311df8e03da68e9cd1f9b4b44443a7ee7 100644
+--- a/dlls/wininet/internet.h
++++ b/dlls/wininet/internet.h
+@@ -401,7 +401,7 @@ VOID INTERNET_SendCallback(object_header_t *hdr, DWORD_PTR dwContext,
+                            DWORD dwStatusInfoLength);
+ WCHAR *INTERNET_FindProxyForProtocol(LPCWSTR szProxy, LPCWSTR proto);
+ 
+-DWORD create_netconn(server_t*,object_header_t*,DWORD,BOOL,DWORD,netconn_t**);
++DWORD create_netconn(server_t*,object_header_t*,DWORD_PTR,DWORD,BOOL,DWORD,netconn_t**);
+ void free_netconn(netconn_t*);
+ void NETCON_unload(void);
+ DWORD NETCON_secure_connect(netconn_t*,server_t*);
+diff --git a/dlls/wininet/netconnection.c b/dlls/wininet/netconnection.c
+index 5741cc412beaa2167576b2289d26ff49d3fd85ac..b2ac91848f6300022db4d8954a74f3c34d1814dc 100644
+--- a/dlls/wininet/netconnection.c
++++ b/dlls/wininet/netconnection.c
+@@ -304,7 +304,7 @@ static DWORD create_netconn_socket(server_t *server, object_header_t *hdr, DWORD
+     return ERROR_SUCCESS;
+ }
+ 
+-DWORD create_netconn(server_t *server, object_header_t *hdr, DWORD security_flags,
++DWORD create_netconn(server_t *server, object_header_t *hdr, DWORD_PTR callback_context, DWORD security_flags,
+                      BOOL mask_errors, DWORD timeout, netconn_t **ret)
+ {
+     netconn_t *netconn;
+@@ -320,7 +320,7 @@ DWORD create_netconn(server_t *server, object_header_t *hdr, DWORD security_flag
+     list_init(&netconn->pool_entry);
+     SecInvalidateHandle(&netconn->ssl_ctx);
+ 
+-    result = create_netconn_socket(server, hdr, hdr->dwContext, netconn, timeout);
++    result = create_netconn_socket(server, hdr, callback_context, netconn, timeout);
+     if (result != ERROR_SUCCESS) {
+         free(netconn);
+         return result;
+diff --git a/dlls/ws2_32/protocol.c b/dlls/ws2_32/protocol.c
+index 78dc0c78fcad14d19b9a37b9a63ecb264a08b9a7..e9ed94fbd041ca1a90ded7486437acfdabb8bf8c 100644
+--- a/dlls/ws2_32/protocol.c
++++ b/dlls/ws2_32/protocol.c
+@@ -184,6 +184,25 @@ static int dns_only_query( const char *node, const struct addrinfo *hints, struc
+     return 0;
+ }
+ 
++static BOOL eac_download_hack(void)
++{
++    static int eac_download_hack_enabled = -1;
++    char str[64];
++
++    if (eac_download_hack_enabled == -1)
++    {
++        if (GetEnvironmentVariableA("WINE_DISABLE_EAC_ALT_DOWNLOAD", str, sizeof(str)))
++            eac_download_hack_enabled = !!atoi(str);
++        else
++            eac_download_hack_enabled = GetEnvironmentVariableA("SteamGameId", str, sizeof(str))
++                                        && !strcmp(str, "626690");
++
++        if (eac_download_hack_enabled)
++            ERR("HACK: failing download-alt.easyanticheat.net resolution.\n");
++    }
++    return eac_download_hack_enabled;
++}
++
+ /***********************************************************************
+  *      getaddrinfo   (ws2_32.@)
+  */
+@@ -205,6 +224,12 @@ int WINAPI getaddrinfo( const char *node, const char *service,
+ 
+     if (node)
+     {
++        if (eac_download_hack() && !strcmp(node, "download-alt.easyanticheat.net"))
++        {
++            SetLastError(WSAHOST_NOT_FOUND);
++            return WSAHOST_NOT_FOUND;
++        }
++
+         if (!node[0])
+         {
+             if (!(fqdn = get_fqdn())) return WSA_NOT_ENOUGH_MEMORY;
+@@ -980,6 +1005,12 @@ struct hostent * WINAPI gethostbyname( const char *name )
+         return NULL;
+     }
+ 
++    if (eac_download_hack() && name && !strcmp(name, "download-alt.easyanticheat.net"))
++    {
++        SetLastError( WSAHOST_NOT_FOUND );
++        return NULL;
++    }
++
+     if ((ret = WS_CALL( gethostname, &params )))
+     {
+         SetLastError( ret );

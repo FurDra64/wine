@@ -1,0 +1,175 @@
+name: valve-track
+
+# Valve downstream tracking (read-only): resolve values from pins.conf,
+# fetch the live Valve ref, regenerate inventory + conflict list +
+# reconstruction proof, upload as artifacts, then fail the final gate when
+# live source OR live upstream drifted from the recorded snapshot so a human
+# reviews the port. Never pushes, never opens issues/PRs, never sends
+# external messages, never auto-merges.
+
+on:
+  schedule:
+    - cron: "0 4 * * *" # daily 04:00 UTC: Valve tips move any day
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: valve-track
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash --noprofile --norc -euo pipefail -- {0}
+
+jobs:
+  track:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (full history)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Syntax gates (shell + self-description)
+        run: |
+          bash -n scripts/valve-track.sh
+          bash -n scripts/valve-track-selftest.sh
+          bash -n scripts/apply-patches.sh
+          ./scripts/valve-track.sh --help > /dev/null
+          ./scripts/valve-track.sh --show-pins
+
+      - name: Behavioral selftest (local fixture, no network)
+        run: |
+          ./scripts/valve-track-selftest.sh
+
+      - name: Resolve tracking values (pins.conf is the single source)
+        run: |
+          while IFS='=' read -r key val; do
+            case "$key" in
+              REMOTE) echo "VALVE_URL=$val" >> "$GITHUB_ENV" ;;
+              REF) echo "VALVE_REF=$val" >> "$GITHUB_ENV" ;;
+              BASE) echo "VALVE_BASE=$val" >> "$GITHUB_ENV" ;;
+              SOURCE) echo "PINNED_SOURCE=$val" >> "$GITHUB_ENV" ;;
+              UPSTREAM) echo "PINNED_UPSTREAM=$val" >> "$GITHUB_ENV" ;;
+            esac
+          done < <(./scripts/valve-track.sh --show-pins | grep -v '^PINS_FROM=')
+
+      - name: Ensure origin/upstream ref (fresh checkouts have no local branch)
+        run: |
+          git fetch --no-tags origin "+refs/heads/upstream:refs/remotes/origin/upstream"
+          git rev-parse --verify refs/remotes/origin/upstream
+
+      - name: Fetch live Valve ref (read-only, private task ref only)
+        run: |
+          ./scripts/valve-track.sh --remote "$VALVE_URL" --ref "$VALVE_REF" \
+            --fetch | tee fetch.log
+
+      - name: Pins check (live source + live upstream)
+        run: |
+          ./scripts/valve-track.sh --base "$VALVE_BASE" \
+            --source "refs/task/valve/$VALVE_REF" \
+            --upstream refs/remotes/origin/upstream \
+            --check-pins | tee pins.log
+
+      - name: Inventory + conflicts (live)
+        run: |
+          ./scripts/valve-track.sh --base "$VALVE_BASE" \
+            --source "refs/task/valve/$VALVE_REF" \
+            --upstream refs/remotes/origin/upstream \
+            --inventory valve-inventory.tsv
+          ./scripts/valve-track.sh --base "$VALVE_BASE" \
+            --source "refs/task/valve/$VALVE_REF" \
+            --upstream refs/remotes/origin/upstream \
+            --conflicts valve-conflicts.txt
+          wc -l valve-inventory.tsv valve-conflicts.txt
+
+      - name: Export + reconstruction proof (scratch only, never committed)
+        run: |
+          ./scripts/valve-track.sh --base "$VALVE_BASE" \
+            --source "refs/task/valve/$VALVE_REF" \
+            --upstream refs/remotes/origin/upstream \
+            --export "${RUNNER_TEMP}/valve-raw"
+          ./scripts/valve-track.sh --base "$VALVE_BASE" \
+            --source "refs/task/valve/$VALVE_REF" \
+            --upstream refs/remotes/origin/upstream \
+            --verify "${RUNNER_TEMP}/valve-raw" | tee verify.log
+
+      - name: Overlay regression gate (existing patchsets unaffected)
+        run: |
+          ./scripts/apply-patches.sh --check
+          ./scripts/apply-patches.sh --list
+
+      - name: Drift evaluation (pinned snapshot vs live source and upstream)
+        run: |
+          live_source="$(git rev-parse "refs/task/valve/$VALVE_REF")"
+          live_upstream="$(git rev-parse refs/remotes/origin/upstream)"
+          conflicts="$(grep -c '' valve-conflicts.txt || true)"
+          src_kind=unchanged
+          ups_kind=unchanged
+          if [[ "$PINNED_SOURCE" != "$live_source" ]]; then
+            if git merge-base --is-ancestor "$PINNED_SOURCE" "$live_source" >/dev/null 2>&1; then
+              src_kind=appended
+            elif git merge-base "$PINNED_SOURCE" "$live_source" >/dev/null 2>&1; then
+              src_kind=rewritten
+            else
+              src_kind=unknown
+            fi
+          fi
+          if [[ "$PINNED_UPSTREAM" != "$live_upstream" ]]; then
+            if git merge-base --is-ancestor "$PINNED_UPSTREAM" "$live_upstream" >/dev/null 2>&1; then
+              ups_kind=advanced
+            elif git merge-base "$PINNED_UPSTREAM" "$live_upstream" >/dev/null 2>&1; then
+              ups_kind=rewritten
+            else
+              ups_kind=unknown
+            fi
+          fi
+          summary_extra="source and upstream match the snapshot; reports stand as-is."
+          env_extra="DRIFT=no"
+          if [[ "$src_kind" != unchanged || "$ups_kind" != unchanged ]]; then
+            printf -v env_extra 'DRIFT=yes\nSRC_KIND=%s\nUPS_KIND=%s' "$src_kind" "$ups_kind"
+            printf -v summary_extra '%s\n%s\n%s' "update-required: source=$src_kind upstream=$ups_kind;" "refresh pins.conf + snapshots per docs/VALVE-TRACKING.md" "and review the port before the next sync."
+          fi
+          {
+            echo "## Valve tracking drift"
+            echo ""
+            echo "| item | snapshot (pins.conf) | live | status |"
+            echo "|------|----------------------|------|--------|"
+            echo "| source | \`$PINNED_SOURCE\` | \`$live_source\` | $src_kind |"
+            echo "| upstream | \`$PINNED_UPSTREAM\` | \`$live_upstream\` | $ups_kind |"
+            echo ""
+            echo "- source-data reconstruction: $(grep -o 'VERIFY_OK.*' verify.log || echo FAILED)"
+            echo "- integration: CONFLICT_FILES=$conflicts (live upstream \`$live_upstream\`)"
+            echo ""
+            printf '%s\n' "$summary_extra"
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
+          printf '%s\n' "$env_extra" >> "$GITHUB_ENV"
+
+      - name: Upload tracking artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: valve-track-report
+          path: |
+            fetch.log
+            pins.log
+            valve-inventory.tsv
+            valve-conflicts.txt
+            verify.log
+          retention-days: 14
+
+      - name: Drift gate (nonzero when port review is required)
+        run: |
+          if [[ "${DRIFT:-no}" == yes ]]; then
+            echo "::error::tracking drift (source=${SRC_KIND:-unknown}, upstream=${UPS_KIND:-unknown}); port review required."
+            exit 1
+          fi
+          echo "no drift: source and upstream match the recorded snapshot."
+
+      - name: Cleanup scratch export
+        if: always()
+        run: |
+          rm -rf "${RUNNER_TEMP}/valve-raw"

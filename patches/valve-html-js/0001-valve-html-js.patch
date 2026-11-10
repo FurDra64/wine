@@ -1,0 +1,2609 @@
+diff --git a/dlls/actxprxy/Makefile.in b/dlls/actxprxy/Makefile.in
+index 0397f7c3a9352a7c3a30df4189b54368a2911ab1..36aa17b61ef520a2da6ec66dfcd93378d1ac868b 100644
+--- a/dlls/actxprxy/Makefile.in
++++ b/dlls/actxprxy/Makefile.in
+@@ -8,6 +8,7 @@ SOURCES = \
+ 	actxprxy_hlink.idl \
+ 	actxprxy_htiface.idl \
+ 	actxprxy_htiframe.idl \
++	actxprxy_mshtml.idl \
+ 	actxprxy_objsafe.idl \
+ 	actxprxy_ocmm.idl \
+ 	actxprxy_servprov.idl \
+diff --git a/dlls/actxprxy/actxprxy_mshtml.idl b/dlls/actxprxy/actxprxy_mshtml.idl
+new file mode 100644
+index 0000000000000000000000000000000000000000..6f4a7ca9fd085e842177fd03fea7693fc6d8e002
+--- /dev/null
++++ b/dlls/actxprxy/actxprxy_mshtml.idl
+@@ -0,0 +1,35 @@
++/*
++ * Copyright 2009 Alexandre Julliard
++ *
++ * This library is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU Lesser General Public
++ * License as published by the Free Software Foundation; either
++ * version 2.1 of the License, or (at your option) any later version.
++ *
++ * This library is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++ * Lesser General Public License for more details.
++ *
++ * You should have received a copy of the GNU Lesser General Public
++ * License along with this library; if not, write to the Free Software
++ * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
++ */
++
++/* just a wrapper for mshtmhst.idl */
++
++#pragma makedep proxy
++#pragma makedep register
++
++#define NO_MSHTML_IMPORT
++
++#include "mshtml.idl"
++#include "mshtmhst.idl"
++#include "shdeprecated.idl"
++#include "docobjectservice.idl"
++
++[
++    threading(both),
++    uuid(b8da6310-e19b-11d0-933c-00a0c90dcaa9)  /* IActiveScriptStats */
++]
++coclass PSFactoryBuffer { interface IFactoryBuffer; }
+diff --git a/dlls/ieframe/navigate.c b/dlls/ieframe/navigate.c
+index c6a4a9196f5c5855c1550cdf2e0afb7f050536aa..0d7cf61fe3089da82abbae7e30b3f80bb260ead6 100644
+--- a/dlls/ieframe/navigate.c
++++ b/dlls/ieframe/navigate.c
+@@ -852,6 +852,31 @@ static void doc_navigate_proc(DocHost *This, task_header_t *t)
+     }
+ }
+ 
++static void hack_pump_messages(void)
++{
++    static int enabled = -1;
++    MSG msg;
++
++    if (enabled == -1)
++    {
++        const char *sgi = getenv("SteamGameId");
++
++        enabled = sgi && !strcmp(sgi, "2767030");
++        if (enabled)
++            ERR("HACK: injecting PeekMessage loop in async_doc_navigate.\n");
++    }
++
++    if (!enabled)
++        return;
++
++    while (PeekMessageW(&msg, NULL, 0, 0, PM_REMOVE))
++    {
++        TRACE("dispatching.\n");
++        DispatchMessageW(&msg);
++    }
++    TRACE("no more messages.\n");
++}
++
+ static HRESULT async_doc_navigate(DocHost *This, LPCWSTR url, LPCWSTR headers, PBYTE post_data, ULONG post_data_size,
+         BOOL async_notif)
+ {
+@@ -900,6 +925,7 @@ static HRESULT async_doc_navigate(DocHost *This, LPCWSTR url, LPCWSTR headers, P
+ 
+     task->async_notif = async_notif;
+     abort_dochost_tasks(This, doc_navigate_proc);
++    hack_pump_messages();
+     push_dochost_task(This, &task->header, doc_navigate_proc, doc_navigate_task_destr, FALSE);
+     return S_OK;
+ }
+diff --git a/dlls/jscript/arraybuf.c b/dlls/jscript/arraybuf.c
+index 68af4e97190c086e9a6d31be0f3598cb511b913f..8a6531270dc2f1d74b5dd9970408f3f24b7b7267 100644
+--- a/dlls/jscript/arraybuf.c
++++ b/dlls/jscript/arraybuf.c
+@@ -647,18 +647,27 @@ static HRESULT DataView_gc_traverse(struct gc_ctx *gc_ctx, enum gc_traverse_op o
+     return gc_process_linked_obj(gc_ctx, op, &view->buffer->dispex, (void**)&view->buffer);
+ }
+ 
++static void DataView_cc_traverse(jsdisp_t *dispex, nsCycleCollectionTraversalCallback *cb)
++{
++    DataViewInstance *view = dataview_from_jsdisp(dispex);
++    if(view->buffer)
++        cc_api.note_edge((IUnknown*)&view->buffer->dispex.IWineJSDispatch_iface, "buffer", cb);
++}
++
+ static const builtin_info_t DataView_info = {
+     .class       = JSCLASS_DATAVIEW,
+     .props_cnt   = ARRAY_SIZE(DataView_props),
+     .props       = DataView_props,
+     .destructor  = DataView_destructor,
+-    .gc_traverse = DataView_gc_traverse
++    .gc_traverse = DataView_gc_traverse,
++    .cc_traverse = DataView_cc_traverse
+ };
+ 
+ static const builtin_info_t DataViewInst_info = {
+     .class       = JSCLASS_DATAVIEW,
+     .destructor  = DataView_destructor,
+-    .gc_traverse = DataView_gc_traverse
++    .gc_traverse = DataView_gc_traverse,
++    .cc_traverse = DataView_cc_traverse
+ };
+ 
+ static HRESULT DataViewConstr_value(script_ctx_t *ctx, jsval_t vthis, WORD flags, unsigned argc, jsval_t *argv,
+@@ -1037,6 +1046,13 @@ static HRESULT TypedArray_gc_traverse(struct gc_ctx *gc_ctx, enum gc_traverse_op
+     return gc_process_linked_obj(gc_ctx, op, &typedarr->buffer->dispex, (void**)&typedarr->buffer);
+ }
+ 
++static void TypedArray_cc_traverse(jsdisp_t *dispex, nsCycleCollectionTraversalCallback *cb)
++{
++    TypedArrayInstance *typedarr = typedarr_from_jsdisp(dispex);
++    if(typedarr->buffer)
++        cc_api.note_edge((IUnknown*)&typedarr->buffer->dispex.IWineJSDispatch_iface, "buffer", cb);
++}
++
+ static const builtin_prop_t TypedArrayInst_props[] = {
+     {L"buffer",                NULL, 0,                    TypedArray_get_buffer},
+     {L"byteLength",            NULL, 0,                    TypedArray_get_byteLength},
+@@ -1233,6 +1249,7 @@ static const builtin_info_t name##_info =
+     .prop_put       = name##_prop_put,                                                  \
+     .fill_props     = TypedArray_fill_props,                                            \
+     .gc_traverse    = TypedArray_gc_traverse,                                           \
++    .cc_traverse    = TypedArray_cc_traverse,                                           \
+ };                                                                                      \
+                                                                                         \
+ static const builtin_info_t name##Inst_info =                                           \
+@@ -1246,6 +1263,7 @@ static const builtin_info_t name##Inst_info =
+     .prop_put       = name##_prop_put,                                                  \
+     .fill_props     = TypedArray_fill_props,                                            \
+     .gc_traverse    = TypedArray_gc_traverse,                                           \
++    .cc_traverse    = TypedArray_cc_traverse,                                           \
+ };                                                                                      \
+ static HRESULT name ## Constr_value(script_ctx_t *ctx, jsval_t jsthis, WORD flags, unsigned argc, jsval_t *argv, jsval_t *r) \
+ {                                                                                       \
+diff --git a/dlls/jscript/dispex.c b/dlls/jscript/dispex.c
+index 22d97a57b115312cc98a2ef72bead6ef38cc7a5d..e788472c3e881a564c4550ae2e59e624086b427a 100644
+--- a/dlls/jscript/dispex.c
++++ b/dlls/jscript/dispex.c
+@@ -1117,6 +1117,11 @@ HRESULT gc_run(struct thread_data *thread_data)
+     /* We also scan for non-jscript (host) objects reachable from any jscript object, and store a map of them with their refs */
+     rb_init(&gc_ctx.cc_map, cc_map_compare);
+ 
++    thread_data->gc_is_unlinking = TRUE;
++    if(cc_api.collect)
++        cc_api.collect();
++    thread_data->gc_is_unlinking = FALSE;
++
+     if(!(head = malloc(sizeof(*head))))
+         return E_OUTOFMEMORY;
+     head->next = NULL;
+@@ -2193,6 +2198,21 @@ static HRESULT WINAPI DispatchEx_QueryInterface(IWineJSDispatch *iface, REFIID r
+     }else if(IsEqualGUID(&IID_IWineJSDispatch, riid)) {
+         TRACE("(%p)->(IID_IWineJSDispatch %p)\n", This, ppv);
+         *ppv = &This->IWineJSDispatch_iface;
++    }else if(IsEqualGUID(&IID_nsXPCOMCycleCollectionParticipant, riid)) {
++        /* Only expose these during a full CC, as we can't have their refs change between incremental CC phases */
++        if(!This->builtin_info->get_host_disp && cc_api.is_full_cc && cc_api.is_full_cc()) {
++            *ppv = &cc_api.participant;
++            return S_OK;
++        }
++        *ppv = NULL;
++        return E_NOINTERFACE;
++    }else if(IsEqualGUID(&IID_nsCycleCollectionISupports, riid)) {
++        if(!This->builtin_info->get_host_disp && cc_api.is_full_cc && cc_api.is_full_cc()) {
++            *ppv = &This->IWineJSDispatch_iface;
++            return S_OK;
++        }
++        *ppv = NULL;
++        return E_NOINTERFACE;
+     }else {
+         WARN("(%p)->(%s %p)\n", This, debugstr_guid(riid), ppv);
+         *ppv = NULL;
+@@ -2641,6 +2661,41 @@ static void WINAPI WineJSDispatch_Free(IWineJSDispatch *iface)
+    jsdisp_free(This);
+ }
+ 
++static void WINAPI WineJSDispatch_Traverse(IWineJSDispatch *iface, nsCycleCollectionTraversalCallback *cb)
++{
++    jsdisp_t *This = impl_from_IWineJSDispatch(iface);
++    note_edge_t note_edge = cc_api.note_edge;
++    dispex_prop_t *prop = This->props, *end;
++
++    for(end = prop + This->prop_cnt; prop < end; prop++) {
++        switch(prop->type) {
++        case PROP_JSVAL:
++            if(is_object_instance(prop->u.val))
++                note_edge(get_edge_obj(get_object(prop->u.val)), "prop", cb);
++            break;
++        case PROP_ACCESSOR:
++            if(prop->u.accessor.getter)
++                note_edge(jsdisp_get_edge_obj(prop->u.accessor.getter), "prop", cb);
++            if(prop->u.accessor.setter)
++                note_edge(jsdisp_get_edge_obj(prop->u.accessor.setter), "prop", cb);
++            break;
++        default:
++            break;
++        }
++    }
++
++    if(This->prototype)
++        note_edge(jsdisp_get_edge_obj(This->prototype), "prototype", cb);
++
++    if(This->builtin_info->cc_traverse)
++        This->builtin_info->cc_traverse(This, cb);
++}
++
++static void WINAPI WineJSDispatch_Unlink(IWineJSDispatch *iface)
++{
++    unlink_jsdisp(impl_from_IWineJSDispatch(iface));
++}
++
+ static HRESULT WINAPI WineJSDispatch_GetPropertyFlags(IWineJSDispatch *iface, DISPID id, UINT32 *ret)
+ {
+     jsdisp_t *This = impl_from_IWineJSDispatch(iface);
+@@ -2731,6 +2786,8 @@ static IWineJSDispatchVtbl DispatchExVtbl = {
+     WineJSDispatch_UpdateProperty,
+     WineJSDispatch_GetScriptGlobal,
+     WineJSDispatch_GetRandomValues,
++    WineJSDispatch_Traverse,
++    WineJSDispatch_Unlink,
+ };
+ 
+ jsdisp_t *as_jsdisp(IDispatch *disp)
+@@ -2842,6 +2899,34 @@ jsdisp_t *iface_to_jsdisp(IDispatch *iface)
+         : NULL;
+ }
+ 
++static HRESULT WINAPI jsdisp_cc_traverse(void *ccp, void *p, nsCycleCollectionTraversalCallback *cb)
++{
++    jsdisp_t *This = impl_from_IWineJSDispatch(p);
++
++    cc_api.describe_node(This->ref, "jsdisp", cb);
++    WineJSDispatch_Traverse(&This->IWineJSDispatch_iface, cb);
++    return S_OK;
++}
++
++static HRESULT WINAPI jsdisp_cc_unlink(void *p)
++{
++    unlink_jsdisp(impl_from_IWineJSDispatch(p));
++    return S_OK;
++}
++
++struct jshost_cc_api cc_api;
++
++void init_cc_api(IWineJSDispatchHost *host_obj)
++{
++    static const CCObjCallback jsdisp_ccp_callback = {
++        jsdisp_cc_traverse,
++        jsdisp_cc_unlink,
++        NULL  /* delete_cycle_collectable shouldn't ever be called, since we're never part of the purple buffer */
++    };
++
++    IWineJSDispatchHost_InitCC(host_obj, &cc_api, &jsdisp_ccp_callback);
++}
++
+ HRESULT jsdisp_get_id(jsdisp_t *jsdisp, const WCHAR *name, DWORD flags, DISPID *id)
+ {
+     dispex_prop_t *prop;
+@@ -3930,6 +4015,9 @@ HRESULT init_host_object(script_ctx_t *ctx, IWineJSDispatchHost *host_iface, IWi
+     jsdisp_t *prototype;
+     HRESULT hres;
+ 
++    if(!cc_api.note_edge)
++        init_cc_api(host_iface);
++
+     if(!(host_obj = calloc(1, sizeof(*host_obj))))
+         return E_OUTOFMEMORY;
+ 
+diff --git a/dlls/jscript/engine.c b/dlls/jscript/engine.c
+index c41c42ff0a39b2c1497af1957ea29a50498f1d23..e798be5c53bfebc36744976e83e3406ec08d6aa5 100644
+--- a/dlls/jscript/engine.c
++++ b/dlls/jscript/engine.c
+@@ -555,13 +555,35 @@ static HRESULT scope_gc_traverse(struct gc_ctx *gc_ctx, enum gc_traverse_op op,
+     return scope->obj && (jsobj = to_jsdisp(scope->obj)) ? gc_process_linked_obj(gc_ctx, op, jsobj, (void**)&scope->obj) : S_OK;
+ }
+ 
++static void scope_cc_traverse(jsdisp_t *dispex, nsCycleCollectionTraversalCallback *cb)
++{
++    scope_chain_t *scope = scope_from_dispex(dispex);
++    note_edge_t note_edge = cc_api.note_edge;
++
++    if(scope->detached_vars) {
++        struct vars_buffer *vars = scope->detached_vars;
++        unsigned i, cnt = vars->argc;
++
++        for(i = 0; i < cnt; i++)
++            if(is_object_instance(vars->var[i]))
++                note_edge(get_edge_obj(get_object(vars->var[i])), "var", cb);
++    }
++
++    if(scope->next)
++        note_edge((IUnknown*)&scope->next->dispex.IWineJSDispatch_iface, "next", cb);
++
++    if(scope->obj)
++        note_edge(get_edge_obj(scope->obj), "obj", cb);
++}
++
+ static const builtin_info_t scope_info = {
+     JSCLASS_NONE,
+     .destructor  = scope_destructor,
+     .lookup_prop = scope_lookup_prop,
+     .prop_get    = scope_prop_get,
+     .prop_put    = scope_prop_put,
+-    .gc_traverse = scope_gc_traverse
++    .gc_traverse = scope_gc_traverse,
++    .cc_traverse = scope_cc_traverse
+ };
+ 
+ static HRESULT scope_push(script_ctx_t *ctx, scope_chain_t *scope, IDispatch *obj, scope_chain_t **ret)
+diff --git a/dlls/jscript/enumerator.c b/dlls/jscript/enumerator.c
+index 49a7934ca5dd61abafb5adf66b53816d0258f3ba..efcf0f20b64c032e0ae681f03764103eacebf841 100644
+--- a/dlls/jscript/enumerator.c
++++ b/dlls/jscript/enumerator.c
+@@ -101,6 +101,15 @@ static HRESULT Enumerator_gc_traverse(struct gc_ctx *gc_ctx, enum gc_traverse_op
+     return gc_process_linked_val(gc_ctx, op, &This->item);
+ }
+ 
++static void Enumerator_cc_traverse(jsdisp_t *dispex, nsCycleCollectionTraversalCallback *cb)
++{
++    EnumeratorInstance *This = enumerator_from_jsdisp(dispex);
++    if(This->enumvar)
++        cc_api.note_edge((IUnknown*)This->enumvar, "enumvar", cb);
++    if(is_object_instance(This->item))
++        cc_api.note_edge(get_edge_obj(get_object(This->item)), "item", cb);
++}
++
+ static HRESULT Enumerator_atEnd(script_ctx_t *ctx, jsval_t vthis, WORD flags, unsigned argc, jsval_t *argv,
+         jsval_t *r)
+ {
+@@ -196,7 +205,8 @@ static const builtin_info_t Enumerator_info = {
+ static const builtin_info_t EnumeratorInst_info = {
+     .class       = JSCLASS_ENUMERATOR,
+     .destructor  = Enumerator_destructor,
+-    .gc_traverse = Enumerator_gc_traverse
++    .gc_traverse = Enumerator_gc_traverse,
++    .cc_traverse = Enumerator_cc_traverse
+ };
+ 
+ static HRESULT alloc_enumerator(script_ctx_t *ctx, jsdisp_t *object_prototype, EnumeratorInstance **ret)
+diff --git a/dlls/jscript/function.c b/dlls/jscript/function.c
+index 86791a49563203bb0c6e316b71feaf939a2fe838..a1a8898f10d24f1ad3f772ee8d17c5d28aeb07db 100644
+--- a/dlls/jscript/function.c
++++ b/dlls/jscript/function.c
+@@ -40,6 +40,7 @@ struct _function_vtbl_t {
+     function_code_t* (*get_code)(FunctionInstance*);
+     void (*destructor)(FunctionInstance*);
+     HRESULT (*gc_traverse)(struct gc_ctx*,enum gc_traverse_op,FunctionInstance*);
++    void (*cc_traverse)(FunctionInstance*,nsCycleCollectionTraversalCallback*);
+ };
+ 
+ typedef struct {
+@@ -91,6 +92,10 @@ static HRESULT no_gc_traverse(struct gc_ctx *gc_ctx, enum gc_traverse_op op, Fun
+     return S_OK;
+ }
+ 
++static void no_cc_traverse(FunctionInstance *function, nsCycleCollectionTraversalCallback *cb)
++{
++}
++
+ static inline FunctionInstance *function_from_jsdisp(jsdisp_t *jsdisp)
+ {
+     return CONTAINING_RECORD(jsdisp, FunctionInstance, dispex);
+@@ -202,6 +207,22 @@ static HRESULT Arguments_gc_traverse(struct gc_ctx *gc_ctx, enum gc_traverse_op
+     return S_OK;
+ }
+ 
++static void Arguments_cc_traverse(jsdisp_t *jsdisp, nsCycleCollectionTraversalCallback *cb)
++{
++    ArgumentsInstance *arguments = arguments_from_jsdisp(jsdisp);
++    note_edge_t note_edge = cc_api.note_edge;
++    unsigned i;
++
++    if(arguments->buf) {
++        for(i = 0; i < arguments->argc; i++)
++            if(is_object_instance(arguments->buf[i]))
++                note_edge(get_edge_obj(get_object(arguments->buf[i])), "buf", cb);
++    }
++
++    if(arguments->scope)
++        note_edge((IUnknown*)&arguments->scope->dispex.IWineJSDispatch_iface, "scope", cb);
++}
++
+ static HRESULT Arguments_get_caller(script_ctx_t *ctx, jsdisp_t *jsthis, jsval_t *r)
+ {
+     ArgumentsInstance *arguments = arguments_from_jsdisp(jsthis);
+@@ -243,7 +264,8 @@ static const builtin_info_t Arguments_info = {
+     .prop_get    = Arguments_prop_get,
+     .prop_put    = Arguments_prop_put,
+     .fill_props  = Arguments_fill_props,
+-    .gc_traverse = Arguments_gc_traverse
++    .gc_traverse = Arguments_gc_traverse,
++    .cc_traverse = Arguments_cc_traverse
+ };
+ 
+ static const builtin_info_t Arguments_ES5_info = {
+@@ -254,7 +276,8 @@ static const builtin_info_t Arguments_ES5_info = {
+     .prop_get    = Arguments_prop_get,
+     .prop_put    = Arguments_prop_put,
+     .fill_props  = Arguments_fill_props,
+-    .gc_traverse = Arguments_gc_traverse
++    .gc_traverse = Arguments_gc_traverse,
++    .cc_traverse = Arguments_cc_traverse
+ };
+ 
+ HRESULT setup_arguments_object(script_ctx_t *ctx, call_frame_t *frame)
+@@ -678,6 +701,12 @@ static HRESULT Function_gc_traverse(struct gc_ctx *gc_ctx, enum gc_traverse_op o
+     return function->vtbl->gc_traverse(gc_ctx, op, function);
+ }
+ 
++static void Function_cc_traverse(jsdisp_t *dispex, nsCycleCollectionTraversalCallback *cb)
++{
++    FunctionInstance *function = function_from_jsdisp(dispex);
++    return function->vtbl->cc_traverse(function, cb);
++}
++
+ static const builtin_prop_t Function_props[] = {
+     {L"apply",               Function_apply,                 PROPF_METHOD|2},
+     {L"arguments",           NULL, PROPF_HTML,               Function_get_arguments},
+@@ -694,7 +723,8 @@ static const builtin_info_t Function_info = {
+     .props_cnt   = ARRAY_SIZE(Function_props),
+     .props       = Function_props,
+     .destructor  = Function_destructor,
+-    .gc_traverse = Function_gc_traverse
++    .gc_traverse = Function_gc_traverse,
++    .cc_traverse = Function_cc_traverse
+ };
+ 
+ static const builtin_prop_t FunctionInst_props[] = {
+@@ -709,7 +739,8 @@ static const builtin_info_t FunctionInst_info = {
+     .props_cnt   = ARRAY_SIZE(FunctionInst_props),
+     .props       = FunctionInst_props,
+     .destructor  = Function_destructor,
+-    .gc_traverse = Function_gc_traverse
++    .gc_traverse = Function_gc_traverse,
++    .cc_traverse = Function_cc_traverse
+ };
+ 
+ static HRESULT create_function(script_ctx_t *ctx, const builtin_info_t *builtin_info, const function_vtbl_t *vtbl, size_t size,
+@@ -771,7 +802,8 @@ static const function_vtbl_t NativeFunctionVtbl = {
+     NativeFunction_toString,
+     NativeFunction_get_code,
+     NativeFunction_destructor,
+-    no_gc_traverse
++    no_gc_traverse,
++    no_cc_traverse
+ };
+ 
+ HRESULT create_builtin_function(script_ctx_t *ctx, builtin_invoke_t value_proc, const WCHAR *name,
+@@ -873,7 +905,8 @@ static const builtin_info_t InterpretedFunction_info = {
+     .props_cnt   = ARRAY_SIZE(InterpretedFunction_props),
+     .props       = InterpretedFunction_props,
+     .destructor  = Function_destructor,
+-    .gc_traverse = Function_gc_traverse
++    .gc_traverse = Function_gc_traverse,
++    .cc_traverse = Function_cc_traverse
+ };
+ 
+ static HRESULT InterpretedFunction_call(script_ctx_t *ctx, FunctionInstance *func, jsval_t vthis, unsigned flags,
+@@ -945,12 +978,20 @@ static HRESULT InterpretedFunction_gc_traverse(struct gc_ctx *gc_ctx, enum gc_tr
+     return gc_process_linked_obj(gc_ctx, op, &function->scope_chain->dispex, (void**)&function->scope_chain);
+ }
+ 
++static void InterpretedFunction_cc_traverse(FunctionInstance *func, nsCycleCollectionTraversalCallback *cb)
++{
++    InterpretedFunction *function = (InterpretedFunction*)func;
++    if(function->scope_chain)
++        cc_api.note_edge((IUnknown*)&function->scope_chain->dispex.IWineJSDispatch_iface, "scope_chain", cb);
++}
++
+ static const function_vtbl_t InterpretedFunctionVtbl = {
+     InterpretedFunction_call,
+     InterpretedFunction_toString,
+     InterpretedFunction_get_code,
+     InterpretedFunction_destructor,
+-    InterpretedFunction_gc_traverse
++    InterpretedFunction_gc_traverse,
++    InterpretedFunction_cc_traverse
+ };
+ 
+ HRESULT create_source_function(script_ctx_t *ctx, bytecode_t *code, function_code_t *func_code,
+@@ -989,7 +1030,8 @@ static const builtin_info_t HostFunction_info = {
+     .destructor  = Function_destructor,
+     .props_cnt   = ARRAY_SIZE(HostFunction_props),
+     .props       = HostFunction_props,
+-    .gc_traverse = Function_gc_traverse
++    .gc_traverse = Function_gc_traverse,
++    .cc_traverse = Function_cc_traverse
+ };
+ 
+ static HRESULT HostFunction_call(script_ctx_t *ctx, FunctionInstance *func, jsval_t vthis, unsigned flags,
+@@ -1072,6 +1114,7 @@ static const function_vtbl_t HostFunctionVtbl = {
+     HostFunction_get_code,
+     HostFunction_destructor,
+     no_gc_traverse,
++    no_cc_traverse
+ };
+ 
+ HRESULT create_host_function(script_ctx_t *ctx, const struct property_info *desc, DWORD flags, jsdisp_t **ret)
+@@ -1117,6 +1160,7 @@ static const builtin_info_t HostConstructor_info = {
+     .props         = HostFunction_props,
+     .get_host_disp = HostConstructor_get_host_disp,
+     .gc_traverse   = Function_gc_traverse,
++    .cc_traverse   = Function_cc_traverse,
+     .lookup_prop   = HostConstructor_lookup_prop,
+ };
+ 
+@@ -1202,6 +1246,7 @@ static const function_vtbl_t HostConstructorVtbl = {
+     HostConstructor_get_code,
+     HostConstructor_destructor,
+     HostConstructor_gc_traverse,
++    no_cc_traverse
+ };
+ 
+ HRESULT init_host_constructor(script_ctx_t *ctx, IWineJSDispatchHost *host_constr, const WCHAR *method_name, IWineJSDispatch **ret)
+@@ -1242,7 +1287,8 @@ static const builtin_info_t BindFunction_info = {
+     .props_cnt   = ARRAY_SIZE(BindFunction_props),
+     .props       = BindFunction_props,
+     .destructor  = Function_destructor,
+-    .gc_traverse = Function_gc_traverse
++    .gc_traverse = Function_gc_traverse,
++    .cc_traverse = Function_cc_traverse
+ };
+ 
+ static HRESULT BindFunction_call(script_ctx_t *ctx, FunctionInstance *func, jsval_t vthis, unsigned flags,
+@@ -1317,12 +1363,30 @@ static HRESULT BindFunction_gc_traverse(struct gc_ctx *gc_ctx, enum gc_traverse_
+     return gc_process_linked_val(gc_ctx, op, &function->this);
+ }
+ 
++static void BindFunction_cc_traverse(FunctionInstance *func, nsCycleCollectionTraversalCallback *cb)
++{
++    BindFunction *function = (BindFunction*)func;
++    note_edge_t note_edge = cc_api.note_edge;
++    unsigned i;
++
++    for(i = 0; i < function->argc; i++)
++        if(is_object_instance(function->args[i]))
++            note_edge(get_edge_obj(get_object(function->args[i])), "arg", cb);
++
++    if(function->target)
++        note_edge(jsdisp_get_edge_obj(&function->target->dispex), "target", cb);
++
++    if(is_object_instance(function->this))
++        note_edge(get_edge_obj(get_object(function->this)), "this", cb);
++}
++
+ static const function_vtbl_t BindFunctionVtbl = {
+     BindFunction_call,
+     BindFunction_toString,
+     BindFunction_get_code,
+     BindFunction_destructor,
+-    BindFunction_gc_traverse
++    BindFunction_gc_traverse,
++    BindFunction_cc_traverse
+ };
+ 
+ static HRESULT create_bind_function(script_ctx_t *ctx, FunctionInstance *target, jsval_t bound_this, unsigned argc,
+diff --git a/dlls/jscript/jscript.c b/dlls/jscript/jscript.c
+index 25d4166fd9d6398a99334aec1035bad4b2704771..08e15ab3a293225ab187839180e14b745d327587 100644
+--- a/dlls/jscript/jscript.c
++++ b/dlls/jscript/jscript.c
+@@ -918,6 +918,17 @@ static HRESULT WINAPI JScript_AddNamedItem(IActiveScript *iface,
+             WARN("object does not implement IDispatch\n");
+             return hres;
+         }
++
++        if(!cc_api.note_edge && This->ctx->html_mode) {
++            IWineJSDispatchHost *host;
++
++            /* Init CC API to get rid of cycles in IE8 and below as well */
++            hres = IDispatch_QueryInterface(disp, &IID_IWineJSDispatchHost, (void**)&host);
++            if(SUCCEEDED(hres) && host) {
++                init_cc_api(host);
++                IWineJSDispatchHost_Release(host);
++            }
++        }
+     }
+ 
+     item = malloc(sizeof(*item));
+diff --git a/dlls/jscript/jscript.h b/dlls/jscript/jscript.h
+index 0db1029062f63d0707094b78f53406fab0c365b6..adead341818c21538d996ebf30561d6d4220ed2b 100644
+--- a/dlls/jscript/jscript.h
++++ b/dlls/jscript/jscript.h
+@@ -28,12 +28,12 @@
+ #include "ole2.h"
+ #include "dispex.h"
+ #include "activscp.h"
+-#include "jsdisp.h"
+ 
+ #include "resource.h"
+ 
+ #include "wine/list.h"
+ #include "wine/rbtree.h"
++#include "jsdisp.h"
+ 
+ typedef struct _jsval_t jsval_t;
+ typedef struct _jsstr_t jsstr_t;
+@@ -60,6 +60,7 @@ heap_pool_t *heap_pool_mark(heap_pool_t*);
+ 
+ typedef struct jsdisp_t jsdisp_t;
+ 
++extern struct jshost_cc_api cc_api;
+ extern HINSTANCE jscript_hinstance ;
+ HRESULT get_dispatch_typeinfo(ITypeInfo**);
+ 
+@@ -194,6 +195,7 @@ typedef struct {
+     HRESULT (*fill_props)(jsdisp_t*);
+     HRESULT (*to_string)(jsdisp_t*,jsstr_t**);
+     HRESULT (*gc_traverse)(struct gc_ctx*,enum gc_traverse_op,jsdisp_t*);
++    void (*cc_traverse)(jsdisp_t*,nsCycleCollectionTraversalCallback*);
+ } builtin_info_t;
+ 
+ struct jsdisp_t {
+@@ -248,6 +250,7 @@ HRESULT init_dispex_from_constr(jsdisp_t*,script_ctx_t*,const builtin_info_t*,js
+ HRESULT init_host_object(script_ctx_t*,IWineJSDispatchHost*,IWineJSDispatch*,UINT32,IWineJSDispatch**);
+ HRESULT init_host_constructor(script_ctx_t*,IWineJSDispatchHost*,const WCHAR*,IWineJSDispatch**);
+ HRESULT fill_globals(script_ctx_t*,IWineJSDispatchHost*);
++void init_cc_api(IWineJSDispatchHost*);
+ 
+ HRESULT disp_call(script_ctx_t*,IDispatch*,DISPID,WORD,unsigned,jsval_t*,jsval_t*);
+ HRESULT disp_call_name(script_ctx_t*,IDispatch*,const WCHAR*,WORD,unsigned,jsval_t*,jsval_t*);
+@@ -530,6 +533,21 @@ static inline HRESULT disp_call_value(script_ctx_t *ctx, IDispatch *disp, jsval_
+     return disp_call_value_with_caller(ctx, disp, vthis, flags, argc, argv, r, &ctx->jscaller->IServiceProvider_iface);
+ }
+ 
++static inline IUnknown *jsdisp_get_edge_obj(jsdisp_t *jsdisp)
++{
++    if(jsdisp->builtin_info->get_host_disp)
++        return (IUnknown*)jsdisp->builtin_info->get_host_disp(jsdisp);
++    return (IUnknown*)&jsdisp->IWineJSDispatch_iface;
++}
++
++static inline IUnknown *get_edge_obj(IDispatch *disp)
++{
++    jsdisp_t *jsdisp = to_jsdisp(disp);
++    if(jsdisp)
++        return jsdisp_get_edge_obj(jsdisp);
++    return (IUnknown*)disp;
++}
++
+ #define MAKE_JSERROR(code) MAKE_HRESULT(SEVERITY_ERROR, FACILITY_CONTROL, code)
+ 
+ #define JS_E_TO_PRIMITIVE            MAKE_JSERROR(IDS_TO_PRIMITIVE)
+diff --git a/dlls/jscript/jscript_main.c b/dlls/jscript/jscript_main.c
+index 6ccab362051084ac31400ce41db9fd01e1a2576e..ccaa12761c25e7a2aa9b98323f4d512c589e4880 100644
+--- a/dlls/jscript/jscript_main.c
++++ b/dlls/jscript/jscript_main.c
+@@ -27,7 +27,6 @@
+ #include "mshtmhst.h"
+ #include "rpcproxy.h"
+ #include "jscript_classes.h"
+-#include "jsdisp.h"
+ 
+ #include "wine/debug.h"
+ 
+@@ -208,6 +207,7 @@ BOOL WINAPI DllMain(HINSTANCE hInstDLL, DWORD fdwReason, LPVOID lpv)
+         if (lpv) break;
+         if (dispatch_typeinfo) ITypeInfo_Release(dispatch_typeinfo);
+         if(jscript_tls != TLS_OUT_OF_INDEXES) TlsFree(jscript_tls);
++        list_remove(&cc_api.entry);
+         free_strings();
+         break;
+     }
+diff --git a/dlls/jscript/jsdisp.idl b/dlls/jscript/jsdisp.idl
+index 592b943bcda905aa500f925bcbf99636a93c2605..2d49ec842dea623ed8ce3a62ae3423f1188e108e 100644
+--- a/dlls/jscript/jsdisp.idl
++++ b/dlls/jscript/jsdisp.idl
+@@ -47,6 +47,29 @@ cpp_quote("DEFINE_GUID(IID_nsCycleCollectionISupports, 0xc61eac14,0x5f7a,0x4481,
+ cpp_quote("DEFINE_GUID(IID_nsXPCOMCycleCollectionParticipant, 0x9674489b,0x1f6f,0x4550,0xa7,0x30, 0xcc,0xae,0xdd,0x10,0x4c,0xf9);")
+ cpp_quote("DEFINE_GUID(IID_IWineGetJSDispatch, 0xfb61e83d,0x7b1f,0x4e9a,0xa2,0x54, 0x5a,0x70,0xc5,0x3a,0xa9,0x0b);")
+ 
++/* Valve host callback API (Gecko cycle collector), retained alongside upstream 11.21 CC API.
++   Upstream method slots are preserved; Valve methods are appended at the end. */
++typedef struct {
++    void *vtbl;
++    int ref_flags;
++    void *callbacks;
++} ExternalCycleCollectionParticipant;
++typedef struct nsCycleCollectionTraversalCallback nsCycleCollectionTraversalCallback;
++typedef struct {
++    HRESULT (__stdcall *traverse)(void*, void*, nsCycleCollectionTraversalCallback*);
++    HRESULT (__stdcall *unlink)(void*);
++    void (__stdcall *delete_cycle_collectable)(void*);
++} CCObjCallback;
++typedef void (__cdecl *note_edge_t)(IUnknown*, const char*, nsCycleCollectionTraversalCallback*);
++struct jshost_cc_api {
++    ExternalCycleCollectionParticipant participant;
++    BOOL (__cdecl *is_full_cc)(void);
++    void (__cdecl *collect)(void);
++    void (__cdecl *describe_node)(ULONG ref, const char *obj_name, nsCycleCollectionTraversalCallback *cb);
++    note_edge_t note_edge;
++    struct list entry;
++};
++
+ struct cc_traverse_ops
+ {
+     HRESULT (__stdcall *advise_ref_count)(void *context, ULONG refcount);
+@@ -79,6 +102,8 @@ interface IWineJSDispatch : IDispatchEx
+     HRESULT UpdateProperty(struct property_info *desc);
+     HRESULT GetScriptGlobal(IWineJSDispatchHost **ret);
+     HRESULT GetRandomValues();
++    void Traverse(nsCycleCollectionTraversalCallback *cb);
++    void Unlink();
+ }
+ 
+ [
+@@ -102,6 +127,7 @@ interface IWineJSDispatchHost : IDispatchEx
+     ULONG GetRefCount();
+     HRESULT Traverse(void *context, const struct cc_traverse_ops *ops);
+     void Unlink();
++    void InitCC(struct jshost_cc_api *cc_api, const CCObjCallback *callback);
+ }
+ 
+ const unsigned int SCRIPTLANGUAGEVERSION_HTML  = 0x400;
+diff --git a/dlls/jscript/jsregexp.c b/dlls/jscript/jsregexp.c
+index 01cbdd2aeb93119eac0a3e2fd1a479e5f9b548b6..72ba96b0711b6a12969fbc50048fbdb937d5a0d0 100644
+--- a/dlls/jscript/jsregexp.c
++++ b/dlls/jscript/jsregexp.c
+@@ -562,6 +562,13 @@ static HRESULT RegExp_gc_traverse(struct gc_ctx *gc_ctx, enum gc_traverse_op op,
+     return gc_process_linked_val(gc_ctx, op, &regexp_from_jsdisp(dispex)->last_index_val);
+ }
+ 
++static void RegExp_cc_traverse(jsdisp_t *dispex, nsCycleCollectionTraversalCallback *cb)
++{
++    RegExpInstance *This = regexp_from_jsdisp(dispex);
++    if(is_object_instance(This->last_index_val))
++        cc_api.note_edge(get_edge_obj(get_object(This->last_index_val)), "last_index_val", cb);
++}
++
+ static const builtin_prop_t RegExp_props[] = {
+     {L"exec",                RegExp_exec,                  PROPF_METHOD|1},
+     {L"global",              NULL,0,                       RegExp_get_global},
+@@ -579,7 +586,8 @@ static const builtin_info_t RegExp_info = {
+     .props_cnt   = ARRAY_SIZE(RegExp_props),
+     .props       = RegExp_props,
+     .destructor  = RegExp_destructor,
+-    .gc_traverse = RegExp_gc_traverse
++    .gc_traverse = RegExp_gc_traverse,
++    .cc_traverse = RegExp_cc_traverse
+ };
+ 
+ static const builtin_prop_t RegExpInst_props[] = {
+@@ -596,7 +604,8 @@ static const builtin_info_t RegExpInst_info = {
+     .props_cnt   = ARRAY_SIZE(RegExpInst_props),
+     .props       = RegExpInst_props,
+     .destructor  = RegExp_destructor,
+-    .gc_traverse = RegExp_gc_traverse
++    .gc_traverse = RegExp_gc_traverse,
++    .cc_traverse = RegExp_cc_traverse
+ };
+ 
+ static HRESULT alloc_regexp(script_ctx_t *ctx, jsstr_t *str, jsdisp_t *object_prototype, RegExpInstance **ret)
+diff --git a/dlls/jscript/set.c b/dlls/jscript/set.c
+index 5ab7abe1285bc496a5f0c957fb64977b68606c89..6e4e7907e4563309cbb4dad69dc5b4888ba3a302 100644
+--- a/dlls/jscript/set.c
++++ b/dlls/jscript/set.c
+@@ -385,6 +385,20 @@ static HRESULT Map_gc_traverse(struct gc_ctx *gc_ctx, enum gc_traverse_op op, js
+     return S_OK;
+ }
+ 
++static void Map_cc_traverse(jsdisp_t *dispex, nsCycleCollectionTraversalCallback *cb)
++{
++    note_edge_t note_edge = cc_api.note_edge;
++    MapInstance *map = (MapInstance*)dispex;
++    struct jsval_map_entry *entry;
++
++    LIST_FOR_EACH_ENTRY(entry, &map->entries, struct jsval_map_entry, list_entry) {
++        if(is_object_instance(entry->key))
++            note_edge(get_edge_obj(get_object(entry->key)), "key", cb);
++        if(is_object_instance(entry->value))
++            note_edge(get_edge_obj(get_object(entry->value)), "value", cb);
++    }
++}
++
+ static const builtin_prop_t Map_prototype_props[] = {
+     {L"clear",      Map_clear,     PROPF_METHOD},
+     {L"delete" ,    Map_delete,    PROPF_METHOD|1},
+@@ -412,6 +426,7 @@ static const builtin_info_t Map_info = {
+     .props       = Map_props,
+     .destructor  = Map_destructor,
+     .gc_traverse = Map_gc_traverse,
++    .cc_traverse = Map_cc_traverse
+ };
+ 
+ static HRESULT Map_constructor(script_ctx_t *ctx, jsval_t vthis, WORD flags, unsigned argc, jsval_t *argv,
+@@ -565,6 +580,7 @@ static const builtin_info_t Set_info = {
+     .props       = Map_props,
+     .destructor  = Map_destructor,
+     .gc_traverse = Map_gc_traverse,
++    .cc_traverse = Map_cc_traverse
+ };
+ 
+ static HRESULT Set_constructor(script_ctx_t *ctx, jsval_t vthis, WORD flags, unsigned argc, jsval_t *argv,
+@@ -832,6 +848,19 @@ static HRESULT WeakMap_gc_traverse(struct gc_ctx *gc_ctx, enum gc_traverse_op op
+     return S_OK;
+ }
+ 
++static void WeakMap_cc_traverse(jsdisp_t *dispex, nsCycleCollectionTraversalCallback *cb)
++{
++    WeakMapInstance *weakmap = (WeakMapInstance*)dispex;
++    note_edge_t note_edge = cc_api.note_edge;
++    struct weakmap_entry *entry;
++
++    /* FIXME: WeakMaps need special handling (see above), but we can't do that with this API.
++       This will possibly leak objects that need the CC until the WeakMap has no more refs to it. */
++    RB_FOR_EACH_ENTRY(entry, &weakmap->map, struct weakmap_entry, entry)
++        if(is_object_instance(entry->value))
++            note_edge(get_edge_obj(get_object(entry->value)), "value", cb);
++}
++
+ static const builtin_prop_t WeakMap_prototype_props[] = {
+     {L"clear",      WeakMap_clear,     PROPF_METHOD},
+     {L"delete",     WeakMap_delete,    PROPF_METHOD|1},
+@@ -852,6 +881,7 @@ static const builtin_info_t WeakMap_info = {
+     .call        = WeakMap_value,
+     .destructor  = WeakMap_destructor,
+     .gc_traverse = WeakMap_gc_traverse,
++    .cc_traverse = WeakMap_cc_traverse
+ };
+ 
+ static HRESULT WeakMap_constructor(script_ctx_t *ctx, jsval_t vthis, WORD flags, unsigned argc, jsval_t *argv,
+diff --git a/dlls/mlang/mlang.c b/dlls/mlang/mlang.c
+index 8d26cc1e57cf73b32d384fab94d0c2fd4e00dc01..229359eece8626a84b9f8d2a2eec3fe454ae56fd 100644
+--- a/dlls/mlang/mlang.c
++++ b/dlls/mlang/mlang.c
+@@ -1327,6 +1327,10 @@ static INT CALLBACK map_font_enum_proc(const LOGFONTW *lf, const TEXTMETRICW *nt
+     UINT charset;
+     struct map_font_enum_data *data = (struct map_font_enum_data *)lParam;
+ 
++    if ((data->charset == GB2312_CHARSET || data->charset == SHIFTJIS_CHARSET)
++            && wcscmp(lf->lfFaceName, L"Microsoft YaHei") != 0)
++        return 1;
++
+     data->src_lf.lfCharSet = lf->lfCharSet;
+     wcscpy(data->src_lf.lfFaceName, lf->lfFaceName);
+ 
+diff --git a/dlls/mshtml/dispex.c b/dlls/mshtml/dispex.c
+index 8db3d6ac1c6c1e864c54fd93b73781dfce362dad..f556fda969ac2c7a03d3525ec365fb877c49e082 100644
+--- a/dlls/mshtml/dispex.c
++++ b/dlls/mshtml/dispex.c
+@@ -2899,6 +2899,30 @@ static void WINAPI JSDispatchHost_Unlink(IWineJSDispatchHost *iface)
+     dispex_unlink(&This->IWineJSDispatchHost_iface);
+ }
+ 
++static BOOL __cdecl is_full_cc(void)
++{
++    thread_data_t *thread_data = get_thread_data(FALSE);
++    return thread_data ? thread_data->full_cc_in_progress : FALSE;
++}
++
++static void __cdecl describe_node(ULONG ref, const char *obj_name, nsCycleCollectionTraversalCallback *cb)
++{
++    nsCycleCollectingAutoRefCnt ccref;
++
++    ccref_init(&ccref, ref);
++    describe_cc_node(&ccref, obj_name, cb);
++}
++
++static void WINAPI JSDispatchHost_InitCC(IWineJSDispatchHost *iface, struct jshost_cc_api *cc_api, const CCObjCallback *callback)
++{
++    ccp_init(&cc_api->participant, callback);
++    cc_api->is_full_cc = is_full_cc;
++    cc_api->collect = cc_api_collect;
++    cc_api->describe_node = describe_node;
++    cc_api->note_edge = (note_edge_t)note_cc_edge;
++    list_add_tail(&cc_api_list, &cc_api->entry);
++}
++
+ static IWineJSDispatchHostVtbl JSDispatchHostVtbl = {
+     DispatchEx_QueryInterface,
+     DispatchEx_AddRef,
+@@ -2928,7 +2952,8 @@ static IWineJSDispatchHostVtbl JSDispatchHostVtbl = {
+     JSDispatchHost_ToString,
+     JSDispatchHost_GetRefCount,
+     JSDispatchHost_Traverse,
+-    JSDispatchHost_Unlink
++    JSDispatchHost_Unlink,
++    JSDispatchHost_InitCC
+ };
+ 
+ struct cc_callback_ctx {
+@@ -3195,6 +3220,16 @@ HRESULT create_enum_variant(DispatchEx *collection, IUnknown **ret)
+     return S_OK;
+ }
+ 
++void init_enum_cc(void)
++{
++    static const CCObjCallback ccp_callback = {
++        EnumVARIANT_traverse,
++        EnumVARIANT_unlink,
++        EnumVARIANT_delete_cycle_collectable
++    };
++    ccp_init(&enum_ccp, &ccp_callback);
++}
++
+ HRESULT dispex_builtin_props_to_json(DispatchEx *dispex, HTMLInnerWindow *window, VARIANT *ret)
+ {
+     func_info_t *func, *end;
+@@ -3242,6 +3277,9 @@ static nsresult NSAPI dispex_traverse(void *ccp, void *p, nsCycleCollectionTrave
+     if(This->info->vtbl->traverse)
+         This->info->vtbl->traverse(This, cb);
+ 
++    if(This->jsdisp)
++        IWineJSDispatch_Traverse(This->jsdisp, cb);
++
+     if(!This->dynamic_data)
+         return NS_OK;
+ 
+@@ -3297,6 +3335,9 @@ static nsresult NSAPI dispex_unlink(void *p)
+     if(This->info->vtbl->unlink)
+         This->info->vtbl->unlink(This);
+ 
++    if(This->jsdisp)
++        IWineJSDispatch_Unlink(This->jsdisp);
++
+     dispex_props_unlink(This);
+     return NS_OK;
+ }
+diff --git a/dlls/mshtml/htmlstylesheet.c b/dlls/mshtml/htmlstylesheet.c
+index b5ce4a3f4e7ae68dd2ba239fb8f4ed0c9b0db8e8..0ee89c89284b6fe43c137fbe8bdd11962acab2bf 100644
+--- a/dlls/mshtml/htmlstylesheet.c
++++ b/dlls/mshtml/htmlstylesheet.c
+@@ -816,17 +816,48 @@ static HRESULT WINAPI HTMLStyleSheet_put_cssText(IHTMLStyleSheet *iface, BSTR v)
+     }while(NS_SUCCEEDED(nsres));
+ 
+     if(v && *v) {
++        UINT32 i, depth, idx;
+         nsAString nsstr;
+-        UINT32 idx;
+-
+-        /* FIXME: This won't work for multiple rules in the string. */
+-        nsAString_InitDepend(&nsstr, v);
+-        nsres = nsIDOMCSSStyleSheet_InsertRule(This->nsstylesheet, &nsstr, 0, &idx);
+-        nsAString_Finish(&nsstr);
+-        if(NS_FAILED(nsres)) {
+-            FIXME("InsertRule failed for string %s. Probably multiple rules passed.\n", debugstr_w(v));
+-            return E_FAIL;
++        WCHAR *ws;
++
++        depth = 0;
++        ws = malloc(sizeof(*ws) * (lstrlenW(v) + 1));
++        do
++        {
++            for (i = 0; v[i]; ++i)
++            {
++                ws[i] = v[i];
++                if (ws[i] == '{')
++                    ++depth;
++                else if (ws[i] == '}' && !--depth)
++                    break;
++            }
++            if (ws[i])
++                ws[++i] = 0;
++
++            v += i;
++
++            for (i = 0; ws[i]; ++i)
++                if (!iswspace(ws[i]))
++                    break;
++
++            if (!ws[i])
++            {
++                TRACE("Skipping empty part.\n");
++                continue;
++            }
++
++            nsAString_InitDepend(&nsstr, ws);
++            nsres = nsIDOMCSSStyleSheet_InsertRule(This->nsstylesheet, &nsstr, 0, &idx);
++            nsAString_Finish(&nsstr);
++
++            if(NS_FAILED(nsres))
++                FIXME("InsertRule failed for string %s.\n", debugstr_w(ws));
++            else
++                TRACE("Added rule %s.\n", debugstr_w(ws));
+         }
++        while (*v);
++        free(ws);
+     }
+ 
+     return S_OK;
+diff --git a/dlls/mshtml/htmlwindow.c b/dlls/mshtml/htmlwindow.c
+index 4b87fc6b4b15ce8d73a2f7ff0e9e83b948df1c80..af39e73be87fe9e1734f9072fe52b6294628cd3f 100644
+--- a/dlls/mshtml/htmlwindow.c
++++ b/dlls/mshtml/htmlwindow.c
+@@ -66,6 +66,22 @@ HTMLOuterWindow *mozwindow_to_window(const mozIDOMWindowProxy *mozwindow)
+     return entry ? WINE_RB_ENTRY_VALUE(entry, HTMLOuterWindow, entry) : NULL;
+ }
+ 
++void __cdecl cc_api_collect(void)
++{
++    nsIDOMWindowUtils *window_utils = NULL;
++    HTMLOuterWindow *window;
++
++    /* We can't rely on GetScriptGlobal as this can be initialized before any scripts are set up */
++    if(!window_map.root || !(window = WINE_RB_ENTRY_VALUE(window_map.root, HTMLOuterWindow, entry))->browser)
++        return;
++    get_nsinterface((nsISupports*)window->browser->content_window->nswindow, &IID_nsIDOMWindowUtils, (void**)&window_utils);
++
++    if(window_utils) {
++        cycle_collect(window_utils);
++        nsIDOMWindowUtils_Release(window_utils);
++    }
++}
++
+ static HRESULT get_location(HTMLOuterWindow *This, HTMLLocation **ret)
+ {
+     if(!This->location) {
+@@ -3584,6 +3600,13 @@ static void WINAPI WindowDispEx_Unlink(IWineJSDispatchHost *iface)
+     outer_window_unlink(&This->base.IHTMLWindow2_iface);
+ }
+ 
++static void WINAPI WindowDispEx_InitCC(IWineJSDispatchHost *iface, struct jshost_cc_api *cc_api, const CCObjCallback *callback)
++{
++    HTMLOuterWindow *This = impl_from_IWineJSDispatchHost(iface);
++
++    IWineJSDispatchHost_InitCC(&This->base.inner_window->event_target.dispex.IWineJSDispatchHost_iface, cc_api, callback);
++}
++
+ static const IWineJSDispatchHostVtbl WindowDispExVtbl = {
+     WindowDispEx_QueryInterface,
+     WindowDispEx_AddRef,
+@@ -3613,7 +3636,8 @@ static const IWineJSDispatchHostVtbl WindowDispExVtbl = {
+     WindowDispEx_ToString,
+     WindowDispEx_GetRefCount,
+     WindowDispEx_Traverse,
+-    WindowDispEx_Unlink
++    WindowDispEx_Unlink,
++    WindowDispEx_InitCC
+ };
+ 
+ static inline HTMLOuterWindow *impl_from_IEventTarget(IEventTarget *iface)
+diff --git a/dlls/mshtml/main.c b/dlls/mshtml/main.c
+index a45a2c111dc1152bcdba02723539534323b76bc9..1999a878dea0d64422da8d3424b7a1b6eb93bf0a 100644
+--- a/dlls/mshtml/main.c
++++ b/dlls/mshtml/main.c
+@@ -64,6 +64,7 @@ static IMultiLanguage2 *mlang;
+ static IInternetSecurityManager *security_manager;
+ static unsigned global_max_compat_mode = COMPAT_MODE_IE11;
+ static struct list compat_config = LIST_INIT(compat_config);
++struct list cc_api_list = LIST_INIT(cc_api_list);
+ 
+ typedef struct {
+     struct list entry;
+@@ -377,6 +378,15 @@ static void process_detach(void)
+     close_gecko();
+     release_typelib();
+ 
++    while(!list_empty(&cc_api_list)) {
++        struct jshost_cc_api *entry = LIST_ENTRY(list_head(&cc_api_list), struct jshost_cc_api, entry);
++        entry->is_full_cc = NULL;
++        entry->collect = NULL;
++        entry->describe_node = NULL;
++        entry->note_edge = NULL;
++        list_remove(&entry->entry);
++    }
++
+     while(!list_empty(&compat_config)) {
+         config = LIST_ENTRY(list_head(&compat_config), compat_config_t, entry);
+         list_remove(&config->entry);
+diff --git a/dlls/mshtml/mshtml_private.h b/dlls/mshtml/mshtml_private.h
+index 70aa48b7ab4b871a9a3596df6e2b9018918eac93..576e79dce1dd0e49fe1bbf4158b82a3828bad0df 100644
+--- a/dlls/mshtml/mshtml_private.h
++++ b/dlls/mshtml/mshtml_private.h
+@@ -370,7 +370,6 @@ typedef struct dispex_dynamic_data_t dispex_dynamic_data_t;
+ #define MSHTML_CUSTOM_DISPID_CNT (MSHTML_DISPID_CUSTOM_MAX-MSHTML_DISPID_CUSTOM_MIN)
+ 
+ typedef struct DispatchEx DispatchEx;
+-typedef struct nsCycleCollectionTraversalCallback nsCycleCollectionTraversalCallback;
+ typedef struct dispex_static_data_t dispex_static_data_t;
+ 
+ typedef struct {
+@@ -572,6 +571,7 @@ ALL_OBJECTS
+ #undef X
+ 
+ extern dispex_static_data_t *object_descriptors[OBJID_LAST];
++extern struct list cc_api_list;
+ 
+ typedef HRESULT (*dispex_hook_invoke_t)(DispatchEx*,WORD,DISPPARAMS*,VARIANT*,
+                                         EXCEPINFO*,IServiceProvider*);
+@@ -631,17 +631,8 @@ struct DispatchEx {
+     }                                                                                          \
+     DISPEX_IDISPATCH_NOUNK_IMPL(prefix, iface_name, dispex)
+ 
+-typedef struct {
+-    void *vtbl;
+-    int ref_flags;
+-    void *callbacks;
+-} ExternalCycleCollectionParticipant;
+-
+-typedef struct {
+-    nsresult (NSAPI *traverse)(void*,void*,nsCycleCollectionTraversalCallback*);
+-    nsresult (NSAPI *unlink)(void*);
+-    void (NSAPI *delete_cycle_collectable)(void*);
+-} CCObjCallback;
++/* ExternalCycleCollectionParticipant and CCObjCallback come from ../jscript/jsdisp.h
++   (Valve host callback API, merged with upstream 11.21 CC API). Do not redefine here. */
+ 
+ extern nsrefcnt (__cdecl *ccref_incr)(nsCycleCollectingAutoRefCnt*,nsISupports*);
+ extern nsrefcnt (__cdecl *ccref_decr)(nsCycleCollectingAutoRefCnt*,nsISupports*,ExternalCycleCollectionParticipant*);
+@@ -1208,6 +1199,8 @@ HRESULT create_document_node(nsIDOMDocument*,GeckoBrowser*,HTMLInnerWindow*,HTML
+                              compat_mode_t,HTMLDocumentNode**);
+ HRESULT create_doctype_node(HTMLDocumentNode*,nsIDOMNode*,HTMLDOMNode**);
+ HRESULT create_enum_variant(DispatchEx*,IUnknown**);
++HRESULT create_marshaled_doc(HWND,REFIID,void**);
++
+ HRESULT create_outer_window(GeckoBrowser*,mozIDOMWindowProxy*,HTMLOuterWindow*,HTMLOuterWindow**);
+ HRESULT update_window_doc(HTMLInnerWindow*);
+ HTMLOuterWindow *mozwindow_to_window(const mozIDOMWindowProxy*);
+@@ -1245,6 +1238,8 @@ void ConnectionPointContainer_Destroy(ConnectionPointContainer*);
+ 
+ HRESULT create_gecko_browser(HTMLDocumentObj*,GeckoBrowser**);
+ void detach_gecko_browser(GeckoBrowser*);
++void cycle_collect(nsIDOMWindowUtils*);
++void __cdecl cc_api_collect(void);
+ 
+ DWORD get_compat_mode_version(compat_mode_t compat_mode);
+ compat_mode_t lock_document_mode(HTMLDocumentNode*);
+@@ -1277,6 +1272,7 @@ float get_viewer_zoom(GeckoBrowser*);
+ 
+ void init_dispex_cc(void);
+ void init_window_cc(void);
++void init_enum_cc(void);
+ 
+ HRESULT nsuri_to_url(LPCWSTR,BOOL,BSTR*);
+ 
+@@ -1552,6 +1548,7 @@ typedef struct {
+     struct list *pending_xhr_events_tail;
+     struct wine_rb_tree session_storage_map;
+     void *blocking_xhr;
++    unsigned full_cc_in_progress;
+     unsigned tasks_locked;
+     BOOL timer_blocked;
+ } thread_data_t;
+diff --git a/dlls/mshtml/mutation.c b/dlls/mshtml/mutation.c
+index b330bf3d88360a408dbca330fc440d29b94a112b..4a5d7b5fa4f99733e7c715fd4ff38e60bfdca872 100644
+--- a/dlls/mshtml/mutation.c
++++ b/dlls/mshtml/mutation.c
+@@ -438,6 +438,7 @@ compat_mode_t lock_document_mode(HTMLDocumentNode *doc)
+ static void set_document_mode(HTMLDocumentNode *doc, compat_mode_t document_mode, BOOL emulate_mode, BOOL lock)
+ {
+     compat_mode_t max_compat_mode;
++    const char *sgi;
+ 
+     if(doc->document_mode_locked) {
+         WARN("attempting to set document mode %d on locked document %p\n", document_mode, doc);
+@@ -455,6 +456,9 @@ static void set_document_mode(HTMLDocumentNode *doc, compat_mode_t document_mode
+         document_mode = max_compat_mode;
+     }
+ 
++    if ((sgi = getenv("SteamGameId")) && (!strcmp(sgi, "39210")))
++        document_mode = COMPAT_MODE_IE11;
++
+     doc->document_mode = document_mode;
+     doc->emulate_mode = emulate_mode;
+     if(lock)
+@@ -1236,7 +1240,7 @@ dispex_static_data_t MutationObserver_dispex = {
+     .vtbl             = &mutation_observer_dispex_vtbl,
+     .disp_tid         = IWineMSHTMLMutationObserver_tid,
+     .iface_tids       = mutation_observer_iface_tids,
+-    .min_compat_mode  = COMPAT_MODE_IE11,
++    .min_compat_mode  = COMPAT_MODE_IE11 + 1,  /* FIXME HACK: Not exposed as FFXIV Launcher breaks with MutationObserver stub */
+ };
+ 
+ static HRESULT create_mutation_observer(DispatchEx *owner, IDispatch *callback,
+diff --git a/dlls/mshtml/nsembed.c b/dlls/mshtml/nsembed.c
+index 62e1922cf6c063ed041b101a4018ae0168b51a1a..4aa0926820dda3b709cccf05ce5598b8c5907bb6 100644
+--- a/dlls/mshtml/nsembed.c
++++ b/dlls/mshtml/nsembed.c
+@@ -599,6 +599,7 @@ static BOOL init_xpcom(const PRUnichar *gre_path)
+ 
+     init_dispex_cc();
+     init_window_cc();
++    init_enum_cc();
+ 
+     return TRUE;
+ }
+@@ -2174,6 +2175,16 @@ static const nsISupportsWeakReferenceVtbl nsSupportsWeakReferenceVtbl = {
+     nsSupportsWeakReference_GetWeakReference
+ };
+ 
++void cycle_collect(nsIDOMWindowUtils *window_utils)
++{
++    thread_data_t *thread_data = get_thread_data(TRUE);
++    if(thread_data) {
++        thread_data->full_cc_in_progress++;
++        nsIDOMWindowUtils_CycleCollect(window_utils, NULL, 0);
++        thread_data->full_cc_in_progress--;
++    }
++}
++
+ static HRESULT init_browser(GeckoBrowser *browser)
+ {
+     mozIDOMWindowProxy *mozwindow;
+@@ -2397,7 +2408,7 @@ void detach_gecko_browser(GeckoBrowser *This)
+ 
+     /* Force cycle collection */
+     if(window_utils) {
+-        nsIDOMWindowUtils_CycleCollect(window_utils, NULL, 0);
++        cycle_collect(window_utils);
+         nsIDOMWindowUtils_Release(window_utils);
+     }
+ }
+diff --git a/dlls/mshtml/oleobj.c b/dlls/mshtml/oleobj.c
+index 7dffdbeeec29e4c872035f0ee951c7cb53e57c57..3b1c65c9a3b7b257080782e8e62876fe3db3f31a 100644
+--- a/dlls/mshtml/oleobj.c
++++ b/dlls/mshtml/oleobj.c
+@@ -3699,16 +3699,99 @@ static const cpc_entry_t HTMLDocumentObj_cpc[] = {
+     {NULL}
+ };
+ 
++
++
++/* TRUE if we create a dedicated thread for all HTML documents */
++static BOOL gecko_main_thread_config;
++
++static LONG gecko_main_thread;
++static HWND gecko_main_thread_hwnd;
++static HANDLE gecko_main_thread_event;
++
++static DWORD WINAPI gecko_main_thread_proc(void *arg)
++{
++    MSG msg;
++
++    TRACE("\n");
++
++    CoInitialize(NULL);
++
++    gecko_main_thread_hwnd = get_thread_hwnd();
++    if(!gecko_main_thread_hwnd) {
++        ERR("Could not create thread window\n");
++        SetEvent(gecko_main_thread_event);
++        CoUninitialize();
++        return 0;
++    }
++
++    gecko_main_thread = GetCurrentThreadId();
++    SetEvent(gecko_main_thread_event);
++
++    while(GetMessageW(&msg, NULL, 0, 0)) {
++        DispatchMessageW(&msg);
++        TranslateMessage(&msg);
++    }
++
++    CoUninitialize();
++    return 0;
++}
++
++static BOOL WINAPI read_thread_config(INIT_ONCE *once, void *param, void **context)
++{
++    char str[64];
++
++    if((GetEnvironmentVariableA("SteamGameId", str, sizeof(str)) && (!strcmp(str, "491540") || !strcmp(str,"47890")))
++            || (GetEnvironmentVariableA("WINE_GECKO_MAIN_THREAD", str, sizeof(str)) && *str != '0'))
++    {
++        FIXME("HACK: Using separated main thread.\n");
++        gecko_main_thread_config = TRUE;
++    }
++
++    return TRUE;
++}
++
+ static HRESULT create_document_object(BOOL is_mhtml, IUnknown *outer, REFIID riid, void **ppv)
+ {
+     HTMLDocumentObj *doc;
+     HRESULT hres;
+ 
++    static INIT_ONCE init_once = INIT_ONCE_STATIC_INIT;
++
+     if(outer && !IsEqualGUID(&IID_IUnknown, riid)) {
+         *ppv = NULL;
+         return E_INVALIDARG;
+     }
+ 
++    /* CXHACK 15579 */
++    InitOnceExecuteOnce(&init_once, read_thread_config, NULL, NULL);
++    if(gecko_main_thread_config && !gecko_main_thread) {
++        HANDLE thread, event;
++
++        event = CreateEventW(NULL, TRUE, FALSE, NULL);
++        if(InterlockedCompareExchangePointer(&gecko_main_thread_event, event, NULL))
++            CloseHandle(event);
++
++        thread = CreateThread(NULL, 0, gecko_main_thread_proc, NULL, 0, NULL);
++        if(thread) {
++            WaitForSingleObject(gecko_main_thread_event, INFINITE);
++            CloseHandle(thread);
++        }else {
++            ERR("Could not create a thread\n");
++        }
++    }
++
++    if(!gecko_main_thread) {
++        gecko_main_thread = GetCurrentThreadId();
++        gecko_main_thread_hwnd = get_thread_hwnd();
++    }else if(GetCurrentThreadId() != gecko_main_thread) {
++        FIXME("HACK: Creating HTMLDocument outside Gecko main thread\n");
++        if(!gecko_main_thread_config) {
++            FIXME("HACK: Dedicated main thread not configured\n");
++            FIXME("HACK: Create HKCU\\Software\\Wine\\MSHTML\\MainThreadHack key\n");
++        }
++        return create_marshaled_doc(gecko_main_thread_hwnd, riid, ppv);
++    }
++
+     /* ensure that security manager is initialized */
+     if(!get_security_manager())
+         return E_OUTOFMEMORY;
+diff --git a/dlls/mshtml/task.c b/dlls/mshtml/task.c
+index 4a9b2e6b7510bd707bd0ddb41bbae2a06578cbbf..06de7b1751e9698a50ce7030e0eacd35ceb28fd5 100644
+--- a/dlls/mshtml/task.c
++++ b/dlls/mshtml/task.c
+@@ -33,6 +33,7 @@
+ WINE_DEFAULT_DEBUG_CHANNEL(mshtml);
+ 
+ #define WM_PROCESSTASK 0x8008
++#define WM_CREATEDOC   0x8018
+ #define TIMER_ID 0x3000
+ 
+ typedef struct {
+@@ -378,6 +379,13 @@ done:
+     return 0;
+ }
+ 
++typedef struct {
++    IUnknown *unk;
++    IID iid;
++    IStream *stream;
++    HRESULT hres;
++} create_doc_params_t;
++
+ static LRESULT WINAPI hidden_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
+ {
+     thread_data_t *thread_data;
+@@ -423,6 +431,20 @@ static LRESULT WINAPI hidden_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPa
+         return 0;
+     case WM_TIMER:
+         return process_timer();
++    case WM_CREATEDOC: {
++        create_doc_params_t *params = (create_doc_params_t*)lParam;
++        IUnknown *unk;
++
++        TRACE("WM_CREATEDOC %p\n", params);
++
++        params->hres = HTMLDocument_Create(NULL, &params->iid, (void**)&unk);
++        if(FAILED(params->hres))
++            return 0;
++
++        params->hres = CoMarshalInterface(params->stream, &params->iid, unk, MSHCTX_INPROC, NULL, MSHLFLAGS_NORMAL);
++        IUnknown_Release(unk);
++        return 0;
++    }
+     }
+ 
+     if(msg > WM_USER)
+@@ -465,6 +487,35 @@ HWND get_thread_hwnd(void)
+     return thread_data->thread_hwnd;
+ }
+ 
++HRESULT create_marshaled_doc(HWND main_thread_hwnd, REFIID riid, void **ppv)
++{
++    create_doc_params_t params = {NULL, *riid, NULL, E_FAIL};
++    LARGE_INTEGER zero;
++    BOOL res;
++    HRESULT hres;
++
++    hres = CreateStreamOnHGlobal(NULL, TRUE, &params.stream);
++    if(FAILED(hres))
++        return hres;
++
++    res = SendMessageW(main_thread_hwnd, WM_CREATEDOC, 0, (LPARAM)&params);
++    TRACE("SendMessage ret %x\n", res);
++    if(FAILED(params.hres)) {
++        WARN("EM_CREATEDOC failed: %08lx\n", params.hres);
++        IStream_Release(params.stream);
++        return hres;
++    }
++
++    zero.QuadPart = 0;
++    hres = IStream_Seek(params.stream, zero, STREAM_SEEK_SET, NULL);
++    if(SUCCEEDED(hres))
++        hres = CoUnmarshalInterface(params.stream, riid, ppv);
++    IStream_Release(params.stream);
++    if(FAILED(hres))
++        WARN("CoUnmarshalInterface failed: %08lx\n", hres);
++    return hres;
++}
++
+ thread_data_t *get_thread_data(BOOL create)
+ {
+     thread_data_t *thread_data;
+diff --git a/dlls/msxml3/Makefile.in b/dlls/msxml3/Makefile.in
+index b769ad65c9c40424c378fa3352167213f3108b40..7824361865d7432d4a8a2e54cbfa6b95bf823686 100644
+--- a/dlls/msxml3/Makefile.in
++++ b/dlls/msxml3/Makefile.in
+@@ -1,5 +1,5 @@
+ MODULE    = msxml3.dll
+-IMPORTS   = $(XSLT_PE_LIBS) $(XML2_PE_LIBS) uuid urlmon shlwapi oleaut32 ole32 user32 advapi32
++IMPORTS   = $(XSLT_PE_LIBS) $(XML2_PE_LIBS) uuid urlmon shlwapi oleaut32 ole32 user32 advapi32 rtworkq
+ EXTRAINCL = $(XSLT_PE_CFLAGS) $(XML2_PE_CFLAGS)
+ 
+ VER_FILEDESCRIPTION_STR = "Wine MSXML 3.0"
+diff --git a/dlls/msxml3/factory.c b/dlls/msxml3/factory.c
+index 5847752970858a7ba719aa876fe0f4e89d9846fd..25c2abbbe76180bd01c87a337457ab9ded3ae389 100644
+--- a/dlls/msxml3/factory.c
++++ b/dlls/msxml3/factory.c
+@@ -31,6 +31,7 @@
+ #include "ole2.h"
+ #include "msxml.h"
+ #include "msxml2.h"
++#include "msxml6.h"
+ #include "xmlparser.h"
+ 
+ /* undef the #define in msxml2 so that we can access the v.2 version
+@@ -53,8 +54,6 @@ DEFINE_GUID(CLSID_XSLTemplate60, 0x88d96a08, 0xf192, 0x11d4, 0xa6, 0x5f, 0x00, 0
+ 
+ WINE_DEFAULT_DEBUG_CHANNEL(msxml);
+ 
+-extern GUID CLSID_XMLSchemaCache60;
+-
+ typedef HRESULT (*ClassFactoryCreateInstanceFunc)(void**);
+ typedef HRESULT (*DOMFactoryCreateInstanceFunc)(MSXML_VERSION, void**);
+ 
+@@ -290,6 +289,7 @@ static HRESULT DOMClassFactory_Create(const GUID *clsid, REFIID riid, void **ppv
+ 
+ static ClassFactory xmldoccf = { { &ClassFactoryVtbl }, XMLDocument_create };
+ static ClassFactory httpreqcf = { { &ClassFactoryVtbl }, XMLHTTPRequest_create };
++static ClassFactory httpreqcf2 = { { &ClassFactoryVtbl }, XMLHTTPRequest2_create };
+ static ClassFactory serverhttp = { { &ClassFactoryVtbl }, ServerXMLHTTP_create };
+ static ClassFactory xsltemplatecf = { { &ClassFactoryVtbl }, XSLTemplate_create };
+ static ClassFactory mxnsmanagercf = { {&ClassFactoryVtbl }, MXNamespaceManager_create };
+@@ -351,6 +351,10 @@ HRESULT WINAPI DllGetClassObject( REFCLSID rclsid, REFIID riid, void **ppv )
+     {
+         cf = &httpreqcf.IClassFactory_iface;
+     }
++    else if( IsEqualCLSID( rclsid, &CLSID_FreeThreadedXMLHTTP60 ))
++    {
++        cf = &httpreqcf2.IClassFactory_iface;
++    }
+     else if( IsEqualCLSID( rclsid, &CLSID_ServerXMLHTTP ) ||
+              IsEqualCLSID( rclsid, &CLSID_ServerXMLHTTP30 ) ||
+              IsEqualCLSID( rclsid, &CLSID_ServerXMLHTTP40 ) ||
+diff --git a/dlls/msxml3/httprequest.c b/dlls/msxml3/httprequest.c
+index 90be57ebabf21c131b28a379cdd43ea4e9a0e8a7..7dcc31ecbcf91e2bd9d7039597ab531496a05d70 100644
+--- a/dlls/msxml3/httprequest.c
++++ b/dlls/msxml3/httprequest.c
+@@ -37,10 +37,12 @@
+ #include "shlwapi.h"
+ 
+ #include "msxml_dispex.h"
++#include "initguid.h"
++#include "rtworkq.h"
+ 
+ #include "wine/debug.h"
+ 
+-WINE_DEFAULT_DEBUG_CHANNEL(msxml);
++WINE_DEFAULT_DEBUG_CHANNEL(xmlhttp);
+ 
+ static const DWORD safety_supported_options =
+     INTERFACESAFE_FOR_UNTRUSTED_CALLER |
+@@ -97,6 +99,21 @@ typedef struct
+ 
+     /* IObjectSafety */
+     DWORD safeopt;
++
++    /* Properties */
++    DWORD no_prompt;
++    DWORD no_auth;
++    DWORD timeout;
++    BOOL no_headeres;
++    BOOL redirect;
++    BOOL cache;
++    BOOL extended;
++    BOOL query_utf8;
++    BOOL ignore_errors;
++    BOOL threshold;
++    DWORD enterrprised_id;
++    DWORD max_connections;
++
+ } httprequest;
+ 
+ typedef struct
+@@ -2044,6 +2061,553 @@ static const struct IServerXMLHTTPRequestVtbl ServerXMLHTTPRequestVtbl =
+     ServerXMLHTTPRequest_setOption
+ };
+ 
++static DWORD xhr2_work_queue;
++
++struct xml_http_request_2
++{
++    httprequest req;
++    IXMLHTTPRequest3 IXMLHTTPRequest3_iface;
++    IRtwqAsyncCallback IRtwqAsyncCallback_iface;
++    IDispatch IDispatch_iface;
++
++    IXMLHTTPRequest2Callback *callback;
++    IXMLHTTPRequest3Callback *callback3;
++    ISequentialStream *response_body;
++    ISequentialStream *request_body;
++    ULONGLONG request_body_size;
++};
++
++static inline struct xml_http_request_2 *impl_from_IXMLHTTPRequest3(IXMLHTTPRequest3 *iface)
++{
++    return CONTAINING_RECORD(iface, struct xml_http_request_2, IXMLHTTPRequest3_iface);
++}
++
++static inline struct xml_http_request_2 *xml_http_request_2_from_IRtwqAsyncCallback(IRtwqAsyncCallback *iface)
++{
++    return CONTAINING_RECORD(iface, struct xml_http_request_2, IRtwqAsyncCallback_iface);
++}
++
++static inline struct xml_http_request_2 *xml_http_request_2_from_IDispatch(IDispatch *iface)
++{
++    return CONTAINING_RECORD(iface, struct xml_http_request_2, IDispatch_iface);
++}
++
++static HRESULT WINAPI xml_http_request_2_QueryInterface(IXMLHTTPRequest3 *iface, REFIID riid, void **obj)
++{
++    struct xml_http_request_2 *This = impl_from_IXMLHTTPRequest3(iface);
++
++    TRACE("(%p)->(%s %p)\n", This, debugstr_guid(riid), obj);
++
++    if (IsEqualGUID(riid, &IID_IXMLHTTPRequest3) || IsEqualGUID(riid, &IID_IXMLHTTPRequest2)
++        || IsEqualGUID(riid, &IID_IUnknown))
++    {
++        *obj = iface;
++        IUnknown_AddRef((IUnknown*)*obj);
++        return S_OK;
++    }
++
++    FIXME("Unsupported interface %s\n", debugstr_guid(riid));
++    *obj = NULL;
++    return E_NOINTERFACE;
++}
++
++static ULONG WINAPI xml_http_request_2_AddRef(IXMLHTTPRequest3 *iface)
++{
++    struct xml_http_request_2 *This = impl_from_IXMLHTTPRequest3(iface);
++    ULONG ref = InterlockedIncrement(&This->req.ref);
++    TRACE("(%p)->(%lu)\n", This, ref);
++    return ref;
++}
++
++static ULONG WINAPI xml_http_request_2_Release(IXMLHTTPRequest3 *iface)
++{
++    struct xml_http_request_2 *This = impl_from_IXMLHTTPRequest3(iface);
++    ULONG ref = InterlockedDecrement(&This->req.ref);
++
++    TRACE("(%p)->(%lu)\n", This, ref);
++
++    if (ref == 0)
++    {
++        /* do not call httprequest_put_onreadystatechange to avoid ref cycle */
++        This->req.sink = NULL;
++        if (This->response_body) ISequentialStream_Release(This->response_body);
++        if (This->request_body) ISequentialStream_Release(This->request_body);
++        if (This->callback3) IXMLHTTPRequest3Callback_Release(This->callback3);
++        if (This->callback) IXMLHTTPRequest2Callback_Release(This->callback);
++        free(This);
++        RtwqShutdown();
++    }
++
++    return ref;
++}
++
++static HRESULT WINAPI xml_http_request_2_Open(IXMLHTTPRequest3 *iface, const WCHAR *method,
++                                              const WCHAR *url, IXMLHTTPRequest2Callback *callback,
++                                              const WCHAR *username, const WCHAR *password,
++                                              const WCHAR *proxy_username, const WCHAR *proxy_password)
++{
++    static const WCHAR accept_encoding[] = {'A','c','c','e','p','t','-','E','n','c','o','d','i','n','g',0};
++    static const WCHAR empty = 0;
++    struct xml_http_request_2 *This = impl_from_IXMLHTTPRequest3(iface);
++    VARIANT async_v, username_v, password_v;
++    HRESULT hr;
++
++    TRACE("(%p)->(%s %s %p %s %s %s %s)\n", This, debugstr_w(method), debugstr_w(url), callback,
++          debugstr_w(username), debugstr_w(password), debugstr_w(proxy_username), debugstr_w(proxy_password));
++
++    if (This->callback) IXMLHTTPRequest2Callback_Release(This->callback);
++    if (This->callback3) IXMLHTTPRequest3Callback_Release(This->callback3);
++    IXMLHTTPRequest2Callback_AddRef(callback);
++    This->callback = callback;
++    if (FAILED(IXMLHTTPRequest2Callback_QueryInterface(callback, &IID_IXMLHTTPRequest3Callback, (void **)&This->callback3)))
++        This->callback3 = NULL;
++
++    if (proxy_username || proxy_password) FIXME("proxy credentials not implemented\n");
++
++    VariantInit(&async_v);
++    V_VT(&async_v) = VT_BOOL;
++    V_BOOL(&async_v) = FALSE; /* FIXME: TRUE needs a RTWQ_WINDOW_WORKQUEUE */
++
++    VariantInit(&username_v);
++    V_VT(&username_v) = VT_BSTR;
++    if (username) V_BSTR(&username_v) = SysAllocString(username);
++    else V_BSTR(&username_v) = SysAllocString(&empty);
++
++    VariantInit(&password_v);
++    V_VT(&password_v) = VT_BSTR;
++    if (password) V_BSTR(&password_v) = SysAllocString(password);
++    else V_BSTR(&password_v) = SysAllocString(&empty);
++
++    if (FAILED(hr = httprequest_open(&This->req, (BSTR)method, (BSTR)url, async_v, username_v, password_v)))
++        return hr;
++    return httprequest_setRequestHeader(&This->req, (BSTR)accept_encoding, (BSTR)&empty);
++}
++
++static HRESULT WINAPI xml_http_request_2_Send(IXMLHTTPRequest3 *iface, ISequentialStream *body, ULONGLONG body_size)
++{
++    struct xml_http_request_2 *This = impl_from_IXMLHTTPRequest3(iface);
++    IRtwqAsyncResult *result;
++    HRESULT hr;
++
++    TRACE("(%p)->(%p %s)\n", This, body, wine_dbgstr_longlong( body_size ));
++
++    if (body_size)
++    {
++        ISequentialStream_AddRef(body);
++        This->request_body = body;
++        This->request_body_size = body_size;
++    }
++
++    if (FAILED(hr = RtwqCreateAsyncResult(NULL, &This->IRtwqAsyncCallback_iface, NULL, &result)))
++        return hr;
++    // IRtwqAsyncCallback_Invoke(&This->IRtwqAsyncCallback_iface, result);
++    hr = RtwqPutWorkItem(xhr2_work_queue, 0, result);
++    if (result) IRtwqAsyncResult_Release(result);
++
++    return hr;
++}
++
++static HRESULT WINAPI xml_http_request_2_Abort(IXMLHTTPRequest3 *iface)
++{
++    struct xml_http_request_2 *This = impl_from_IXMLHTTPRequest3(iface);
++    TRACE("(%p) stub!\n", This);
++    return E_NOTIMPL;
++}
++
++static HRESULT WINAPI xml_http_request_2_SetCookie(IXMLHTTPRequest3 *iface, const XHR_COOKIE *cookie, DWORD *state)
++{
++    struct xml_http_request_2 *This = impl_from_IXMLHTTPRequest3(iface);
++    FIXME("(%p)->(%p %p) stub!\n", This, cookie, state);
++    return E_NOTIMPL;
++}
++
++static HRESULT WINAPI xml_http_request_2_SetCustomResponseStream(IXMLHTTPRequest3 *iface, ISequentialStream *stream)
++{
++    struct xml_http_request_2 *This = impl_from_IXMLHTTPRequest3(iface);
++    FIXME("(%p)->(%p) stub!\n", This, stream);
++    return E_NOTIMPL;
++}
++
++static HRESULT WINAPI xml_http_request_2_SetProperty(IXMLHTTPRequest3 *iface, XHR_PROPERTY property, ULONGLONG value)
++{
++    struct xml_http_request_2 *This = impl_from_IXMLHTTPRequest3(iface);
++
++    TRACE("(%p)->(%#x %s) stub!\n", This, property, wine_dbgstr_longlong( value ));
++
++    switch (property)
++    {
++        case XHR_PROP_NO_CRED_PROMPT:
++            This->req.no_prompt = value;
++            break;
++        case XHR_PROP_NO_AUTH:
++            This->req.no_auth = value;
++            break;
++        case XHR_PROP_TIMEOUT:
++            This->req.timeout = value;
++            break;
++        case XHR_PROP_NO_DEFAULT_HEADERS:
++            This->req.no_headeres = value != 0;
++            break;
++        case XHR_PROP_REPORT_REDIRECT_STATUS:
++            This->req.redirect = value != 0;
++            break;
++        case XHR_PROP_NO_CACHE:
++            This->req.cache = value != 0;
++            break;
++        case XHR_PROP_EXTENDED_ERROR:
++            This->req.extended = value != 0;
++            break;
++        case XHR_PROP_QUERY_STRING_UTF8:
++            This->req.query_utf8 = value != 0;
++            break;
++        case XHR_PROP_IGNORE_CERT_ERRORS:
++            This->req.ignore_errors = value != 0;
++            break;
++        case XHR_PROP_ONDATA_THRESHOLD:
++            This->req.threshold = value;
++            break;
++        case XHR_PROP_SET_ENTERPRISEID:
++            This->req.enterrprised_id = value;
++            break;
++        case XHR_PROP_MAX_CONNECTIONS:
++            This->req.max_connections = value;
++            break;
++        default:
++            WARN("Invalid property %#x\n", property);
++            return E_INVALIDARG;
++    }
++    return S_OK;
++}
++
++static HRESULT WINAPI xml_http_request_2_SetRequestHeader(IXMLHTTPRequest3 *iface,
++                                                          const WCHAR *header, const WCHAR *value)
++{
++    struct xml_http_request_2 *This = impl_from_IXMLHTTPRequest3(iface);
++    TRACE("(%p)->(%s %s)\n", This, debugstr_w(header), debugstr_w(value));
++    return httprequest_setRequestHeader(&This->req, (BSTR)header, (BSTR)value);
++}
++
++static HRESULT WINAPI xml_http_request_2_GetAllResponseHeaders(IXMLHTTPRequest3 *iface, WCHAR **headers)
++{
++    struct xml_http_request_2 *This = impl_from_IXMLHTTPRequest3(iface);
++    FIXME("(%p)->(%p) stub!\n", This, headers);
++    return E_NOTIMPL;
++}
++
++static HRESULT WINAPI xml_http_request_2_GetCookie(IXMLHTTPRequest3 *iface, const WCHAR *url,
++                                                   const WCHAR *name, DWORD flags,
++                                                   ULONG *cookies_count, XHR_COOKIE **cookies)
++{
++    struct xml_http_request_2 *This = impl_from_IXMLHTTPRequest3(iface);
++    FIXME("(%p)->(%s %s %ld %p %p) stub!\n", This, debugstr_w(url), debugstr_w(name), flags, cookies_count, cookies);
++    return E_NOTIMPL;
++}
++
++static HRESULT WINAPI xml_http_request_2_GetResponseHeader(IXMLHTTPRequest3 *iface,
++                                                           const WCHAR *header, WCHAR **value)
++{
++    struct xml_http_request_2 *This = impl_from_IXMLHTTPRequest3(iface);
++    HRESULT hr;
++
++    TRACE("(%p)->(%s %p)\n", This, debugstr_w(header), value);
++
++    hr = httprequest_getResponseHeader(&This->req, (BSTR)header, value);
++
++#define E_FILE_NOT_FOUND                                   _HRESULT_TYPEDEF_(0x80070002)
++
++    if (hr == S_FALSE)
++    {
++        *value = NULL;
++        return E_FILE_NOT_FOUND;
++    }
++
++    return hr;
++}
++
++static HRESULT WINAPI xml_http_request_3_SetClientCertificate(IXMLHTTPRequest3 *iface, DWORD count, const BYTE *hashes, const WCHAR *pin)
++{
++    struct xml_http_request_2 *This = impl_from_IXMLHTTPRequest3(iface);
++    FIXME("(%p)->(%ld %p %s) stub!\n", This, count, hashes, debugstr_w(pin));
++    return E_NOTIMPL;
++}
++
++static const struct IXMLHTTPRequest3Vtbl XMLHTTPRequest3Vtbl = {
++    /* IUnknown methods */
++    xml_http_request_2_QueryInterface,
++    xml_http_request_2_AddRef,
++    xml_http_request_2_Release,
++    /* IXMLHTTPRequest2 methods */
++    xml_http_request_2_Open,
++    xml_http_request_2_Send,
++    xml_http_request_2_Abort,
++    xml_http_request_2_SetCookie,
++    xml_http_request_2_SetCustomResponseStream,
++    xml_http_request_2_SetProperty,
++    xml_http_request_2_SetRequestHeader,
++    xml_http_request_2_GetAllResponseHeaders,
++    xml_http_request_2_GetCookie,
++    xml_http_request_2_GetResponseHeader,
++    /* IXMLHTTPRequest3 methods */
++    xml_http_request_3_SetClientCertificate,
++};
++
++static HRESULT WINAPI xml_http_request_2_IRtwqAsyncCallback_QueryInterface(IRtwqAsyncCallback *iface, REFIID riid, void **obj)
++{
++    struct xml_http_request_2 *This = xml_http_request_2_from_IRtwqAsyncCallback(iface);
++    TRACE("(%p)->(%s %p)\n", This, debugstr_guid(riid), obj);
++
++    if (IsEqualGUID(riid, &IID_IRtwqAsyncCallback) || IsEqualGUID(riid, &IID_IUnknown))
++    {
++        IRtwqAsyncCallback_AddRef(iface);
++        *obj = iface;
++        return S_OK;
++    }
++
++    FIXME("Unsupported interface %s\n", debugstr_guid(riid));
++    *obj = NULL;
++    return E_NOINTERFACE;
++}
++
++static ULONG WINAPI xml_http_request_2_IRtwqAsyncCallback_AddRef(IRtwqAsyncCallback *iface)
++{
++    struct xml_http_request_2 *This = xml_http_request_2_from_IRtwqAsyncCallback(iface);
++    TRACE("(%p)\n", This);
++    return xml_http_request_2_AddRef(&This->IXMLHTTPRequest3_iface);
++}
++
++static ULONG WINAPI xml_http_request_2_IRtwqAsyncCallback_Release(IRtwqAsyncCallback *iface)
++{
++    struct xml_http_request_2 *This = xml_http_request_2_from_IRtwqAsyncCallback(iface);
++    TRACE("(%p)\n", This);
++    return xml_http_request_2_Release(&This->IXMLHTTPRequest3_iface);
++}
++
++static HRESULT WINAPI xml_http_request_2_IRtwqAsyncCallback_GetParameters(IRtwqAsyncCallback *iface,
++        DWORD *flags, DWORD *queue)
++{
++    struct xml_http_request_2 *This = xml_http_request_2_from_IRtwqAsyncCallback(iface);
++
++    TRACE("(%p)->(%p %p)\n", This, flags, queue);
++
++    *flags = 0;
++    *queue = xhr2_work_queue;
++    return S_OK;
++}
++
++static HRESULT WINAPI xml_http_request_2_IRtwqAsyncCallback_Invoke(IRtwqAsyncCallback *iface,
++        IRtwqAsyncResult *result)
++{
++    struct xml_http_request_2 *This = xml_http_request_2_from_IRtwqAsyncCallback(iface);
++    IStream *stream = NULL;
++    SAFEARRAY *sa = NULL;
++    VARIANT body_v;
++    HRESULT hr;
++    ULONG read;
++
++    TRACE("(%p)->(%p)\n", This, result);
++
++    VariantInit(&body_v);
++
++    if (This->request_body)
++    {
++        SAFEARRAYBOUND bound;
++        ULONGLONG body_size;
++        STATSTG stream_stat;
++        LARGE_INTEGER li;
++        void *ptr;
++
++        if (SUCCEEDED(ISequentialStream_QueryInterface(This->request_body, &IID_IStream, (void **)&stream))
++                && SUCCEEDED(IStream_Stat(stream, &stream_stat, 0)))
++        {
++            body_size = stream_stat.cbSize.QuadPart;
++            li.QuadPart = 0;
++            IStream_Seek(stream, li, STREAM_SEEK_SET, NULL);
++        }
++        else
++        {
++            body_size = This->request_body_size;
++        }
++
++        TRACE("body_size %I64u.\n", body_size);
++
++        bound.lLbound = 0;
++        bound.cElements = body_size;
++        if (!(sa = SafeArrayCreate(VT_UI1, 1, &bound)))
++        {
++            ERR("No memory.\n");
++            hr = E_OUTOFMEMORY;
++            goto done;
++        }
++        V_ARRAY(&body_v) = sa;
++        V_VT(&body_v) = VT_ARRAY | VT_UI1;
++        SafeArrayAccessData(sa, &ptr);
++
++        if (stream)
++            hr = IStream_Read(stream, ptr, body_size, &read);
++        else
++            hr = ISequentialStream_Read(This->request_body, ptr, body_size, &read);
++        SafeArrayUnaccessData(sa);
++        if (FAILED(hr) || read < body_size)
++        {
++            /* Windows doesn't send the body in this case but still sends request with Content-Length
++             * set to requested body size. */
++            ERR("Failed to read from stream, hr %#lx, read %lu\n", hr, read);
++            SafeArrayDestroy(sa);
++            sa = NULL;
++            V_VT(&body_v) = VT_NULL;
++        }
++
++        ISequentialStream_Release(This->request_body);
++        This->request_body = NULL;
++    }
++
++    hr = httprequest_send(&This->req, body_v);
++
++done:
++    if (sa)
++        SafeArrayDestroy(sa);
++    if (stream)
++        IStream_Release(stream);
++    return IRtwqAsyncResult_SetStatus(result, hr);
++}
++
++static const struct IRtwqAsyncCallbackVtbl xml_http_request_2_IRtwqAsyncCallbackVtbl = {
++    /* IUnknown methods */
++    xml_http_request_2_IRtwqAsyncCallback_QueryInterface,
++    xml_http_request_2_IRtwqAsyncCallback_AddRef,
++    xml_http_request_2_IRtwqAsyncCallback_Release,
++    /* IRtwqAsyncCallback methods */
++    xml_http_request_2_IRtwqAsyncCallback_GetParameters,
++    xml_http_request_2_IRtwqAsyncCallback_Invoke,
++};
++
++static HRESULT WINAPI xml_http_request_2_IDispatch_QueryInterface(IDispatch *iface, REFIID riid, void **obj)
++{
++    struct xml_http_request_2 *This = xml_http_request_2_from_IDispatch(iface);
++    TRACE("(%p)->(%s %p)\n", This, debugstr_guid(riid), obj);
++
++    if (IsEqualGUID(riid, &IID_IDispatch) || IsEqualGUID(riid, &IID_IUnknown))
++    {
++        IDispatch_AddRef(iface);
++        *obj = iface;
++        return S_OK;
++    }
++
++    FIXME("Unsupported interface %s\n", debugstr_guid(riid));
++    *obj = NULL;
++    return E_NOINTERFACE;
++}
++
++static ULONG WINAPI xml_http_request_2_IDispatch_AddRef(IDispatch *iface)
++{
++    struct xml_http_request_2 *This = xml_http_request_2_from_IDispatch(iface);
++    TRACE("(%p)\n", This);
++    return xml_http_request_2_AddRef(&This->IXMLHTTPRequest3_iface);
++}
++
++static ULONG WINAPI xml_http_request_2_IDispatch_Release(IDispatch *iface)
++{
++    struct xml_http_request_2 *This = xml_http_request_2_from_IDispatch(iface);
++    TRACE("(%p)\n", This);
++    return xml_http_request_2_Release(&This->IXMLHTTPRequest3_iface);
++}
++
++static HRESULT WINAPI xml_http_request_2_IDispatch_GetTypeInfoCount(IDispatch *iface, UINT *value)
++{
++    struct xml_http_request_2 *This = xml_http_request_2_from_IDispatch(iface);
++    FIXME("(%p)->(%p) stub!\n", This, value);
++    *value = 0;
++    return S_OK;
++}
++
++static HRESULT WINAPI xml_http_request_2_IDispatch_GetTypeInfo(IDispatch *iface, UINT index,
++                                                               LCID lcid, ITypeInfo **value)
++{
++    struct xml_http_request_2 *This = xml_http_request_2_from_IDispatch(iface);
++    FIXME("(%p)->(%d %lu %p) stub!\n", This, index, lcid, value);
++    *value = NULL;
++    return S_OK;
++}
++
++static HRESULT WINAPI xml_http_request_2_IDispatch_GetIDsOfNames(IDispatch *iface, REFIID riid,
++                                                                 OLECHAR **names, UINT names_count,
++                                                                 LCID lcid, DISPID *disp_ids)
++{
++    struct xml_http_request_2 *This = xml_http_request_2_from_IDispatch(iface);
++    FIXME("(%p)->(%s %p %d %lu %p) stub!\n", This, debugstr_guid(riid), names, names_count, lcid, disp_ids);
++    return S_OK;
++}
++
++static HRESULT WINAPI xml_http_request_2_IDispatch_Invoke(IDispatch *iface, DISPID id, REFIID riid,
++                                                          LCID lcid, WORD flags, DISPPARAMS *params,
++                                                          VARIANT *result, EXCEPINFO *exception, UINT *arg_err)
++{
++    struct xml_http_request_2 *This = xml_http_request_2_from_IDispatch(iface);
++    IXMLHTTPRequest2 *xhr2_iface = (IXMLHTTPRequest2*)&This->IXMLHTTPRequest3_iface;
++    HRESULT hr;
++    LONG status;
++    BSTR status_str = NULL;
++
++    TRACE("(%p)->(%ld %s %lu %d %p %p %p %p) stub!\n", This, id, debugstr_guid(riid), lcid, flags,
++          params, result, exception, arg_err);
++
++    if (This->req.state == READYSTATE_COMPLETE)
++    {
++        VARIANT body_v;
++        VariantInit(&body_v);
++
++        IXMLHTTPRequest2Callback_AddRef(This->callback);
++        if (This->callback3)
++        {
++            IXMLHTTPRequest3Callback_AddRef(This->callback3);
++            IXMLHTTPRequest3Callback_OnServerCertificateReceived(This->callback3, (IXMLHTTPRequest3 *)xhr2_iface, 0, 1, NULL);
++            IXMLHTTPRequest3Callback_Release(This->callback3);
++        }
++
++        if (FAILED(hr = httprequest_get_status(&This->req, &status)) ||
++            FAILED(hr = httprequest_get_statusText(&This->req, &status_str)))
++        {
++            WARN("failed to get response status, error %#lx\n", hr);
++            IXMLHTTPRequest2Callback_OnError(This->callback, xhr2_iface, hr);
++            IXMLHTTPRequest2Callback_Release(This->callback);
++            return S_OK;
++        }
++
++        IXMLHTTPRequest2Callback_OnHeadersAvailable(This->callback, xhr2_iface, status, status_str);
++        SysFreeString(status_str);
++
++        if (This->response_body) ISequentialStream_Release(This->response_body);
++        This->response_body = NULL;
++
++        if (FAILED(hr = httprequest_get_responseStream(&This->req, &body_v)) ||
++            FAILED(hr = IUnknown_QueryInterface(V_UNKNOWN(&body_v), &IID_ISequentialStream, (void **)&This->response_body)))
++        {
++            WARN("failed to get response stream, error %#lx\n", hr);
++            IXMLHTTPRequest2Callback_OnError(This->callback, xhr2_iface, hr);
++            IXMLHTTPRequest2Callback_Release(This->callback);
++            return S_OK;
++        }
++
++        IXMLHTTPRequest2Callback_OnDataAvailable(This->callback, xhr2_iface, This->response_body);
++        IXMLHTTPRequest2Callback_OnResponseReceived(This->callback, xhr2_iface, This->response_body);
++        IXMLHTTPRequest2Callback_Release(This->callback);
++    }
++
++    return S_OK;
++}
++
++static const struct IDispatchVtbl xml_http_request_2_IDispatchVtbl = {
++    /* IUnknown methods */
++    xml_http_request_2_IDispatch_QueryInterface,
++    xml_http_request_2_IDispatch_AddRef,
++    xml_http_request_2_IDispatch_Release,
++    /* IDispatch methods */
++    xml_http_request_2_IDispatch_GetTypeInfoCount,
++    xml_http_request_2_IDispatch_GetTypeInfo,
++    xml_http_request_2_IDispatch_GetIDsOfNames,
++    xml_http_request_2_IDispatch_Invoke,
++};
++
+ static void init_httprequest(httprequest *req)
+ {
+     req->IXMLHTTPRequest_iface.lpVtbl = &XMLHTTPRequestVtbl;
+@@ -2073,6 +2637,20 @@ static void init_httprequest(httprequest *req)
+ 
+     req->site = NULL;
+     req->safeopt = 0;
++
++    /* Properties */
++    req->no_prompt = XHR_CRED_PROMPT_ALL;
++    req->no_auth = XHR_AUTH_ALL;
++    req->timeout = 0xFFFFFFFF;
++    req->no_headeres = FALSE;
++    req->redirect = FALSE;
++    req->cache = FALSE;
++    req->extended = FALSE;
++    req->query_utf8 = FALSE;;
++    req->ignore_errors = FALSE;;
++    req->threshold = 0x100;
++    req->enterrprised_id = 0;
++    req->max_connections = 10;
+ }
+ 
+ HRESULT XMLHTTPRequest_create(void **obj)
+@@ -2093,6 +2671,35 @@ HRESULT XMLHTTPRequest_create(void **obj)
+     return S_OK;
+ }
+ 
++HRESULT XMLHTTPRequest2_create(void **obj)
++{
++    struct xml_http_request_2 *xhr2;
++    TRACE("(%p)\n", obj);
++
++    if (!(xhr2 = calloc(1, sizeof(*xhr2)))) return E_OUTOFMEMORY;
++
++    init_httprequest(&xhr2->req);
++    xhr2->IXMLHTTPRequest3_iface.lpVtbl = &XMLHTTPRequest3Vtbl;
++    xhr2->IRtwqAsyncCallback_iface.lpVtbl = &xml_http_request_2_IRtwqAsyncCallbackVtbl;
++    xhr2->IDispatch_iface.lpVtbl = &xml_http_request_2_IDispatchVtbl;
++
++    /* do not call httprequest_put_onreadystatechange to avoid ref cycle */
++    xhr2->req.sink = &xhr2->IDispatch_iface;
++
++    xhr2->callback = NULL;
++    xhr2->callback3 = NULL;
++    xhr2->request_body = NULL;
++    xhr2->response_body = NULL;
++
++    /* for async http requests we need window message queue */
++    RtwqStartup();
++    if (!xhr2_work_queue) RtwqAllocateWorkQueue(RTWQ_MULTITHREADED_WORKQUEUE, &xhr2_work_queue);
++
++    *obj = &xhr2->IXMLHTTPRequest3_iface;
++    TRACE("returning iface %p\n", *obj);
++    return S_OK;
++}
++
+ HRESULT ServerXMLHTTP_create(void **obj)
+ {
+     serverhttp *req;
+diff --git a/dlls/msxml3/msxml_private.h b/dlls/msxml3/msxml_private.h
+index 6626ca8ebaad6934f896c15b0f55c60096bb34d5..537ea3d576a0260a0bce5d0b50cd13474daf34dc 100644
+--- a/dlls/msxml3/msxml_private.h
++++ b/dlls/msxml3/msxml_private.h
+@@ -560,6 +560,7 @@ extern HRESULT XMLDocument_create(void**);
+ extern HRESULT SAXXMLReader_create(MSXML_VERSION, void**);
+ extern HRESULT SAXAttributes_create(MSXML_VERSION, void**);
+ extern HRESULT XMLHTTPRequest_create(void **);
++extern HRESULT XMLHTTPRequest2_create(void **);
+ extern HRESULT ServerXMLHTTP_create(void **);
+ extern HRESULT XSLTemplate_create(void**);
+ extern HRESULT MXWriter_create(MSXML_VERSION, void**);
+diff --git a/dlls/msxml3/tests/httpreq.c b/dlls/msxml3/tests/httpreq.c
+index 90c8dc166dfc6c356f01b31fc3d98cc53e83dd33..fde9a2ab85d36a4fa1f33b3194bf9149a77ba5d1 100644
+--- a/dlls/msxml3/tests/httpreq.c
++++ b/dlls/msxml3/tests/httpreq.c
+@@ -26,9 +26,9 @@
+ #include <assert.h>
+ 
+ #include "windows.h"
+-
+ #include "msxml2.h"
+-#include "msxml2did.h"
++#include "msxml6.h"
++#include "msxml6did.h"
+ #include "dispex.h"
+ 
+ #include "initguid.h"
+@@ -1347,6 +1347,17 @@ static IXMLHttpRequest *create_xhr(void)
+     return SUCCEEDED(hr) ? ret : NULL;
+ }
+ 
++static IXMLHTTPRequest2 *create_xhr2(void)
++{
++    IXMLHTTPRequest2 *ret;
++    HRESULT hr;
++
++    hr = CoCreateInstance(&CLSID_FreeThreadedXMLHTTP60, NULL, CLSCTX_INPROC_SERVER,
++        &IID_IXMLHTTPRequest2, (void**)&ret);
++
++    return SUCCEEDED(hr) ? ret : NULL;
++}
++
+ static IServerXMLHTTPRequest *create_server_xhr(void)
+ {
+     IServerXMLHTTPRequest *ret;
+@@ -1923,11 +1934,388 @@ static void test_supporterrorinfo(void)
+     IServerXMLHTTPRequest_Release(server_xhr);
+ }
+ 
++struct xhr3_callback
++{
++    IXMLHTTPRequest3Callback IXMLHTTPRequest3Callback_iface;
++    LONG ref;
++    HANDLE event;
++};
++
++static inline struct xhr3_callback *xhr3_callback_from_IXMLHTTPRequest3Callback(IXMLHTTPRequest3Callback *iface)
++{
++    return CONTAINING_RECORD(iface, struct xhr3_callback, IXMLHTTPRequest3Callback_iface);
++}
++
++static HRESULT WINAPI xhr3_callback_QueryInterface(IXMLHTTPRequest3Callback *iface, REFIID riid, void **obj)
++{
++    struct xhr3_callback *This = xhr3_callback_from_IXMLHTTPRequest3Callback(iface);
++    trace("(%p)->(%s %p)\n", This, debugstr_guid(riid), obj);
++
++    if (IsEqualGUID(riid, &IID_IXMLHTTPRequest3Callback) || IsEqualGUID(riid, &IID_IXMLHTTPRequest2Callback) || IsEqualGUID(riid, &IID_IUnknown))
++    {
++        IXMLHTTPRequest3Callback_AddRef(iface);
++        *obj = iface;
++        return S_OK;
++    }
++
++    ok(0, "unexpected interface %s\n", debugstr_guid(riid));
++    return E_NOINTERFACE;
++}
++
++static ULONG WINAPI xhr3_callback_AddRef(IXMLHTTPRequest3Callback *iface)
++{
++    struct xhr3_callback *This = xhr3_callback_from_IXMLHTTPRequest3Callback(iface);
++    ULONG ref = InterlockedIncrement(&This->ref);
++    trace("(%p)->(%lu)\n", This, ref);
++    return ref;
++}
++
++static ULONG WINAPI xhr3_callback_Release(IXMLHTTPRequest3Callback *iface)
++{
++    struct xhr3_callback *This = xhr3_callback_from_IXMLHTTPRequest3Callback(iface);
++    ULONG ref = InterlockedDecrement(&This->ref);
++    trace("(%p)->(%lu)\n", This, ref);
++    if (ref == 0) HeapFree(GetProcessHeap(), 0, This);
++    return ref;
++}
++
++static HRESULT WINAPI xhr3_callback_OnRedirect(IXMLHTTPRequest3Callback *iface,
++        IXMLHTTPRequest2 *request, const WCHAR* redirect_url)
++{
++    struct xhr3_callback *This = xhr3_callback_from_IXMLHTTPRequest3Callback(iface);
++    trace("(%p)->(%p %s)\n", This, request, debugstr_w(redirect_url));
++    return S_OK;
++}
++
++static HRESULT WINAPI xhr3_callback_OnHeadersAvailable(IXMLHTTPRequest3Callback *iface,
++        IXMLHTTPRequest2 *request, DWORD status, const WCHAR *status_str)
++{
++    struct xhr3_callback *This = xhr3_callback_from_IXMLHTTPRequest3Callback(iface);
++    WCHAR *header = NULL;
++    HRESULT hr;
++
++    trace("(%p)->(%p %lu %s)\n", This, request, status, debugstr_w(status_str));
++
++    header = (void *)0xdeadbeef;
++    hr = IXMLHTTPRequest2_GetResponseHeader(request, L"Content-Length", &header);
++    trace("Content-Length: %p (%s), hr %#lx\n", header, debugstr_w(header), hr);
++
++    return S_OK;
++}
++
++static HRESULT WINAPI xhr3_callback_OnDataAvailable(IXMLHTTPRequest3Callback *iface,
++        IXMLHTTPRequest2 *request, ISequentialStream *response)
++{
++    struct xhr3_callback *This = xhr3_callback_from_IXMLHTTPRequest3Callback(iface);
++    trace("(%p)->(%p %p)\n", This, request, response);
++    return S_OK;
++}
++
++static HRESULT WINAPI xhr3_callback_OnResponseReceived(IXMLHTTPRequest3Callback *iface,
++        IXMLHTTPRequest2 *request, ISequentialStream *response)
++{
++    struct xhr3_callback *This = xhr3_callback_from_IXMLHTTPRequest3Callback(iface);
++    WCHAR *header = NULL;
++    char *buffer = HeapAlloc( GetProcessHeap(), 0, 256 );
++    ULONG read_size = 0;
++    HRESULT hr;
++
++    memset(buffer, '?', 256);
++    buffer[255] = 0;
++
++    trace("(%p)->(%p %p)\n", This, request, response);
++
++    header = (void *)0xdeadbeef;
++    hr = IXMLHTTPRequest2_GetResponseHeader(request, L"Cache-Control", &header);
++    trace("Cache-Control: %p (%s), hr %#lx\n", header, debugstr_w(header), hr);
++
++    header = (void *)0xdeadbeef;
++    hr = IXMLHTTPRequest2_GetResponseHeader(request, L"Expires", &header);
++    trace("Expires: %p (%s), hr %#lx\n", header, debugstr_w(header), hr);
++
++    header = (void *)0xdeadbeef;
++    hr = IXMLHTTPRequest2_GetResponseHeader(request, L"Content-Type", &header);
++    trace("Content-Type: %p (%s), hr %#lx\n", header, debugstr_w(header), hr);
++
++    read_size = 0xdeadbeef;
++    hr = ISequentialStream_Read(response, buffer, 214, &read_size);
++    trace("Response: (%ld) %s, hr %#lx\n", read_size, debugstr_a(buffer), hr);
++
++    read_size = 0xdeadbeef;
++    hr = ISequentialStream_Read(response, buffer, 1, &read_size);
++    trace("Response: (%ld) %s, hr %#lx\n", read_size, debugstr_a(buffer), hr);
++
++    HeapFree( GetProcessHeap(), 0, buffer );
++    SetEvent(This->event);
++
++    return S_OK;
++}
++
++static HRESULT WINAPI xhr3_callback_OnError(IXMLHTTPRequest3Callback *iface,
++        IXMLHTTPRequest2 *request, HRESULT error)
++{
++    struct xhr3_callback *This = xhr3_callback_from_IXMLHTTPRequest3Callback(iface);
++    trace("(%p)->(%p %#lx)\n", This, request, error);
++    SetEvent(This->event);
++    return S_OK;
++}
++
++static HRESULT WINAPI xhr3_callback_OnServerCertificateReceived(IXMLHTTPRequest3Callback *iface,
++        IXMLHTTPRequest3 *request, DWORD errors, DWORD chain_size, const XHR_CERT *chain)
++{
++    struct xhr3_callback *This = xhr3_callback_from_IXMLHTTPRequest3Callback(iface);
++    trace("(%p)->(%p %lu %lu %p)\n", This, request, errors, chain_size, chain);
++    return S_OK;
++}
++
++static HRESULT WINAPI xhr3_callback_OnClientCertificateRequested(IXMLHTTPRequest3Callback *iface,
++        IXMLHTTPRequest3 *request, DWORD issuers_size, const WCHAR **issuers)
++{
++    struct xhr3_callback *This = xhr3_callback_from_IXMLHTTPRequest3Callback(iface);
++    trace("(%p)->(%p %lu %p)\n", This, request, issuers_size, issuers);
++    return S_OK;
++}
++
++static const IXMLHTTPRequest3CallbackVtbl xhr3_callback_vtbl =
++{
++    xhr3_callback_QueryInterface,
++    xhr3_callback_AddRef,
++    xhr3_callback_Release,
++    /* IXMLHTTPRequest2Callback methods */
++    xhr3_callback_OnRedirect,
++    xhr3_callback_OnHeadersAvailable,
++    xhr3_callback_OnDataAvailable,
++    xhr3_callback_OnResponseReceived,
++    xhr3_callback_OnError,
++    /* IXMLHTTPRequest3Callback methods */
++    xhr3_callback_OnServerCertificateReceived,
++    xhr3_callback_OnClientCertificateRequested,
++};
++
++static IXMLHTTPRequest2Callback* xhr3_callback_create(HANDLE event)
++{
++    struct xhr3_callback *This = HeapAlloc(GetProcessHeap(), 0, sizeof(*This));
++    ok(This != NULL, "failed to allocate object\n");
++    if (!This) return NULL;
++
++    This->IXMLHTTPRequest3Callback_iface.lpVtbl = &xhr3_callback_vtbl;
++    This->ref = 1;
++    This->event = event;
++
++    return (IXMLHTTPRequest2Callback*)&This->IXMLHTTPRequest3Callback_iface;
++}
++
++struct xhr2_stream
++{
++    IStream IStream_iface;
++    LONG ref;
++    IStream *stream;
++};
++
++static inline struct xhr2_stream *xhr2_stream_from_IStream(IStream *iface)
++{
++    return CONTAINING_RECORD(iface, struct xhr2_stream, IStream_iface);
++}
++
++static HRESULT WINAPI xhr2_stream_QueryInterface(IStream *iface, REFIID riid, void **obj)
++{
++    struct xhr2_stream *This = xhr2_stream_from_IStream(iface);
++    trace("(%p)->(%s %p)\n", This, debugstr_guid(riid), obj);
++
++    if (IsEqualGUID(riid, &IID_IStream) || IsEqualGUID(riid, &IID_ISequentialStream) || IsEqualGUID(riid, &IID_IUnknown))
++    {
++        IStream_AddRef(iface);
++        *obj = iface;
++        return S_OK;
++    }
++
++    ok(0, "unexpected interface %s\n", debugstr_guid(riid));
++    return E_NOINTERFACE;
++}
++
++static ULONG WINAPI xhr2_stream_AddRef(IStream *iface)
++{
++    struct xhr2_stream *This = xhr2_stream_from_IStream(iface);
++    ULONG ref = InterlockedIncrement(&This->ref);
++    trace("(%p)->(%lu)\n", This, ref);
++    return ref;
++}
++
++static ULONG WINAPI xhr2_stream_Release(IStream *iface)
++{
++    struct xhr2_stream *This = xhr2_stream_from_IStream(iface);
++    ULONG ref = InterlockedDecrement(&This->ref);
++    trace("(%p)->(%lu)\n", This, ref);
++    if (ref == 0)
++    {
++        IStream_Release(This->stream);
++        HeapFree(GetProcessHeap(), 0, This);
++    }
++    return ref;
++}
++
++static HRESULT WINAPI xhr2_stream_Read(IStream *iface, void *pv, ULONG cb,
++        ULONG *pcbRead)
++{
++    struct xhr2_stream *This = xhr2_stream_from_IStream(iface);
++    trace("(%p)->(%p %lu %p)\n", This, pv, cb, pcbRead);
++    return IStream_Read(This->stream, pv, cb, pcbRead);
++}
++
++static HRESULT WINAPI xhr2_stream_Write(IStream *iface, const void *pv,
++        ULONG cb, ULONG *pcbWritten)
++{
++    struct xhr2_stream *This = xhr2_stream_from_IStream(iface);
++    trace("(%p)->(%p %lu %p)\n", This, pv, cb, pcbWritten);
++    return IStream_Write(This->stream, pv, cb, pcbWritten);
++}
++
++static HRESULT WINAPI xhr2_stream_Seek(IStream *iface, LARGE_INTEGER dlibMove,
++        DWORD dwOrigin, ULARGE_INTEGER *plibNewPosition)
++{
++    struct xhr2_stream *This = xhr2_stream_from_IStream(iface);
++    trace("(%p)->(%I64u, %lu %p)\n", This, dlibMove.QuadPart, dwOrigin, plibNewPosition);
++    return IStream_Seek(This->stream, dlibMove, dwOrigin, plibNewPosition);
++}
++
++static HRESULT WINAPI xhr2_stream_SetSize(IStream *iface, ULARGE_INTEGER libNewSize)
++{
++    struct xhr2_stream *This = xhr2_stream_from_IStream(iface);
++    trace("(%p)->(%I64u)\n", This, libNewSize.QuadPart);
++    return IStream_SetSize(This->stream, libNewSize);
++}
++
++static HRESULT WINAPI xhr2_stream_CopyTo(IStream *iface, IStream *pstm,
++        ULARGE_INTEGER cb, ULARGE_INTEGER *pcbRead, ULARGE_INTEGER *pcbWritten)
++{
++    struct xhr2_stream *This = xhr2_stream_from_IStream(iface);
++    trace("(%p)->(%p %I64u %p %p)\n", This, pstm, cb.QuadPart, pcbRead, pcbWritten);
++    return IStream_CopyTo(This->stream, pstm, cb, pcbRead, pcbWritten);
++}
++
++static HRESULT WINAPI xhr2_stream_Commit(IStream *iface, DWORD grfCommitFlags)
++{
++    struct xhr2_stream *This = xhr2_stream_from_IStream(iface);
++    trace("(%p)->(%#lx)\n", This, grfCommitFlags);
++    return IStream_Commit(This->stream, grfCommitFlags);
++}
++
++static HRESULT WINAPI xhr2_stream_Revert(IStream *iface)
++{
++    struct xhr2_stream *This = xhr2_stream_from_IStream(iface);
++    trace("(%p)->()\n", This);
++    return IStream_Revert(This->stream);
++}
++
++static HRESULT WINAPI xhr2_stream_LockRegion(IStream *iface, ULARGE_INTEGER libOffset,
++        ULARGE_INTEGER cb, DWORD dwLockType)
++{
++    struct xhr2_stream *This = xhr2_stream_from_IStream(iface);
++    trace("(%p)->(%I64u %I64u %lu)\n", This, libOffset.QuadPart, cb.QuadPart, dwLockType);
++    return IStream_LockRegion(This->stream, libOffset, cb, dwLockType);
++}
++
++static HRESULT WINAPI xhr2_stream_UnlockRegion(IStream *iface, ULARGE_INTEGER libOffset,
++        ULARGE_INTEGER cb, DWORD dwLockType)
++{
++    struct xhr2_stream *This = xhr2_stream_from_IStream(iface);
++    trace("(%p)->(%I64u %I64u %lu)\n", This, libOffset.QuadPart, cb.QuadPart, dwLockType);
++    return IStream_UnlockRegion(This->stream, libOffset, cb, dwLockType);
++}
++
++static HRESULT WINAPI xhr2_stream_Stat(IStream *iface, STATSTG *pstatstg, DWORD grfStatFlag)
++{
++    struct xhr2_stream *This = xhr2_stream_from_IStream(iface);
++    trace("(%p)->(%p %#lx)\n", This, pstatstg, grfStatFlag);
++    return IStream_Stat(This->stream, pstatstg, grfStatFlag);
++}
++
++static HRESULT WINAPI xhr2_stream_Clone(IStream *iface, IStream **ppstm)
++{
++    struct xhr2_stream *This = xhr2_stream_from_IStream(iface);
++    trace("(%p)->(%p)\n", This, ppstm);
++    return IStream_Clone(This->stream, ppstm);
++}
++
++static const IStreamVtbl xhr2_stream_vtbl =
++{
++    xhr2_stream_QueryInterface,
++    xhr2_stream_AddRef,
++    xhr2_stream_Release,
++    /* IStream methods */
++    xhr2_stream_Read,
++    xhr2_stream_Write,
++    xhr2_stream_Seek,
++    xhr2_stream_SetSize,
++    xhr2_stream_CopyTo,
++    xhr2_stream_Commit,
++    xhr2_stream_Revert,
++    xhr2_stream_LockRegion,
++    xhr2_stream_UnlockRegion,
++    xhr2_stream_Stat,
++    xhr2_stream_Clone
++};
++
++static ISequentialStream *xhr2_stream_create(void)
++{
++    struct xhr2_stream *This = HeapAlloc(GetProcessHeap(), 0, sizeof(*This));
++    ok(This != NULL, "failed to allocate object\n");
++    if (!This) return NULL;
++
++    This->IStream_iface.lpVtbl = &xhr2_stream_vtbl;
++    This->ref = 1;
++    CreateStreamOnHGlobal(NULL, TRUE, &This->stream);
++
++    return (ISequentialStream*)&This->IStream_iface;
++}
++
++static void test_IXMLHTTPRequest2(void)
++{
++    IXMLHTTPRequest2 *xhr2[16];
++    IXMLHTTPRequest2Callback *xhr3_callback;
++    ISequentialStream *stream;
++    HANDLE events[16];
++    HRESULT hr;
++    int i = 0;
++
++    if (!(xhr2[i] = create_xhr2()))
++    {
++        win_skip("IXMLHTTPRequest2 is not available\n");
++        return;
++    }
++
++    events[i] = CreateEventW(NULL, FALSE, FALSE, NULL);
++    if (!(xhr3_callback = xhr3_callback_create(events[i])))
++        return;
++
++    trace("%lu: IXMLHTTPRequest2_Open (%p)->(L\"GET\", L\"http://test.winehq.org/\", xhr3_callback, NULL, NULL, NULL, NULL)\n", GetCurrentThreadId(), xhr2[i]);
++    hr = IXMLHTTPRequest2_Open(xhr2[i], L"GET", L"http://test.winehq.org/", xhr3_callback, NULL, NULL, NULL, NULL);
++    ok(SUCCEEDED(hr), "IXMLHTTPRequest2_Send failed %#lx\n", hr);
++
++    if ((stream = xhr2_stream_create()))
++    {
++        trace("%lu: IXMLHTTPRequest2_Send (%p)->(%p 0)\n", GetCurrentThreadId(), xhr2[i], stream);
++        hr = IXMLHTTPRequest2_Send(xhr2[i], stream, 0);
++        ok(SUCCEEDED(hr), "IXMLHTTPRequest2_Send failed %#lx\n", hr);
++
++        ISequentialStream_Release(stream);
++    }
++
++    IXMLHTTPRequest2Callback_Release(xhr3_callback);
++    i++;
++
++    while (i--)
++    {
++        WaitForSingleObject(events[i], INFINITE);
++        IXMLHTTPRequest2_Release(xhr2[i]);
++    }
++}
++
+ START_TEST(httpreq)
+ {
+     IXMLHttpRequest *xhr;
+ 
+-    CoInitialize(NULL);
++    CoInitializeEx(NULL, COINIT_MULTITHREADED);
+ 
+     if (!(xhr = create_xhr()))
+     {
+@@ -1942,6 +2330,7 @@ START_TEST(httpreq)
+     test_server_xhr();
+     test_safe_httpreq();
+     test_supporterrorinfo();
++    test_IXMLHTTPRequest2();
+ 
+     CoUninitialize();
+ }
+diff --git a/dlls/msxml3/tests/saxreader.c b/dlls/msxml3/tests/saxreader.c
+index 34082ca59faf713b4fe2389ceb4bf055a1b3edf0..85650133b680f4b74b740913903616ba981149c7 100644
+--- a/dlls/msxml3/tests/saxreader.c
++++ b/dlls/msxml3/tests/saxreader.c
+@@ -30,6 +30,7 @@
+ #include "windows.h"
+ #include "ole2.h"
+ #include "msxml2.h"
++#include "msxml6.h"
+ #include "msxml2did.h"
+ #include "ocidl.h"
+ #include "dispex.h"
+diff --git a/dlls/msxml3/tests/schema.c b/dlls/msxml3/tests/schema.c
+index 50e5a743b82ff320c78ff61fe12829191ed929e0..c896f1e6a044eb2c6096f1e28fdf8334e3bbcaaf 100644
+--- a/dlls/msxml3/tests/schema.c
++++ b/dlls/msxml3/tests/schema.c
+@@ -32,6 +32,17 @@
+ #include "dispex.h"
+ #include "cguid.h"
+ 
++DEFINE_GUID(CLSID_FreeThreadedDOMDocument60, 0x88d96a06, 0xf192, 0x11d4, 0xa6,0x5f, 0x00,0x40,0x96,0x32,0x51,0xe5);
++DEFINE_GUID(CLSID_FreeThreadedXMLHTTP60, 0x88d96a09, 0xf192, 0x11d4, 0xa6,0x5f, 0x00,0x40,0x96,0x32,0x51,0xe5);
++DEFINE_GUID(CLSID_MXXMLWriter60, 0x88d96a0f, 0xf192, 0x11d4, 0xa6,0x5f, 0x00,0x40,0x96,0x32,0x51,0xe5);
++DEFINE_GUID(CLSID_SAXAttributes60, 0x88d96a0e, 0xf192, 0x11d4, 0xa6,0x5f, 0x00,0x40,0x96,0x32,0x51,0xe5);
++DEFINE_GUID(CLSID_SAXXMLReader60, 0x88d96a0c, 0xf192, 0x11d4, 0xa6,0x5f, 0x00,0x40,0x96,0x32,0x51,0xe5);
++DEFINE_GUID(CLSID_XMLSchemaCache60, 0x88d96a07, 0xf192, 0x11d4, 0xa6,0x5f, 0x00,0x40,0x96,0x32,0x51,0xe5);
++DEFINE_GUID(IID_IXMLHTTPRequest2, 0xe5d37dc0, 0x552a, 0x4d52, 0x9c,0xc0, 0xa1,0x4d,0x54,0x6f,0xbd,0x04);
++DEFINE_GUID(IID_IXMLHTTPRequest3, 0xa1c9feee, 0x0617, 0x4f23, 0x9d,0x58, 0x89,0x61,0xea,0x43,0x56,0x7c);
++DEFINE_GUID(IID_IXMLHTTPRequest2Callback, 0xa44a9299, 0xe321, 0x40de, 0x88,0x66, 0x34,0x1b,0x41,0x66,0x91,0x62);
++DEFINE_GUID(IID_IXMLHTTPRequest3Callback, 0xb9e57830, 0x8c6c, 0x4a6f, 0x9c,0x13, 0x47,0x77,0x2b,0xb0,0x47,0xbb);
++
+ #include "wine/test.h"
+ 
+ static const WCHAR xdr_schema1_uri[] = L"x-schema:test1.xdr";
+diff --git a/dlls/msxml3/uuid.c b/dlls/msxml3/uuid.c
+index 7e50b439146d464ff7fb4405e686184065e3e6f8..15318d3ad1d8adfbc4ae0dc08fbe888203d41a06 100644
+--- a/dlls/msxml3/uuid.c
++++ b/dlls/msxml3/uuid.c
+@@ -56,3 +56,9 @@
+  */
+ 
+ DEFINE_GUID(CLSID_XMLSchemaCache60, 0x88d96a07, 0xf192, 0x11d4, 0xa6, 0x5f, 0x00, 0x40, 0x96, 0x32, 0x51, 0xe5);
++
++DEFINE_GUID(CLSID_FreeThreadedXMLHTTP60, 0x88d96a09, 0xf192, 0x11d4, 0xa6,0x5f, 0x00,0x40,0x96,0x32,0x51,0xe5);
++DEFINE_GUID(IID_IXMLHTTPRequest2, 0xe5d37dc0, 0x552a, 0x4d52, 0x9c,0xc0, 0xa1,0x4d,0x54,0x6f,0xbd,0x04);
++DEFINE_GUID(IID_IXMLHTTPRequest3, 0xa1c9feee, 0x0617, 0x4f23, 0x9d,0x58, 0x89,0x61,0xea,0x43,0x56,0x7c);
++DEFINE_GUID(IID_IXMLHTTPRequest2Callback, 0xa44a9299, 0xe321, 0x40de, 0x88,0x66, 0x34,0x1b,0x41,0x66,0x91,0x62);
++DEFINE_GUID(IID_IXMLHTTPRequest3Callback, 0xb9e57830, 0x8c6c, 0x4a6f, 0x9c,0x13, 0x47,0x77,0x2b,0xb0,0x47,0xbb);
