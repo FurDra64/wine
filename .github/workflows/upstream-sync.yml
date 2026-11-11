@@ -123,8 +123,9 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TITLE="[upstream-sync] patch conflict at $UPSTREAM_SHA"
-          EXISTING="$(gh issue list -R FurDra64/wine --label upstream-conflict --state open --search "$UPSTREAM_SHA in:title" --json number --jq '.[0].number // empty' || true)"
+          PATCHSET="$(sed -n 's/^FAILED patchset=\([^ ]*\).*/\1/p' failed.txt | head -n 1)"
+          TITLE="[upstream-sync] patch conflict: $PATCHSET"
+          EXISTING="$(gh issue list -R FurDra64/wine --label upstream-conflict --state open --search "$PATCHSET in:title" --json number --jq '.[0].number // empty' || true)"
           BODY="$(cat <<EOF
           ## Upstream sync failed — patchset no longer applies
 
