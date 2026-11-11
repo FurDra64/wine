@@ -114,7 +114,7 @@ jobs:
 
       - name: Ensure label
         if: steps.patchcheck.outputs.failed == 'true' && inputs.dry_run != true
-        run: gh label create upstream-conflict --color B60205 --description "Upstream rebase broke a patchset" || true
+        run: gh label create upstream-conflict -R FurDra64/wine --color B60205 --description "Upstream rebase broke a patchset" || true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -124,7 +124,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TITLE="[upstream-sync] patch conflict at $UPSTREAM_SHA"
-          EXISTING="$(gh issue list --label upstream-conflict --state open --search "$UPSTREAM_SHA in:title" --json number --jq '.[0].number // empty')"
+          EXISTING="$(gh issue list -R FurDra64/wine --label upstream-conflict --state open --search "$UPSTREAM_SHA in:title" --json number --jq '.[0].number // empty' || true)"
           BODY="$(cat <<EOF
           ## Upstream sync failed — patchset no longer applies
 
@@ -166,9 +166,13 @@ jobs:
           EOF
           )"
           if [[ -n "$EXISTING" ]]; then
-            gh issue comment "$EXISTING" --body "$BODY"
+            gh issue comment -R FurDra64/wine "$EXISTING" --body "$BODY" || true
           else
-            gh issue create --title "$TITLE" --label upstream-conflict --body "$BODY"
+            # FurDra64/wine has Issues disabled: fall back to a PR so the
+            # failure is still visible. `|| true` keeps the job red for the
+            # patch conflict itself, not for a broken notifier.
+            gh issue create -R FurDra64/wine --title "$TITLE" --label upstream-conflict --body "$BODY" 2>/dev/null || \
+            gh pr create -R FurDra64/wine --base master --head "$CONFLICT_BRANCH" --title "$TITLE" --body "$BODY" || true
           fi
 
       - name: Upload log
