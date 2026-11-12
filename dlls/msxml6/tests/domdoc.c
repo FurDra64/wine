@@ -1195,7 +1195,7 @@ static void test_dtd_validation(void)
     hr = IXMLDOMParseError_get_errorCode(err, &res);
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
     /* XML_ELEMENT_ID_NOT_FOUND */
-    todo_wine ok(res == 0xC00CE00E, "Unexpected code %#lx.\n", res);
+    ok(res == 0xc00ce00e, "Unexpected code %#lx.\n", res);
     IXMLDOMParseError_Release(err);
 
     hr = IXMLDOMDocument2_loadXML(doc, _bstr_(email_xml_11), NULL);
@@ -1207,7 +1207,7 @@ static void test_dtd_validation(void)
     hr = IXMLDOMParseError_get_errorCode(err, &res);
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
     /* XML_EMPTY_NOT_ALLOWED */
-    todo_wine ok(res == 0xC00CE011, "Unexpected code %#lx.\n", res);
+    ok(res == 0xc00ce011, "Unexpected code %#lx.\n", res);
     IXMLDOMParseError_Release(err);
 
     hr = IXMLDOMDocument2_loadXML(doc, _bstr_(email_xml_13), NULL);
@@ -1231,7 +1231,7 @@ static void test_dtd_validation(void)
     hr = IXMLDOMParseError_get_errorCode(err, &res);
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
     /* XML_INVALID_CONTENT */
-    todo_wine ok(res == 0xC00CE014, "Unexpected code %#lx.\n", res);
+    ok(res == 0xc00ce014, "Unexpected code %#lx.\n", res);
     IXMLDOMParseError_Release(err);
 
     hr = IXMLDOMDocument2_loadXML(doc, _bstr_(email_xml_14_1), NULL);
@@ -1292,7 +1292,7 @@ static void test_dtd_validation(void)
     hr = IXMLDOMParseError_get_errorCode(err, &res);
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
     /* XML_ILLEGAL_TEXT */
-    todo_wine ok(res == 0xC00CE018, "Unexpected code %#lx.\n", res);
+    ok(res == 0xc00ce018, "Unexpected code %#lx.\n", res);
     IXMLDOMParseError_Release(err);
 
     hr = IXMLDOMDocument2_loadXML(doc, _bstr_(email_xml_18_1), NULL);
@@ -1678,6 +1678,37 @@ static void test_validateNode(void)
 
     IXMLDOMElement_Release(element);
     IXMLDOMDocumentFragment_Release(frag);
+
+    /* Validate detached element, that has same ID value as another in-tree element. */
+    hr = IXMLDOMDocument3_createElement(doc, _bstr_(L"attachment"), &element);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+    hr = IXMLDOMElement_put_text(element, _bstr_(L"some-text"));
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+    V_VT(&v) = VT_BSTR;
+    V_BSTR(&v) = _bstr_(L"patch1");
+    hr = IXMLDOMElement_setAttribute(element, _bstr_(L"id"), v);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+    /* Validated against existing tree. */
+    hr = IXMLDOMDocument3_validateNode(doc, (IXMLDOMNode *)element, &err);
+    ok(hr == S_FALSE, "Unexpected hr %#lx.\n", hr);
+    hr = IXMLDOMParseError_get_errorCode(err, &res);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+    todo_wine
+    ok(res == 0xc00ce200, "Unexpected code %#lx.\n", res);
+    IXMLDOMParseError_Release(err);
+
+    V_VT(&v) = VT_BSTR;
+    V_BSTR(&v) = _bstr_(L"patch2");
+    hr = IXMLDOMElement_setAttribute(element, _bstr_(L"id"), v);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+    hr = IXMLDOMDocument3_validateNode(doc, (IXMLDOMNode *)element, &err);
+    todo_wine
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+    IXMLDOMParseError_Release(err);
+
+    IXMLDOMElement_Release(element);
 
     IXMLDOMDocument3_Release(doc);
 
