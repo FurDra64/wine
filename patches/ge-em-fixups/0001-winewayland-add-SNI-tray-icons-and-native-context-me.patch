@@ -3035,11 +3035,14 @@ diff --git a/include/ntuser.h b/include/ntuser.h
 index 738253b..3ffdc7a 100644
 --- a/include/ntuser.h
 +++ b/include/ntuser.h
-@@ -642,7 +642,8 @@ enum wine_internal_message
+@@ -643,10 +643,11 @@ enum wine_internal_message
      WM_WINE_SWAPCHAIN_CREATE,
      WM_WINE_SWAPCHAIN_PRESENT,
      WM_WINE_SWAPCHAIN_DESTROY,
      WM_WINE_SETPIXELFORMAT,
+     WM_WINE_GETSCROLLBARINFO,
+     WM_WINE_GETSCROLLINFO,
+     WM_WINE_SETSCROLLINFO,
 +    WM_WINE_MAP_NOTIFY_ICON_POINT,
      WM_WINE_FIRST_DRIVER_MSG = 0x80001000,  /* range of messages reserved for the USER driver */
      WM_WINE_CLIPCURSOR = 0x80001ff0, /* internal driver notification messages */
