@@ -27,15 +27,18 @@ through to the hardcoded LO_DEFAULT builtin-first default.
 diff --git a/dlls/ntdll/unix/loadorder.c b/dlls/ntdll/unix/loadorder.c
 --- a/dlls/ntdll/unix/loadorder.c
 +++ b/dlls/ntdll/unix/loadorder.c
-@@ -497,6 +497,7 @@ enum loadorder get_load_order( const UNICODE_STRING *nt_name, BOOL is_system_dir
+@@ -511,9 +511,10 @@ enum loadorder get_load_order( const UNICODE_STRING *nt_name, BOOL is_system_dir
                                 const struct pe_mapping_info *pe_mapping )
  {
-     static const WCHAR prefixW[] = {'\\','?','?','\\'};
 +    static const WCHAR amd_ags_x64W[] = {'a','m','d','_','a','g','s','_','x','6','4',0};
+     static const WCHAR easyanticheat_x86W[] = {'e','a','s','y','a','n','t','i','c','h','e','a','t','_','x','8','6',0};
+     static const WCHAR easyanticheat_x64W[] = {'e','a','s','y','a','n','t','i','c','h','e','a','t','_','x','6','4',0};
+     static const WCHAR easyanticheatW[] = {'e','a','s','y','a','n','t','i','c','h','e','a','t',0};
+     static const WCHAR soW[] = {'.','s','o',0};
+
+     static const WCHAR prefixW[] = {'\\','?','?','\\'};
      enum loadorder ret = LO_INVALID;
-     const WCHAR *path = nt_name->Buffer;
-     unsigned int len = nt_name->Length / sizeof(WCHAR);
-@@ -536,6 +537,16 @@ enum loadorder get_load_order( const UNICODE_STRING *nt_name, BOOL is_system_dir
+@@ -606,6 +607,16 @@ enum loadorder get_load_order( const UNICODE_STRING *nt_name, BOOL is_system_dir
              TRACE( "got main exe default %s for %s\n", debugstr_loadorder(ret), debugstr_us(nt_name) );
              goto done;
          }

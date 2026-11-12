@@ -18,9 +18,9 @@ diff --git a/dlls/ntdll/unix/loader.c b/dlls/ntdll/unix/loader.c
 index 2cc53c36bf5..27f677bf381 100644
 --- a/dlls/ntdll/unix/loader.c
 +++ b/dlls/ntdll/unix/loader.c
-@@ -1845,6 +1845,107 @@ static ULONG_PTR get_image_address(void)
- #endif
-     return 0;
+@@ -1845,6 +1845,107 @@ static void hacks_init(void)
+     if (main_argc > 1 && strstr(main_argv[1], "edCefRenderProcess.exe"))
+         process_termination_delay = TRUE;
  }
 +static void patch_redundant_packed_split_lock(void)
 +{
