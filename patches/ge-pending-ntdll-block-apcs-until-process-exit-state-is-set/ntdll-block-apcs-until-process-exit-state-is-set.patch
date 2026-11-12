@@ -26,7 +26,7 @@ termination behavior. This does not skip process detach or force an exit.
 diff --git a/dlls/ntdll/unix/process.c b/dlls/ntdll/unix/process.c
 --- a/dlls/ntdll/unix/process.c
 +++ b/dlls/ntdll/unix/process.c
-@@ -965,14 +965,18 @@ NTSTATUS WINAPI NtTerminateProcess( HANDLE handle, LONG exit_code )
+@@ -965,15 +965,19 @@ NTSTATUS WINAPI NtTerminateProcess( HANDLE handle, LONG exit_code )
   */
  NTSTATUS WINAPI NtTerminateProcess( HANDLE handle, LONG exit_code )
  {
@@ -44,13 +44,14 @@ diff --git a/dlls/ntdll/unix/process.c b/dlls/ntdll/unix/process.c
 -        ret = wine_server_call( req );
 +        ret = server_call_unlocked( req );
          self = reply->self;
+         exit_code = reply->exit_code;
      }
      SERVER_END_REQ;
-@@ -979,8 +983,9 @@ NTSTATUS WINAPI NtTerminateProcess( HANDLE handle, LONG exit_code )
+@@ -980,8 +983,9 @@ NTSTATUS WINAPI NtTerminateProcess( HANDLE handle, LONG exit_code )
      if (self)
      {
-         if (!handle) process_exiting = TRUE;
-         else if (process_exiting) exit_process( exit_code );
+         if (process_exiting) exit_process( exit_code );
+         else if (!handle) process_exiting = TRUE;
          else abort_process( exit_code );
      }
 +    pthread_sigmask( SIG_SETMASK, &sigset, NULL );
