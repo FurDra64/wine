@@ -3035,8 +3035,9 @@ diff --git a/include/ntuser.h b/include/ntuser.h
 index 738253b..3ffdc7a 100644
 --- a/include/ntuser.h
 +++ b/include/ntuser.h
-@@ -642,6 +642,7 @@ enum wine_internal_message
+@@ -642,7 +642,8 @@ enum wine_internal_message
      WM_WINE_SWAPCHAIN_CREATE,
+     WM_WINE_SWAPCHAIN_PRESENT,
      WM_WINE_SWAPCHAIN_DESTROY,
      WM_WINE_SETPIXELFORMAT,
 +    WM_WINE_MAP_NOTIFY_ICON_POINT,
