@@ -19,15 +19,18 @@
 #
 # Options (order-independent; CLI values always override pins):
 #   --repo DIR        git repository (default: toplevel of current repo)
+#   --fork NAME       fork pins to resolve (default: valve; see docs/forks/README.md
+#                     spec v1: valve -> docs/valve/pins.conf else docs/forks/<fork>/pins.conf)
 #   --base REV        Valve delta base (default from pins.conf, else Wine 11.0)
 #   --source REV      Valve tip under test (default from pins.conf, else pinned tip)
 #   --upstream REV    integration base (default from pins.conf, else Wine 11.21)
 #   --remote URL      Valve remote URL for --fetch
 #   --ref REF         Valve branch for --fetch (default: bleeding-edge)
 #   --pins FILE       KEY=VALUE file (REMOTE REF BASE SOURCE UPSTREAM); when
-#                     omitted, <repo>/docs/valve/pins.conf is used if present
+#                     omitted, the fork default file above is used if present
 #
-# Single source of truth: docs/valve/pins.conf. CLI flags override pins
+# Single source of truth: the resolved pins file (docs/valve/pins.conf for
+# valve, docs/forks/<fork>/pins.conf otherwise; spec v1 in docs/forks/README.md).
 # no matter where they appear on the command line (two-pass parsing).
 # A live Valve ref overrides the pinned SOURCE for live reconstruction
 # while the recorded snapshot in pins.conf stays immutable; pass a live
@@ -46,6 +49,7 @@ FALLBACK_SOURCE="fda79a585939fb7512dc220a11249f9ffe825fcf"
 FALLBACK_UPSTREAM="2528aff26208257fdbf980666a4f0e66d47563ce"
 
 CLI_REPO=""
+CLI_FORK=""
 CLI_BASE=""
 CLI_SOURCE=""
 CLI_UPSTREAM=""
@@ -123,9 +127,27 @@ check_branch_ref() {
     fi
 }
 
+check_fork_name() {
+    local fork="$1"
+    if [[ ! "$fork" =~ ^[a-z0-9][a-z0-9-]*$ ]]; then
+        echo "error: malformed fork: $fork" >&2
+        exit 2
+    fi
+}
+
+resolve_default_pins_file() {
+    local repo="$1" fork="$2"
+    if [[ "$fork" == "valve" && -f "$repo/docs/valve/pins.conf" ]]; then
+        printf '%s' "$repo/docs/valve/pins.conf"
+    else
+        printf '%s' "$repo/docs/forks/$fork/pins.conf"
+    fi
+}
+
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --repo) [[ $# -ge 2 ]] || { echo "error: --repo needs a value" >&2; exit 2; } ; CLI_REPO="$2"; shift 2 ;;
+        --fork) [[ $# -ge 2 ]] || { echo "error: --fork needs a value" >&2; exit 2; } ; CLI_FORK="$2"; shift 2 ;;
         --base) [[ $# -ge 2 ]] || { echo "error: --base needs a value" >&2; exit 2; } ; CLI_BASE="$2"; shift 2 ;;
         --source) [[ $# -ge 2 ]] || { echo "error: --source needs a value" >&2; exit 2; } ; CLI_SOURCE="$2"; shift 2 ;;
         --upstream) [[ $# -ge 2 ]] || { echo "error: --upstream needs a value" >&2; exit 2; } ; CLI_UPSTREAM="$2"; shift 2 ;;
@@ -164,12 +186,20 @@ BASE="$FALLBACK_BASE"
 SOURCE="$FALLBACK_SOURCE"
 UPSTREAM="$FALLBACK_UPSTREAM"
 PINS_FROM="builtin-fallback"
+FORK="valve"
+if [[ -n "$CLI_FORK" ]]; then
+    check_fork_name "$CLI_FORK"
+    FORK="$CLI_FORK"
+fi
 if [[ -n "$CLI_PINS" ]]; then
     load_pins "$CLI_PINS"
     PINS_FROM="$CLI_PINS"
-elif [[ -f "$REPO/docs/valve/pins.conf" ]]; then
-    load_pins "$REPO/docs/valve/pins.conf"
-    PINS_FROM="$REPO/docs/valve/pins.conf"
+else
+    default_pins="$(resolve_default_pins_file "$REPO" "$FORK")"
+    if [[ -f "$default_pins" ]]; then
+        load_pins "$default_pins"
+        PINS_FROM="$default_pins"
+    fi
 fi
 if [[ -n "$CLI_REMOTE" ]]; then REMOTE="$CLI_REMOTE"; fi
 if [[ -n "$CLI_REF" ]]; then REF="$CLI_REF"; fi

@@ -1,0 +1,64 @@
+name: selftest
+
+# Local selftests (read-only): syntax gates + behavioral selftests with
+# local fixtures only. Never pushes, never opens issues/PRs, never sends
+# external messages, never touches the working tree beyond scratch logs.
+
+on:
+  schedule:
+    - cron: "0 2 * * *" # daily 02:00 UTC: cheap local gates
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: selftest
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash --noprofile --norc -euo pipefail -- {0}
+
+jobs:
+  selftest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (full history)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Syntax gate (bash -n all scripts)
+        run: |
+          bash -n scripts/apply-patches.sh
+          bash -n scripts/apply-patches-selftest.sh
+          bash -n scripts/new-patchset.sh
+          bash -n scripts/valve-track.sh
+          bash -n scripts/valve-track-selftest.sh
+
+      - name: Lint gate (shellcheck when available, else bash -n only)
+        run: |
+          if command -v shellcheck >/dev/null 2>&1; then
+            shellcheck scripts/apply-patches.sh scripts/apply-patches-selftest.sh scripts/new-patchset.sh scripts/valve-track.sh scripts/valve-track-selftest.sh
+          else
+            echo "shellcheck not available on runner; bash -n (previous step) is the syntax gate."
+          fi
+
+      - name: Behavioral selftest (apply-patches, local fixture, no network)
+        run: |
+          ./scripts/apply-patches-selftest.sh 2>&1 | tee apply-selftest.log
+
+      - name: Behavioral selftest (valve-track, local fixture, no network)
+        run: |
+          ./scripts/valve-track-selftest.sh 2>&1 | tee valve-selftest.log
+
+      - name: Upload selftest logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: selftest-logs
+          path: |
+            apply-selftest.log
+            valve-selftest.log
+          retention-days: 14

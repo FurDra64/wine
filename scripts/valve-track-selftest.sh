@@ -239,6 +239,31 @@ else
     ok "dash remote rejected"
 fi
 
+# 5e. fork pins resolver (spec v1): default file, missing file, bad line, CLI priority.
+mkdir -p "$FIX/docs/forks/cachyos"
+printf 'REMOTE=https://github.com/CachyOS/wine-cachyos.git\nREF=cachyos_11.0_release\nBASE=%s\nSOURCE=%s\nUPSTREAM=%s\n' "$BASE_SHA" "$SRC4_SHA" "$BASE_SHA" > "$FIX/docs/forks/cachyos/pins.conf"
+fout="$("$TRACK" --repo "$FIX" --fork cachyos --show-pins)"
+if echo "$fout" | grep -q "PINS_FROM=$FIX/docs/forks/cachyos/pins.conf"; then ok "fork default file resolved"; else bad "fork default file not resolved"; fi
+if echo "$fout" | grep -q "REMOTE=https://github.com/CachyOS/wine-cachyos.git"; then ok "fork remote resolved from pins"; else bad "fork remote not resolved"; fi
+fout="$("$TRACK" --repo "$FIX" --fork nosuchfork --show-pins)"
+if echo "$fout" | grep -q "PINS_FROM=builtin-fallback"; then ok "missing fork file falls back"; else bad "missing fork file did not fall back"; fi
+printf 'REMOTE=x\nREF=y\nBASE=%s\nBOGUS=1\nSOURCE=%s\nUPSTREAM=%s\n' "$BASE_SHA" "$SRC4_SHA" "$BASE_SHA" > "$FIX/docs/forks/cachyos/pins.conf"
+if "$TRACK" --repo "$FIX" --fork cachyos --show-pins > /dev/null 2>&1; then
+    bad "malformed fork pins accepted"
+else
+    ok "malformed fork pins rejected"
+fi
+printf 'REMOTE=https://github.com/CachyOS/wine-cachyos.git\nREF=cachyos_11.0_release\nBASE=%s\nSOURCE=%s\nUPSTREAM=%s\n' "$BASE_SHA" "$SRC4_SHA" "$BASE_SHA" > "$FIX/docs/forks/cachyos/pins.conf"
+fout="$("$TRACK" --repo "$FIX" --fork cachyos --pins "$ROOT/pins-zero.conf" --show-pins)"
+if echo "$fout" | grep -q "PINS_FROM=$ROOT/pins-zero.conf"; then ok "explicit pins beats fork default"; else bad "explicit pins did not beat fork"; fi
+fout="$("$TRACK" --repo "$FIX" --fork cachyos --source "$SRC2_SHA" --show-pins)"
+if echo "$fout" | grep -q "SOURCE=$SRC2_SHA"; then ok "CLI source beats fork pins"; else bad "CLI source did not beat fork pins"; fi
+if "$TRACK" --repo "$FIX" --fork '../evil' --show-pins > /dev/null 2>&1; then
+    bad "traversal fork accepted"
+else
+    ok "traversal fork rejected"
+fi
+
 # 6. fetch integration against a LOCAL remote: no-change, advance, rewrite,
 #    full branch paths preserved, shared branches unmoved.
 SRCREPO="$ROOT/srcrepo"
