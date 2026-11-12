@@ -128,15 +128,22 @@ index 28115daae6825a651e189aadc7c5b5c497968b4d..30836102b6de02d5ed6c3fbe6704015e
  /******************************************************************
   *		LdrGetProcedureAddress  (NTDLL.@)
   */
-@@ -2166,7 +2261,7 @@ NTSTATUS WINAPI LdrGetProcedureAddress(HMODULE module, const ANSI_STRING *name,
+@@ -2070,7 +2164,15 @@ NTSTATUS WINAPI LdrGetProcedureAddress(HMODULE module, const ANSI_STRING *name,
      {
-         void *proc = name ? find_named_export( module, exports, exp_size, name->Buffer, -1, NULL, wm, TRUE )
-                           : find_ordinal_export( module, exports, exp_size, ord - exports->Base, NULL, wm, TRUE );
--        if (proc)
-+        if (proc && !is_hidden_export( proc ))
-         {
-             *address = proc;
-             ret = STATUS_SUCCESS;
+         if (name)
+             ret = find_named_export( &context, name->Buffer, -1, (FARPROC *)address );
+         else
+             ret = find_ordinal_export( &context, ord - context.exports->Base, (FARPROC *)address );
++
++        /* Hide Wine version exports when HideWineExports is set. */
++        if (!ret && is_hidden_export( *address ))
++        {
++            *address = NULL;
++            ret = STATUS_PROCEDURE_NOT_FOUND;
++        }
++
+ 
+         if (ret) WARN( "%s (ordinal %lu) not found in %s\n", debugstr_a(name ? name->Buffer : NULL),
 @@ -2368,4 +2368,6 @@ static void *build_ntdll_module(void)
      node_ntdll = wm->ldr.DdagNode;
      TRACE_(loaddll)( "Loaded %s at %p: builtin\n", debugstr_w(wm->ldr.FullDllName.Buffer), module);
