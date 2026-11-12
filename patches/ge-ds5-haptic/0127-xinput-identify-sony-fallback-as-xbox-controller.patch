@@ -22,13 +22,13 @@ diff --git a/dlls/xinput1_3/main.c b/dlls/xinput1_3/main.c
 index 5b8b7496..cd2c7336 100644
 --- a/dlls/xinput1_3/main.c
 +++ b/dlls/xinput1_3/main.c
-@@ -1207,9 +1207,19 @@ DWORD WINAPI DECLSPEC_HOTPATCH XInputGetCapabilitiesEx(DWORD unk, DWORD index, D
-     else
-     {
-         caps->Capabilities = controllers[index].caps;
+@@ -1287,9 +1287,19 @@ DWORD WINAPI DECLSPEC_HOTPATCH XInputGetCapabilitiesEx(DWORD unk, DWORD index, D
+         caps->Capabilities.Gamepad.sThumbRY = ~0x3f;
+         caps->Capabilities.Vibration.wLeftMotorSpeed = 0xff;
+         caps->Capabilities.Vibration.wRightMotorSpeed = 0xff;
+ 
 -        caps->VendorId = attr.VendorID;
 -        caps->ProductId = attr.ProductID;
-         caps->VersionNumber = attr.VersionNumber;
 +        if (controllers[index].hid.is_sony_gamepad)
 +        {
 +            caps->Capabilities.Type = XINPUT_DEVTYPE_GAMEPAD;
@@ -41,6 +41,6 @@ index 5b8b7496..cd2c7336 100644
 +            caps->VendorId = attr.VendorID;
 +            caps->ProductId = attr.ProductID;
 +        }
-     }
+         caps->VersionNumber = attr.VersionNumber;
  
-     LeaveCriticalSection(&xinput_cs);
+         /* CW-Bug-Id: #23185 Emulate Steam Input native hooks for native SDL */
