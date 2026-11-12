@@ -4,8 +4,8 @@ name: valve-track
 # fetch the live Valve ref, regenerate inventory + conflict list +
 # reconstruction proof, upload as artifacts, then fail the final gate when
 # live source OR live upstream drifted from the recorded snapshot so a human
-# reviews the port. Never pushes, never opens issues/PRs, never sends
-# external messages, never auto-merges.
+# reviews the port. Never pushes, never opens PRs, never sends
+# external messages, never auto-merges. Opens an Issue on drift only.
 
 on:
   schedule:
@@ -14,6 +14,7 @@ on:
 
 permissions:
   contents: read
+  issues: write
 
 concurrency:
   group: valve-track
@@ -168,6 +169,71 @@ jobs:
             exit 1
           fi
           echo "no drift: source and upstream match the recorded snapshot."
+
+      - name: Ensure label
+        if: failure() && env.DRIFT == 'yes'
+        run: gh label create valve-drift --color B60205 --description "Valve tracking drift needs port review" || true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Open or update Issue
+        if: failure() && env.DRIFT == 'yes'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          live_source="$(git rev-parse "refs/task/valve/$VALVE_REF")"
+          live_upstream="$(git rev-parse refs/remotes/origin/upstream)"
+          TITLE="[valve-track] drift source=$live_source upstream=$live_upstream"
+          EXISTING="$(gh issue list --label valve-drift --state open --search "$live_source in:title" --json number --jq '.[0].number // empty')"
+          BODY="$(cat <<EOF
+          ## Valve tracking drift — port review required
+
+          - Source snapshot (pins.conf): \`$PINNED_SOURCE\`
+          - Source live: \`$live_source\` (${SRC_KIND:-unknown})
+          - Upstream snapshot (pins.conf): \`$PINNED_UPSTREAM\`
+          - Upstream live: \`$live_upstream\` (${UPS_KIND:-unknown})
+          - Date (UTC): $(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+          <details><summary>Conflict list (head)</summary>
+
+          \`\`\`
+          $(head -n 50 valve-conflicts.txt)
+          \`\`\`
+
+          </details>
+
+          <details><summary>Reconstruction proof (tail)</summary>
+
+          \`\`\`
+          $(tail -n 50 verify.log)
+          \`\`\`
+
+          </details>
+
+          Artifacts: \`valve-track-report\` for this run (fetch.log, pins.log, valve-inventory.tsv, valve-conflicts.txt, verify.log; 14-day retention).
+
+          ## Repair (human or AI agent)
+
+          \`\`\`bash
+          ./scripts/valve-track.sh --show-pins
+          ./scripts/valve-track.sh --check-pins   # reproduces this drift
+          \`\`\`
+
+          1. Refresh pins.conf + snapshots per docs/VALVE-TRACKING.md.
+          2. Review the port before the next sync.
+          3. Never push from this workflow; never open PRs from it.
+
+          ## Safety
+
+          - Tracking is read-only; this workflow pushes nothing.
+          - Do not edit Valve source directly — update pins/snapshots.
+          EOF
+          )"
+          if [[ -n "$EXISTING" ]]; then
+            gh issue comment "$EXISTING" --body "$BODY"
+          else
+            gh issue create --title "$TITLE" --label valve-drift --body "$BODY"
+          fi
 
       - name: Cleanup scratch export
         if: always()
