@@ -1,0 +1,3562 @@
+diff --git a/autogen.sh b/autogen.sh
+new file mode 100755
+index 00000000000..0e3ca52c178
+--- /dev/null
++++ b/autogen.sh
+@@ -0,0 +1,9 @@
++#!/bin/sh
++set -e
++tools/make_requests
++tools/make_specfiles
++dlls/winevulkan/make_vulkan -x vk.xml -X video.xml
++autoreconf -ifv
++rm -rf autom4te.cache
++
++echo "Now run ./configure"
+diff --git a/configure b/configure
+index 20985fb2730..84359c1abae 100755
+--- a/configure
++++ b/configure
+@@ -633,6 +633,10 @@ EXTERNAL_SUBDIRS
+ RT_LIBS
+ WINELOADER_PROGRAMS
+ MSVCRTFLAGS
++PIPER_LIBS
++PIPER_CFLAGS
++GCRYPT_LIBS
++GCRYPT_CFLAGS
+ NETAPI_LIBS
+ NETAPI_CFLAGS
+ PROCSTAT_LIBS
+@@ -674,6 +678,12 @@ USB_LIBS
+ USB_CFLAGS
+ SANE_LIBS
+ SANE_CFLAGS
++GMP_LIBS
++GMP_CFLAGS
++DRMAMDGPU_LIBS
++DRMAMDGPU_CFLAGS
++DRM_LIBS
++DRM_CFLAGS
+ HWLOC_LIBS
+ HWLOC_CFLAGS
+ GNUTLS_LIBS
+@@ -944,6 +954,7 @@ with_dbus
+ with_ffmpeg
+ with_fontconfig
+ with_freetype
++with_gcrypt
+ with_gettext
+ with_gettextpo
+ with_gphoto
+@@ -960,6 +971,7 @@ with_opengl
+ with_oss
+ with_pcap
+ with_pcsclite
++with_piper
+ with_pthread
+ with_pulse
+ with_sane
+@@ -968,6 +980,7 @@ with_udev
+ with_usb
+ with_v4l2
+ with_va
++with_vosk
+ with_vulkan
+ with_wayland
+ with_xcomposite
+@@ -997,11 +1010,14 @@ enable_advapi32
+ enable_advpack
+ enable_aero_msstyles
+ enable_amsi
++enable_amd_ags_x64
++enable_amdxc64
+ enable_amstream
+ enable_apisetschema
+ enable_apphelp
+ enable_appwiz_cpl
+ enable_appxdeploymentclient
++enable_atiadlxx
+ enable_atl
+ enable_atl100
+ enable_atl110
+@@ -1009,6 +1025,7 @@ enable_atl80
+ enable_atl90
+ enable_atlthunk
+ enable_atmlib
++enable_audioses
+ enable_authz
+ enable_avicap32
+ enable_avifil32
+@@ -1221,6 +1238,7 @@ enable_ieframe
+ enable_ieproxy
+ enable_iertutil
+ enable_ifsmgr_vxd
++enable_igd10iumd64
+ enable_imaadp32_acm
+ enable_imagehlp
+ enable_imm
+@@ -1397,6 +1415,7 @@ enable_ntdll
+ enable_ntdsapi
+ enable_ntoskrnl_exe
+ enable_ntprint
++enable_nvcuda
+ enable_objsel
+ enable_odbc32
+ enable_odbcbcp
+@@ -1431,6 +1450,7 @@ enable_printui
+ enable_prntvpt
+ enable_profapi
+ enable_propsys
++enable_protontts
+ enable_psapi
+ enable_pstorec
+ enable_pwrshplugin
+@@ -1770,11 +1790,13 @@ enable_xml2
+ enable_xslt
+ enable_zlib
+ enable_loader
++enable_loader64
+ enable_nls
+ enable_po
+ enable_arp
+ enable_aspnet_regiis
+ enable_attrib
++enable_belauncher
+ enable_cabarc
+ enable_cacls
+ enable_certutil
+@@ -1787,6 +1809,7 @@ enable_cscript
+ enable_dism
+ enable_dllhost
+ enable_dplaysvr
++enable_dotnetfx35
+ enable_dpnsvr
+ enable_dpvsetup
+ enable_dxdiag
+@@ -1798,6 +1821,7 @@ enable_fc
+ enable_find
+ enable_findstr
+ enable_fsutil
++enable_getminidump
+ enable_hh
+ enable_hostname
+ enable_icacls
+@@ -1851,6 +1875,7 @@ enable_start
+ enable_subst
+ enable_svchost
+ enable_systeminfo
++enable_tabtip
+ enable_taskkill
+ enable_tasklist
+ enable_taskmgr
+@@ -1986,6 +2011,12 @@ GNUTLS_CFLAGS
+ GNUTLS_LIBS
+ HWLOC_CFLAGS
+ HWLOC_LIBS
++DRM_CFLAGS
++DRM_LIBS
++DRMAMDGPU_CFLAGS
++DRMAMDGPU_LIBS
++GMP_CFLAGS
++GMP_LIBS
+ SANE_CFLAGS
+ SANE_LIBS
+ USB_CFLAGS
+@@ -2021,7 +2052,11 @@ KRB5_LIBS
+ GSSAPI_CFLAGS
+ GSSAPI_LIBS
+ NETAPI_CFLAGS
+-NETAPI_LIBS'
++NETAPI_LIBS
++GCRYPT_CFLAGS
++GCRYPT_LIBS
++PIPER_CFLAGS
++PIPER_LIBS'
+ 
+ 
+ # Initialize some variables set by options.
+@@ -2675,6 +2710,7 @@ Optional Packages:
+   --without-ffmpeg        do not use the FFmpeg library
+   --without-fontconfig    do not use fontconfig
+   --without-freetype      do not use the FreeType library
++  --without-gcrypt        do not use libgcrypt
+   --without-gettext       do not use gettext
+   --with-gettextpo        use the GetTextPO library to rebuild po files
+   --without-gphoto        do not use gphoto (Digital Camera support)
+@@ -2692,6 +2728,7 @@ Optional Packages:
+   --without-oss           do not use the OSS sound support
+   --without-pcap          do not use the Packet Capture library
+   --without-pcsclite      do not use PCSC lite
++  --without-piper         do not use the Piper TTS library
+   --without-pthread       do not use the pthread library
+   --without-pulse         do not use PulseAudio sound support
+   --without-sane          do not use SANE (scanner support)
+@@ -2700,6 +2737,7 @@ Optional Packages:
+   --without-usb           do not use the libusb library
+   --without-v4l2          do not use v4l2 (video capture)
+   --without-va            do not use VA-API (hardware video decoding)
++  --without-vosk          do not use Vosk
+   --without-vulkan        do not use Vulkan
+   --without-wayland       do not build the Wayland driver
+   --without-xcomposite    do not use the Xcomposite extension
+@@ -2878,6 +2916,14 @@ Some influential environment variables:
+   HWLOC_CFLAGS
+               C compiler flags for hwloc, overriding pkg-config
+   HWLOC_LIBS  Linker flags for hwloc, overriding pkg-config
++  DRM_CFLAGS  C compiler flags for libdrm, overriding pkg-config
++  DRM_LIBS    Linker flags for libdrm, overriding pkg-config
++  DRMAMDGPU_CFLAGS
++              C compiler flags for libdrm_amdgpu, overriding pkg-config
++  DRMAMDGPU_LIBS
++              Linker flags for libdrm_amdgpu, overriding pkg-config
++  GMP_CFLAGS  C compiler flags for gmp, overriding pkg-config
++  GMP_LIBS    Linker flags for gmp, overriding pkg-config
+   SANE_CFLAGS C compiler flags for sane-backends, overriding pkg-config
+   SANE_LIBS   Linker flags for sane-backends, overriding pkg-config
+   USB_CFLAGS  C compiler flags for libusb-1.0, overriding pkg-config
+@@ -2906,10 +2952,12 @@ Some influential environment variables:
+               pkg-config
+   GSTREAMER_CFLAGS
+               C compiler flags for gstreamer-1.0 gstreamer-video-1.0
+-              gstreamer-audio-1.0 gstreamer-tag-1.0, overriding pkg-config
++              gstreamer-audio-1.0 gstreamer-tag-1.0 gstreamer-gl-1.0,
++              overriding pkg-config
+   GSTREAMER_LIBS
+               Linker flags for gstreamer-1.0 gstreamer-video-1.0
+-              gstreamer-audio-1.0 gstreamer-tag-1.0, overriding pkg-config
++              gstreamer-audio-1.0 gstreamer-tag-1.0 gstreamer-gl-1.0,
++              overriding pkg-config
+   ALSA_CFLAGS C compiler flags for alsa, overriding pkg-config
+   ALSA_LIBS   Linker flags for alsa, overriding pkg-config
+   UDEV_CFLAGS C compiler flags for libudev, overriding pkg-config
+@@ -2933,6 +2981,12 @@ Some influential environment variables:
+   NETAPI_CFLAGS
+               C compiler flags for netapi, overriding pkg-config
+   NETAPI_LIBS Linker flags for netapi, overriding pkg-config
++  GCRYPT_CFLAGS
++              C compiler flags for libgcrypt, overriding pkg-config
++  GCRYPT_LIBS Linker flags for libgcrypt, overriding pkg-config
++  PIPER_CFLAGS
++              C compiler flags for piper, overriding pkg-config
++  PIPER_LIBS  Linker flags for piper, overriding pkg-config
+ 
+ Use these variables to override the choices made by 'configure' or to help
+ it to find libraries and programs with nonstandard names/locations.
+@@ -4395,6 +4449,13 @@ then :
+ fi
+ 
+ 
++# Check whether --with-gcrypt was given.
++if test ${with_gcrypt+y}
++then :
++  withval=$with_gcrypt;
++fi
++
++
+ # Check whether --with-gettext was given.
+ if test ${with_gettext+y}
+ then :
+@@ -4507,6 +4568,13 @@ then :
+ fi
+ 
+ 
++# Check whether --with-piper was given.
++if test ${with_piper+y}
++then :
++  withval=$with_piper;
++fi
++
++
+ # Check whether --with-pthread was given.
+ if test ${with_pthread+y}
+ then :
+@@ -4563,6 +4631,13 @@ then :
+ fi
+ 
+ 
++# Check whether --with-vosk was given.
++if test ${with_vosk+y}
++then :
++  withval=$with_vosk;
++fi
++
++
+ # Check whether --with-vulkan was given.
+ if test ${with_vulkan+y}
+ then :
+@@ -10917,6 +10992,12 @@ if test "x$ac_cv_header_linux_fs_h" = xyes
+ then :
+   printf '%s\n' "#define HAVE_LINUX_FS_H 1" >>confdefs.h
+ 
++fi
++ac_fn_c_check_header_compile "$LINENO" "linux/futex.h" "ac_cv_header_linux_futex_h" "$ac_includes_default"
++if test "x$ac_cv_header_linux_futex_h" = xyes
++then :
++  printf '%s\n' "#define HAVE_LINUX_FUTEX_H 1" >>confdefs.h
++
+ fi
+ ac_fn_c_check_header_compile "$LINENO" "linux/hdreg.h" "ac_cv_header_linux_hdreg_h" "$ac_includes_default"
+ if test "x$ac_cv_header_linux_hdreg_h" = xyes
+@@ -11127,6 +11208,12 @@ if test "x$ac_cv_header_sys_event_h" = xyes
+ then :
+   printf '%s\n' "#define HAVE_SYS_EVENT_H 1" >>confdefs.h
+ 
++fi
++ac_fn_c_check_header_compile "$LINENO" "sys/eventfd.h" "ac_cv_header_sys_eventfd_h" "$ac_includes_default"
++if test "x$ac_cv_header_sys_eventfd_h" = xyes
++then :
++  printf '%s\n' "#define HAVE_SYS_EVENTFD_H 1" >>confdefs.h
++
+ fi
+ ac_fn_c_check_header_compile "$LINENO" "sys/extattr.h" "ac_cv_header_sys_extattr_h" "$ac_includes_default"
+ if test "x$ac_cv_header_sys_extattr_h" = xyes
+@@ -11320,6 +11407,12 @@ then :
+   printf '%s\n' "#define HAVE_VALGRIND_VALGRIND_H 1" >>confdefs.h
+ 
+ fi
++ac_fn_c_check_header_compile "$LINENO" "vosk_api.h" "ac_cv_header_vosk_api_h" "$ac_includes_default"
++if test "x$ac_cv_header_vosk_api_h" = xyes
++then :
++  printf '%s\n' "#define HAVE_VOSK_API_H 1" >>confdefs.h
++
++fi
+ 
+ 
+ ac_fn_c_check_header_compile "$LINENO" "sys/mkdev.h" "ac_cv_header_sys_mkdev_h" "$ac_includes_default"
+@@ -17462,136 +17555,51 @@ fi
+     esac
+ fi
+ 
+-if test "x$with_sane" != "xno"
+-then
+-    rm -f conftest.err
+-if ${SANE_CFLAGS:+false} :
+-then :
+-  if test ${PKG_CONFIG+y}
+-then :
+-  SANE_CFLAGS=`$PKG_CONFIG --cflags sane-backends 2>conftest.err`
+-fi
+-fi
+-test "$cross_compiling" = yes || SANE_CFLAGS=${SANE_CFLAGS:-`${SANE_CONFIG:-sane-config} --cflags 2>/dev/null`}
+-if ${SANE_LIBS:+false} :
+-then :
+-  if test ${PKG_CONFIG+y}
+-then :
+-  SANE_LIBS=`$PKG_CONFIG --libs sane-backends 2>/dev/null`
+-fi
+-fi
+-test "$cross_compiling" = yes || SANE_LIBS=${SANE_LIBS:-`${SANE_CONFIG:-sane-config} --ldflags 2>/dev/null`}
+-
+-printf '%s\n' "$as_me:${as_lineno-$LINENO}: sane-backends cflags: $SANE_CFLAGS" >&5
+-printf '%s\n' "$as_me:${as_lineno-$LINENO}: sane-backends libs: $SANE_LIBS" >&5
+-if test -s conftest.err; then
+-     printf %s "$as_me:${as_lineno-$LINENO}: sane-backends errors: " >&5
+-     cat conftest.err >&5
+-fi
+ rm -f conftest.err
+-if test -n "$SANE_CFLAGS$SANE_LIBS"
+-then :
+-  ac_save_pkg_CPPFLAGS=$CPPFLAGS
+-ac_save_pkg_LIBS=$LIBS
+-CPPFLAGS="$CPPFLAGS $SANE_CFLAGS"
+-LIBS="$SANE_LIBS $LIBS"
+-ac_fn_c_check_header_compile "$LINENO" "sane/sane.h" "ac_cv_header_sane_sane_h" "$ac_includes_default"
+-if test "x$ac_cv_header_sane_sane_h" = xyes
+-then :
+-  ac_fn_c_check_func "$LINENO" "sane_init" "ac_cv_func_sane_init"
+-if test "x$ac_cv_func_sane_init" = xyes
+-then :
+-
+-fi
+-
+-fi
+-
+-CPPFLAGS=$ac_save_pkg_CPPFLAGS
+-LIBS=$ac_save_pkg_LIBS
+-fi
+-
+-fi
+-if test "$ac_cv_func_sane_init" != "yes"
+-then :
+-  case "x$with_sane" in
+-  x)   as_fn_append wine_notices "|libsane ${notice_platform}development files not found, scanners won't be supported." ;;
+-  xno) ;;
+-  *)   as_fn_error $? "libsane ${notice_platform}development files not found, scanners won't be supported.
+-This is an error since --with-sane was requested." "$LINENO" 5 ;;
+-esac
+-enable_sane_ds=${enable_sane_ds:-no}
+-fi
+-
+-if test "x$with_usb" != "xno"
+-then
+-    rm -f conftest.err
+-if ${USB_CFLAGS:+false} :
++if ${DRM_CFLAGS:+false} :
+ then :
+   if test ${PKG_CONFIG+y}
+ then :
+-  USB_CFLAGS=`$PKG_CONFIG --cflags libusb-1.0 2>conftest.err`
++  DRM_CFLAGS=`$PKG_CONFIG --cflags libdrm 2>conftest.err`
+ fi
+ fi
+ 
+-if ${USB_LIBS:+false} :
++if ${DRM_LIBS:+false} :
+ then :
+   if test ${PKG_CONFIG+y}
+ then :
+-  USB_LIBS=`$PKG_CONFIG --libs libusb-1.0 2>/dev/null`
++  DRM_LIBS=`$PKG_CONFIG --libs libdrm 2>/dev/null`
+ fi
+ fi
+ 
+-USB_LIBS=${USB_LIBS:-"-lusb-1.0"}
+-printf '%s\n' "$as_me:${as_lineno-$LINENO}: libusb-1.0 cflags: $USB_CFLAGS" >&5
+-printf '%s\n' "$as_me:${as_lineno-$LINENO}: libusb-1.0 libs: $USB_LIBS" >&5
++
++printf '%s\n' "$as_me:${as_lineno-$LINENO}: libdrm cflags: $DRM_CFLAGS" >&5
++printf '%s\n' "$as_me:${as_lineno-$LINENO}: libdrm libs: $DRM_LIBS" >&5
+ if test -s conftest.err; then
+-     printf %s "$as_me:${as_lineno-$LINENO}: libusb-1.0 errors: " >&5
++     printf %s "$as_me:${as_lineno-$LINENO}: libdrm errors: " >&5
+      cat conftest.err >&5
+ fi
+ rm -f conftest.err
+-if test -n "$USB_CFLAGS$USB_LIBS"
++if test -n "$DRM_CFLAGS$DRM_LIBS"
+ then :
+   ac_save_pkg_CPPFLAGS=$CPPFLAGS
+ ac_save_pkg_LIBS=$LIBS
+-CPPFLAGS="$CPPFLAGS $USB_CFLAGS"
+-LIBS="$USB_LIBS $LIBS"
+-ac_fn_c_check_header_compile "$LINENO" "libusb.h" "ac_cv_header_libusb_h" "$ac_includes_default"
+-if test "x$ac_cv_header_libusb_h" = xyes
+-then :
+-  ac_fn_c_check_func "$LINENO" "libusb_interrupt_event_handler" "ac_cv_func_libusb_interrupt_event_handler"
+-if test "x$ac_cv_func_libusb_interrupt_event_handler" = xyes
+-then :
+-
+-fi
+-
+-fi
+-
+-CPPFLAGS=$ac_save_pkg_CPPFLAGS
+-LIBS=$ac_save_pkg_LIBS
+-fi
+-
+-fi
+-if test "$ac_cv_func_libusb_interrupt_event_handler" != "yes"
++CPPFLAGS="$CPPFLAGS $DRM_CFLAGS"
++LIBS="$DRM_LIBS $LIBS"
++       for ac_header in xf86drm.h
++do :
++  ac_fn_c_check_header_compile "$LINENO" "xf86drm.h" "ac_cv_header_xf86drm_h" "$ac_includes_default"
++if test "x$ac_cv_header_xf86drm_h" = xyes
+ then :
+-  case "x$with_usb" in
+-  x)   as_fn_append wine_notices "|libusb-1.0 ${notice_platform}development files not found (or too old), USB devices won't be supported." ;;
+-  xno) ;;
+-  *)   as_fn_error $? "libusb-1.0 ${notice_platform}development files not found (or too old), USB devices won't be supported.
+-This is an error since --with-usb was requested." "$LINENO" 5 ;;
+-esac
+-enable_wineusb_sys=${enable_wineusb_sys:-no}
+-fi
+-
+-if test "x$with_v4l2" != "xno"
+-then
+-    { printf '%s\n' "$as_me:${as_lineno-$LINENO}: checking for -lv4l2" >&5
+-printf %s "checking for -lv4l2... " >&6; }
+-if test ${ac_cv_lib_soname_v4l2+y}
++  printf '%s\n' "#define HAVE_XF86DRM_H 1" >>confdefs.h
++ { printf '%s\n' "$as_me:${as_lineno-$LINENO}: checking for -ldrm" >&5
++printf %s "checking for -ldrm... " >&6; }
++if test ${ac_cv_lib_soname_drm+y}
+ then :
+   printf %s "(cached) " >&6
+ else case e in #(
+   e) ac_check_soname_save_LIBS=$LIBS
+-LIBS="-lv4l2  $LIBS"
++LIBS="-ldrm $DRM_LIBS $LIBS"
+   cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+ /* end confdefs.h.  */
+ 
+@@ -17604,11 +17612,11 @@ LIBS="-lv4l2  $LIBS"
+ #ifdef __cplusplus
+ extern "C"
+ #endif
+-char v4l2_open (void);
++char drmOpen (void);
+ int
+ main (void)
+ {
+-return v4l2_open ();
++return drmOpen ();
+   ;
+   return 0;
+ }
+@@ -17616,16 +17624,16 @@ _ACEOF
+ if ac_fn_c_try_link "$LINENO"
+ then :
+   case "$LIBEXT" in
+-    dll) ac_cv_lib_soname_v4l2=`$ac_cv_path_LDD conftest.exe | grep "v4l2" | sed -e "s/dll.*/dll/"';2,$d'` ;;
+-    dylib) ac_cv_lib_soname_v4l2=`$OTOOL -L conftest$ac_exeext | grep "libv4l2\\.[0-9A-Za-z.]*dylib" | sed -e "s/^.*\/\(libv4l2\.[0-9A-Za-z.]*dylib\).*$/\1/"';2,$d'` ;;
+-    *) ac_cv_lib_soname_v4l2=`$READELF -d conftest$ac_exeext | grep "NEEDED.*libv4l2\\.$LIBEXT" | sed -e "s/^.*\\[\\(libv4l2\\.$LIBEXT[^	 ]*\\)\\].*$/\1/"';2,$d'`
+-       if ${ac_cv_lib_soname_v4l2:+false} :
++    dll) ac_cv_lib_soname_drm=`$ac_cv_path_LDD conftest.exe | grep "drm" | sed -e "s/dll.*/dll/"';2,$d'` ;;
++    dylib) ac_cv_lib_soname_drm=`$OTOOL -L conftest$ac_exeext | grep "libdrm\\.[0-9A-Za-z.]*dylib" | sed -e "s/^.*\/\(libdrm\.[0-9A-Za-z.]*dylib\).*$/\1/"';2,$d'` ;;
++    *) ac_cv_lib_soname_drm=`$READELF -d conftest$ac_exeext | grep "NEEDED.*libdrm\\.$LIBEXT" | sed -e "s/^.*\\[\\(libdrm\\.$LIBEXT[^	 ]*\\)\\].*$/\1/"';2,$d'`
++       if ${ac_cv_lib_soname_drm:+false} :
+ then :
+-  ac_cv_lib_soname_v4l2=`$LDD conftest$ac_exeext | grep "libv4l2\\.$LIBEXT" | sed -e "s/^.*\(libv4l2\.$LIBEXT[^	 ]*\).*$/\1/"';2,$d'`
++  ac_cv_lib_soname_drm=`$LDD conftest$ac_exeext | grep "libdrm\\.$LIBEXT" | sed -e "s/^.*\(libdrm\.$LIBEXT[^	 ]*\).*$/\1/"';2,$d'`
+ fi ;;
+   esac
+ else case e in #(
+-  e) ac_cv_lib_soname_v4l2= ;;
++  e) ac_cv_lib_soname_drm= ;;
+ esac
+ fi
+ rm -f core conftest.err conftest.$ac_objext conftest.beam \
+@@ -17633,76 +17641,73 @@ rm -f core conftest.err conftest.$ac_objext conftest.beam \
+   LIBS=$ac_check_soname_save_LIBS ;;
+ esac
+ fi
+-if ${ac_cv_lib_soname_v4l2:+false} :
++if ${ac_cv_lib_soname_drm:+false} :
+ then :
+   { printf '%s\n' "$as_me:${as_lineno-$LINENO}: result: not found" >&5
+ printf '%s\n' "not found" >&6; }
+ 
+ else case e in #(
+-  e) { printf '%s\n' "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_soname_v4l2" >&5
+-printf '%s\n' "$ac_cv_lib_soname_v4l2" >&6; }
++  e) { printf '%s\n' "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_soname_drm" >&5
++printf '%s\n' "$ac_cv_lib_soname_drm" >&6; }
+ 
+-printf '%s\n' "#define SONAME_LIBV4L2 \"$ac_cv_lib_soname_v4l2\"" >>confdefs.h
++printf '%s\n' "#define SONAME_LIBDRM \"$ac_cv_lib_soname_drm\"" >>confdefs.h
+ 
+         ;;
+ esac
+ fi
+ fi
+-if test "x$ac_cv_lib_soname_v4l2" = "x"
+-then :
+-  case "x$with_v4l2" in
+-  x)   as_fn_append wine_notices "|libv4l2 ${notice_platform}development files not found." ;;
+-  xno) ;;
+-  *)   as_fn_error $? "libv4l2 ${notice_platform}development files not found.
+-This is an error since --with-v4l2 was requested." "$LINENO" 5 ;;
+-esac
+ 
++done
++CPPFLAGS=$ac_save_pkg_CPPFLAGS
++LIBS=$ac_save_pkg_LIBS
+ fi
+ 
+-if test "x$with_va" != "xno"
+-then
+-    rm -f conftest.err
+-if ${VA_CFLAGS:+false} :
++
++rm -f conftest.err
++if ${DRMAMDGPU_CFLAGS:+false} :
+ then :
+   if test ${PKG_CONFIG+y}
+ then :
+-  VA_CFLAGS=`$PKG_CONFIG --cflags libva libva-drm 2>conftest.err`
++  DRMAMDGPU_CFLAGS=`$PKG_CONFIG --cflags libdrm_amdgpu 2>conftest.err`
+ fi
+ fi
+ 
+-if ${VA_LIBS:+false} :
++if ${DRMAMDGPU_LIBS:+false} :
+ then :
+   if test ${PKG_CONFIG+y}
+ then :
+-  VA_LIBS=`$PKG_CONFIG --libs libva libva-drm 2>/dev/null`
++  DRMAMDGPU_LIBS=`$PKG_CONFIG --libs libdrm_amdgpu 2>/dev/null`
+ fi
+ fi
+ 
+-VA_LIBS=${VA_LIBS:-"-lva-drm -lva"}
+-printf '%s\n' "$as_me:${as_lineno-$LINENO}: libva libva-drm cflags: $VA_CFLAGS" >&5
+-printf '%s\n' "$as_me:${as_lineno-$LINENO}: libva libva-drm libs: $VA_LIBS" >&5
++
++printf '%s\n' "$as_me:${as_lineno-$LINENO}: libdrm_amdgpu cflags: $DRMAMDGPU_CFLAGS" >&5
++printf '%s\n' "$as_me:${as_lineno-$LINENO}: libdrm_amdgpu libs: $DRMAMDGPU_LIBS" >&5
+ if test -s conftest.err; then
+-     printf %s "$as_me:${as_lineno-$LINENO}: libva libva-drm errors: " >&5
++     printf %s "$as_me:${as_lineno-$LINENO}: libdrm_amdgpu errors: " >&5
+      cat conftest.err >&5
+ fi
+ rm -f conftest.err
+-if test -n "$VA_CFLAGS$VA_LIBS"
++if test -n "$DRMAMDGPU_CFLAGS$DRMAMDGPU_LIBS"
+ then :
+   ac_save_pkg_CPPFLAGS=$CPPFLAGS
+ ac_save_pkg_LIBS=$LIBS
+-CPPFLAGS="$CPPFLAGS $VA_CFLAGS"
+-LIBS="$VA_LIBS $LIBS"
+-ac_fn_c_check_header_compile "$LINENO" "va/va_drm.h" "ac_cv_header_va_va_drm_h" "$ac_includes_default"
+-if test "x$ac_cv_header_va_va_drm_h" = xyes
++CPPFLAGS="$CPPFLAGS $DRMAMDGPU_CFLAGS"
++LIBS="$DRMAMDGPU_LIBS $LIBS"
++       for ac_header in amdgpu_drm.h
++do :
++  ac_fn_c_check_header_compile "$LINENO" "amdgpu_drm.h" "ac_cv_header_amdgpu_drm_h" "$ac_includes_default"
++if test "x$ac_cv_header_amdgpu_drm_h" = xyes
+ then :
+-  { printf '%s\n' "$as_me:${as_lineno-$LINENO}: checking for -lva-drm" >&5
+-printf %s "checking for -lva-drm... " >&6; }
+-if test ${ac_cv_lib_soname_va_drm+y}
++  printf '%s\n' "#define HAVE_AMDGPU_DRM_H 1" >>confdefs.h
++ { printf '%s\n' "$as_me:${as_lineno-$LINENO}: checking for -ldrm_amdgpu" >&5
++printf %s "checking for -ldrm_amdgpu... " >&6; }
++if test ${ac_cv_lib_soname_drm_amdgpu+y}
+ then :
+   printf %s "(cached) " >&6
+ else case e in #(
+   e) ac_check_soname_save_LIBS=$LIBS
+-LIBS="-lva-drm  $LIBS"
++LIBS="-ldrm_amdgpu $DRMAMDGPU_LIBS $LIBS"
+   cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+ /* end confdefs.h.  */
+ 
+@@ -17715,11 +17720,11 @@ LIBS="-lva-drm  $LIBS"
+ #ifdef __cplusplus
+ extern "C"
+ #endif
+-char vaGetDisplayDRM (void);
++char amdgpu_query_info (void);
+ int
+ main (void)
+ {
+-return vaGetDisplayDRM ();
++return amdgpu_query_info ();
+   ;
+   return 0;
+ }
+@@ -17727,16 +17732,16 @@ _ACEOF
+ if ac_fn_c_try_link "$LINENO"
+ then :
+   case "$LIBEXT" in
+-    dll) ac_cv_lib_soname_va_drm=`$ac_cv_path_LDD conftest.exe | grep "va-drm" | sed -e "s/dll.*/dll/"';2,$d'` ;;
+-    dylib) ac_cv_lib_soname_va_drm=`$OTOOL -L conftest$ac_exeext | grep "libva-drm\\.[0-9A-Za-z.]*dylib" | sed -e "s/^.*\/\(libva-drm\.[0-9A-Za-z.]*dylib\).*$/\1/"';2,$d'` ;;
+-    *) ac_cv_lib_soname_va_drm=`$READELF -d conftest$ac_exeext | grep "NEEDED.*libva-drm\\.$LIBEXT" | sed -e "s/^.*\\[\\(libva-drm\\.$LIBEXT[^	 ]*\\)\\].*$/\1/"';2,$d'`
+-       if ${ac_cv_lib_soname_va_drm:+false} :
++    dll) ac_cv_lib_soname_drm_amdgpu=`$ac_cv_path_LDD conftest.exe | grep "drm_amdgpu" | sed -e "s/dll.*/dll/"';2,$d'` ;;
++    dylib) ac_cv_lib_soname_drm_amdgpu=`$OTOOL -L conftest$ac_exeext | grep "libdrm_amdgpu\\.[0-9A-Za-z.]*dylib" | sed -e "s/^.*\/\(libdrm_amdgpu\.[0-9A-Za-z.]*dylib\).*$/\1/"';2,$d'` ;;
++    *) ac_cv_lib_soname_drm_amdgpu=`$READELF -d conftest$ac_exeext | grep "NEEDED.*libdrm_amdgpu\\.$LIBEXT" | sed -e "s/^.*\\[\\(libdrm_amdgpu\\.$LIBEXT[^	 ]*\\)\\].*$/\1/"';2,$d'`
++       if ${ac_cv_lib_soname_drm_amdgpu:+false} :
+ then :
+-  ac_cv_lib_soname_va_drm=`$LDD conftest$ac_exeext | grep "libva-drm\\.$LIBEXT" | sed -e "s/^.*\(libva-drm\.$LIBEXT[^	 ]*\).*$/\1/"';2,$d'`
++  ac_cv_lib_soname_drm_amdgpu=`$LDD conftest$ac_exeext | grep "libdrm_amdgpu\\.$LIBEXT" | sed -e "s/^.*\(libdrm_amdgpu\.$LIBEXT[^	 ]*\).*$/\1/"';2,$d'`
+ fi ;;
+   esac
+ else case e in #(
+-  e) ac_cv_lib_soname_va_drm= ;;
++  e) ac_cv_lib_soname_drm_amdgpu= ;;
+ esac
+ fi
+ rm -f core conftest.err conftest.$ac_objext conftest.beam \
+@@ -17744,28 +17749,75 @@ rm -f core conftest.err conftest.$ac_objext conftest.beam \
+   LIBS=$ac_check_soname_save_LIBS ;;
+ esac
+ fi
+-if ${ac_cv_lib_soname_va_drm:+false} :
++if ${ac_cv_lib_soname_drm_amdgpu:+false} :
+ then :
+   { printf '%s\n' "$as_me:${as_lineno-$LINENO}: result: not found" >&5
+ printf '%s\n' "not found" >&6; }
+-       VA_CFLAGS=""
++
+ else case e in #(
+-  e) { printf '%s\n' "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_soname_va_drm" >&5
+-printf '%s\n' "$ac_cv_lib_soname_va_drm" >&6; }
++  e) { printf '%s\n' "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_soname_drm_amdgpu" >&5
++printf '%s\n' "$ac_cv_lib_soname_drm_amdgpu" >&6; }
+ 
+-printf '%s\n' "#define SONAME_LIBVA_DRM \"$ac_cv_lib_soname_va_drm\"" >>confdefs.h
++printf '%s\n' "#define SONAME_LIBDRM_AMDGPU \"$ac_cv_lib_soname_drm_amdgpu\"" >>confdefs.h
+ 
+         ;;
+ esac
+ fi
+-             { printf '%s\n' "$as_me:${as_lineno-$LINENO}: checking for -lva" >&5
+-printf %s "checking for -lva... " >&6; }
+-if test ${ac_cv_lib_soname_va+y}
++fi
++
++done
++CPPFLAGS=$ac_save_pkg_CPPFLAGS
++LIBS=$ac_save_pkg_LIBS
++fi
++
++
++if test "x$with_gnutls" != "xno"
++then
++    rm -f conftest.err
++if ${GMP_CFLAGS:+false} :
++then :
++  if test ${PKG_CONFIG+y}
++then :
++  GMP_CFLAGS=`$PKG_CONFIG --cflags gmp 2>conftest.err`
++fi
++fi
++
++if ${GMP_LIBS:+false} :
++then :
++  if test ${PKG_CONFIG+y}
++then :
++  GMP_LIBS=`$PKG_CONFIG --libs gmp 2>/dev/null`
++fi
++fi
++
++GMP_LIBS=${GMP_LIBS:-"-lgmp"}
++printf '%s\n' "$as_me:${as_lineno-$LINENO}: gmp cflags: $GMP_CFLAGS" >&5
++printf '%s\n' "$as_me:${as_lineno-$LINENO}: gmp libs: $GMP_LIBS" >&5
++if test -s conftest.err; then
++     printf %s "$as_me:${as_lineno-$LINENO}: gmp errors: " >&5
++     cat conftest.err >&5
++fi
++rm -f conftest.err
++if test -n "$GMP_CFLAGS$GMP_LIBS"
++then :
++  ac_save_pkg_CPPFLAGS=$CPPFLAGS
++ac_save_pkg_LIBS=$LIBS
++CPPFLAGS="$CPPFLAGS $GMP_CFLAGS"
++LIBS="$GMP_LIBS $LIBS"
++       for ac_header in gmp.h
++do :
++  ac_fn_c_check_header_compile "$LINENO" "gmp.h" "ac_cv_header_gmp_h" "$ac_includes_default"
++if test "x$ac_cv_header_gmp_h" = xyes
++then :
++  printf '%s\n' "#define HAVE_GMP_H 1" >>confdefs.h
++ { printf '%s\n' "$as_me:${as_lineno-$LINENO}: checking for -lgmp" >&5
++printf %s "checking for -lgmp... " >&6; }
++if test ${ac_cv_lib_soname_gmp+y}
+ then :
+   printf %s "(cached) " >&6
+ else case e in #(
+   e) ac_check_soname_save_LIBS=$LIBS
+-LIBS="-lva  $LIBS"
++LIBS="-lgmp $GMP_LIBS $LIBS"
+   cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+ /* end confdefs.h.  */
+ 
+@@ -17778,11 +17830,11 @@ LIBS="-lva  $LIBS"
+ #ifdef __cplusplus
+ extern "C"
+ #endif
+-char vaExportSurfaceHandle (void);
++char __gmpz_init (void);
+ int
+ main (void)
+ {
+-return vaExportSurfaceHandle ();
++return __gmpz_init ();
+   ;
+   return 0;
+ }
+@@ -17790,16 +17842,16 @@ _ACEOF
+ if ac_fn_c_try_link "$LINENO"
+ then :
+   case "$LIBEXT" in
+-    dll) ac_cv_lib_soname_va=`$ac_cv_path_LDD conftest.exe | grep "va" | sed -e "s/dll.*/dll/"';2,$d'` ;;
+-    dylib) ac_cv_lib_soname_va=`$OTOOL -L conftest$ac_exeext | grep "libva\\.[0-9A-Za-z.]*dylib" | sed -e "s/^.*\/\(libva\.[0-9A-Za-z.]*dylib\).*$/\1/"';2,$d'` ;;
+-    *) ac_cv_lib_soname_va=`$READELF -d conftest$ac_exeext | grep "NEEDED.*libva\\.$LIBEXT" | sed -e "s/^.*\\[\\(libva\\.$LIBEXT[^	 ]*\\)\\].*$/\1/"';2,$d'`
+-       if ${ac_cv_lib_soname_va:+false} :
++    dll) ac_cv_lib_soname_gmp=`$ac_cv_path_LDD conftest.exe | grep "gmp" | sed -e "s/dll.*/dll/"';2,$d'` ;;
++    dylib) ac_cv_lib_soname_gmp=`$OTOOL -L conftest$ac_exeext | grep "libgmp-*\\.[0-9A-Za-z.]*dylib" | sed -e "s/^.*\/\(libgmp-*\.[0-9A-Za-z.]*dylib\).*$/\1/"';2,$d'` ;;
++    *) ac_cv_lib_soname_gmp=`$READELF -d conftest$ac_exeext | grep "NEEDED.*libgmp-*\\.$LIBEXT" | sed -e "s/^.*\\[\\(libgmp-*\\.$LIBEXT[^	 ]*\\)\\].*$/\1/"';2,$d'`
++       if ${ac_cv_lib_soname_gmp:+false} :
+ then :
+-  ac_cv_lib_soname_va=`$LDD conftest$ac_exeext | grep "libva\\.$LIBEXT" | sed -e "s/^.*\(libva\.$LIBEXT[^	 ]*\).*$/\1/"';2,$d'`
++  ac_cv_lib_soname_gmp=`$LDD conftest$ac_exeext | grep "libgmp-*\\.$LIBEXT" | sed -e "s/^.*\(libgmp-*\.$LIBEXT[^	 ]*\).*$/\1/"';2,$d'`
+ fi ;;
+   esac
+ else case e in #(
+-  e) ac_cv_lib_soname_va= ;;
++  e) ac_cv_lib_soname_gmp= ;;
+ esac
+ fi
+ rm -f core conftest.err conftest.$ac_objext conftest.beam \
+@@ -17807,42 +17859,410 @@ rm -f core conftest.err conftest.$ac_objext conftest.beam \
+   LIBS=$ac_check_soname_save_LIBS ;;
+ esac
+ fi
+-if ${ac_cv_lib_soname_va:+false} :
++if ${ac_cv_lib_soname_gmp:+false} :
+ then :
+   { printf '%s\n' "$as_me:${as_lineno-$LINENO}: result: not found" >&5
+ printf '%s\n' "not found" >&6; }
+-       VA_CFLAGS=""
++       GMP_CFLAGS=""
+ else case e in #(
+-  e) { printf '%s\n' "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_soname_va" >&5
+-printf '%s\n' "$ac_cv_lib_soname_va" >&6; }
++  e) { printf '%s\n' "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_soname_gmp" >&5
++printf '%s\n' "$ac_cv_lib_soname_gmp" >&6; }
+ 
+-printf '%s\n' "#define SONAME_LIBVA \"$ac_cv_lib_soname_va\"" >>confdefs.h
++printf '%s\n' "#define SONAME_LIBGMP \"$ac_cv_lib_soname_gmp\"" >>confdefs.h
+ 
+         ;;
+ esac
+ fi
+-else case e in #(
+-  e) VA_CFLAGS="" ;;
+-esac
+ fi
+ 
++done
+ CPPFLAGS=$ac_save_pkg_CPPFLAGS
+ LIBS=$ac_save_pkg_LIBS
+ fi
+ 
+-fi
+-if test "x$ac_cv_lib_soname_va_drm" = x -o "x$ac_cv_lib_soname_va" = x
+-then :
+-  case "x$with_va" in
+-  x)   as_fn_append wine_notices "|libva-drm ${notice_platform}development files not found, VA video acceleration won't be supported." ;;
+-  xno) ;;
+-  *)   as_fn_error $? "libva-drm ${notice_platform}development files not found, VA video acceleration won't be supported.
+-This is an error since --with-va was requested." "$LINENO" 5 ;;
+-esac
+-
+ fi
+ 
+-if test "x$with_gphoto" != "xno"
++if test "x$with_sane" != "xno"
++then
++    rm -f conftest.err
++if ${SANE_CFLAGS:+false} :
++then :
++  if test ${PKG_CONFIG+y}
++then :
++  SANE_CFLAGS=`$PKG_CONFIG --cflags sane-backends 2>conftest.err`
++fi
++fi
++test "$cross_compiling" = yes || SANE_CFLAGS=${SANE_CFLAGS:-`${SANE_CONFIG:-sane-config} --cflags 2>/dev/null`}
++if ${SANE_LIBS:+false} :
++then :
++  if test ${PKG_CONFIG+y}
++then :
++  SANE_LIBS=`$PKG_CONFIG --libs sane-backends 2>/dev/null`
++fi
++fi
++test "$cross_compiling" = yes || SANE_LIBS=${SANE_LIBS:-`${SANE_CONFIG:-sane-config} --ldflags 2>/dev/null`}
++
++printf '%s\n' "$as_me:${as_lineno-$LINENO}: sane-backends cflags: $SANE_CFLAGS" >&5
++printf '%s\n' "$as_me:${as_lineno-$LINENO}: sane-backends libs: $SANE_LIBS" >&5
++if test -s conftest.err; then
++     printf %s "$as_me:${as_lineno-$LINENO}: sane-backends errors: " >&5
++     cat conftest.err >&5
++fi
++rm -f conftest.err
++if test -n "$SANE_CFLAGS$SANE_LIBS"
++then :
++  ac_save_pkg_CPPFLAGS=$CPPFLAGS
++ac_save_pkg_LIBS=$LIBS
++CPPFLAGS="$CPPFLAGS $SANE_CFLAGS"
++LIBS="$SANE_LIBS $LIBS"
++ac_fn_c_check_header_compile "$LINENO" "sane/sane.h" "ac_cv_header_sane_sane_h" "$ac_includes_default"
++if test "x$ac_cv_header_sane_sane_h" = xyes
++then :
++  ac_fn_c_check_func "$LINENO" "sane_init" "ac_cv_func_sane_init"
++if test "x$ac_cv_func_sane_init" = xyes
++then :
++
++fi
++
++fi
++
++CPPFLAGS=$ac_save_pkg_CPPFLAGS
++LIBS=$ac_save_pkg_LIBS
++fi
++
++fi
++if test "$ac_cv_func_sane_init" != "yes"
++then :
++  case "x$with_sane" in
++  x)   as_fn_append wine_notices "|libsane ${notice_platform}development files not found, scanners won't be supported." ;;
++  xno) ;;
++  *)   as_fn_error $? "libsane ${notice_platform}development files not found, scanners won't be supported.
++This is an error since --with-sane was requested." "$LINENO" 5 ;;
++esac
++enable_sane_ds=${enable_sane_ds:-no}
++fi
++
++if test "x$with_usb" != "xno"
++then
++    rm -f conftest.err
++if ${USB_CFLAGS:+false} :
++then :
++  if test ${PKG_CONFIG+y}
++then :
++  USB_CFLAGS=`$PKG_CONFIG --cflags libusb-1.0 2>conftest.err`
++fi
++fi
++
++if ${USB_LIBS:+false} :
++then :
++  if test ${PKG_CONFIG+y}
++then :
++  USB_LIBS=`$PKG_CONFIG --libs libusb-1.0 2>/dev/null`
++fi
++fi
++
++USB_LIBS=${USB_LIBS:-"-lusb-1.0"}
++printf '%s\n' "$as_me:${as_lineno-$LINENO}: libusb-1.0 cflags: $USB_CFLAGS" >&5
++printf '%s\n' "$as_me:${as_lineno-$LINENO}: libusb-1.0 libs: $USB_LIBS" >&5
++if test -s conftest.err; then
++     printf %s "$as_me:${as_lineno-$LINENO}: libusb-1.0 errors: " >&5
++     cat conftest.err >&5
++fi
++rm -f conftest.err
++if test -n "$USB_CFLAGS$USB_LIBS"
++then :
++  ac_save_pkg_CPPFLAGS=$CPPFLAGS
++ac_save_pkg_LIBS=$LIBS
++CPPFLAGS="$CPPFLAGS $USB_CFLAGS"
++LIBS="$USB_LIBS $LIBS"
++ac_fn_c_check_header_compile "$LINENO" "libusb.h" "ac_cv_header_libusb_h" "$ac_includes_default"
++if test "x$ac_cv_header_libusb_h" = xyes
++then :
++  ac_fn_c_check_func "$LINENO" "libusb_interrupt_event_handler" "ac_cv_func_libusb_interrupt_event_handler"
++if test "x$ac_cv_func_libusb_interrupt_event_handler" = xyes
++then :
++
++fi
++
++fi
++
++CPPFLAGS=$ac_save_pkg_CPPFLAGS
++LIBS=$ac_save_pkg_LIBS
++fi
++
++fi
++if test "$ac_cv_func_libusb_interrupt_event_handler" != "yes"
++then :
++  case "x$with_usb" in
++  x)   as_fn_append wine_notices "|libusb-1.0 ${notice_platform}development files not found (or too old), USB devices won't be supported." ;;
++  xno) ;;
++  *)   as_fn_error $? "libusb-1.0 ${notice_platform}development files not found (or too old), USB devices won't be supported.
++This is an error since --with-usb was requested." "$LINENO" 5 ;;
++esac
++enable_wineusb_sys=${enable_wineusb_sys:-no}
++fi
++
++if test "x$with_v4l2" != "xno"
++then
++    { printf '%s\n' "$as_me:${as_lineno-$LINENO}: checking for -lv4l2" >&5
++printf %s "checking for -lv4l2... " >&6; }
++if test ${ac_cv_lib_soname_v4l2+y}
++then :
++  printf %s "(cached) " >&6
++else case e in #(
++  e) ac_check_soname_save_LIBS=$LIBS
++LIBS="-lv4l2  $LIBS"
++  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
++/* end confdefs.h.  */
++
++/* Override any GCC internal prototype to avoid an error.
++   Use char because int might match the return type of a GCC
++   builtin and then its argument prototype would still apply.
++   The 'extern "C"' is for builds by C++ compilers;
++   although this is not generally supported in C code supporting it here
++   has little cost and some practical benefit (sr 110532).  */
++#ifdef __cplusplus
++extern "C"
++#endif
++char v4l2_open (void);
++int
++main (void)
++{
++return v4l2_open ();
++  ;
++  return 0;
++}
++_ACEOF
++if ac_fn_c_try_link "$LINENO"
++then :
++  case "$LIBEXT" in
++    dll) ac_cv_lib_soname_v4l2=`$ac_cv_path_LDD conftest.exe | grep "v4l2" | sed -e "s/dll.*/dll/"';2,$d'` ;;
++    dylib) ac_cv_lib_soname_v4l2=`$OTOOL -L conftest$ac_exeext | grep "libv4l2\\.[0-9A-Za-z.]*dylib" | sed -e "s/^.*\/\(libv4l2\.[0-9A-Za-z.]*dylib\).*$/\1/"';2,$d'` ;;
++    *) ac_cv_lib_soname_v4l2=`$READELF -d conftest$ac_exeext | grep "NEEDED.*libv4l2\\.$LIBEXT" | sed -e "s/^.*\\[\\(libv4l2\\.$LIBEXT[^	 ]*\\)\\].*$/\1/"';2,$d'`
++       if ${ac_cv_lib_soname_v4l2:+false} :
++then :
++  ac_cv_lib_soname_v4l2=`$LDD conftest$ac_exeext | grep "libv4l2\\.$LIBEXT" | sed -e "s/^.*\(libv4l2\.$LIBEXT[^	 ]*\).*$/\1/"';2,$d'`
++fi ;;
++  esac
++else case e in #(
++  e) ac_cv_lib_soname_v4l2= ;;
++esac
++fi
++rm -f core conftest.err conftest.$ac_objext conftest.beam \
++    conftest$ac_exeext conftest.$ac_ext
++  LIBS=$ac_check_soname_save_LIBS ;;
++esac
++fi
++if ${ac_cv_lib_soname_v4l2:+false} :
++then :
++  { printf '%s\n' "$as_me:${as_lineno-$LINENO}: result: not found" >&5
++printf '%s\n' "not found" >&6; }
++
++else case e in #(
++  e) { printf '%s\n' "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_soname_v4l2" >&5
++printf '%s\n' "$ac_cv_lib_soname_v4l2" >&6; }
++
++printf '%s\n' "#define SONAME_LIBV4L2 \"$ac_cv_lib_soname_v4l2\"" >>confdefs.h
++
++        ;;
++esac
++fi
++fi
++if test "x$ac_cv_lib_soname_v4l2" = "x"
++then :
++  case "x$with_v4l2" in
++  x)   as_fn_append wine_notices "|libv4l2 ${notice_platform}development files not found." ;;
++  xno) ;;
++  *)   as_fn_error $? "libv4l2 ${notice_platform}development files not found.
++This is an error since --with-v4l2 was requested." "$LINENO" 5 ;;
++esac
++
++fi
++
++if test "x$with_va" != "xno"
++then
++    rm -f conftest.err
++if ${VA_CFLAGS:+false} :
++then :
++  if test ${PKG_CONFIG+y}
++then :
++  VA_CFLAGS=`$PKG_CONFIG --cflags libva libva-drm 2>conftest.err`
++fi
++fi
++
++if ${VA_LIBS:+false} :
++then :
++  if test ${PKG_CONFIG+y}
++then :
++  VA_LIBS=`$PKG_CONFIG --libs libva libva-drm 2>/dev/null`
++fi
++fi
++
++VA_LIBS=${VA_LIBS:-"-lva-drm -lva"}
++printf '%s\n' "$as_me:${as_lineno-$LINENO}: libva libva-drm cflags: $VA_CFLAGS" >&5
++printf '%s\n' "$as_me:${as_lineno-$LINENO}: libva libva-drm libs: $VA_LIBS" >&5
++if test -s conftest.err; then
++     printf %s "$as_me:${as_lineno-$LINENO}: libva libva-drm errors: " >&5
++     cat conftest.err >&5
++fi
++rm -f conftest.err
++if test -n "$VA_CFLAGS$VA_LIBS"
++then :
++  ac_save_pkg_CPPFLAGS=$CPPFLAGS
++ac_save_pkg_LIBS=$LIBS
++CPPFLAGS="$CPPFLAGS $VA_CFLAGS"
++LIBS="$VA_LIBS $LIBS"
++ac_fn_c_check_header_compile "$LINENO" "va/va_drm.h" "ac_cv_header_va_va_drm_h" "$ac_includes_default"
++if test "x$ac_cv_header_va_va_drm_h" = xyes
++then :
++  { printf '%s\n' "$as_me:${as_lineno-$LINENO}: checking for -lva-drm" >&5
++printf %s "checking for -lva-drm... " >&6; }
++if test ${ac_cv_lib_soname_va_drm+y}
++then :
++  printf %s "(cached) " >&6
++else case e in #(
++  e) ac_check_soname_save_LIBS=$LIBS
++LIBS="-lva-drm  $LIBS"
++  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
++/* end confdefs.h.  */
++
++/* Override any GCC internal prototype to avoid an error.
++   Use char because int might match the return type of a GCC
++   builtin and then its argument prototype would still apply.
++   The 'extern "C"' is for builds by C++ compilers;
++   although this is not generally supported in C code supporting it here
++   has little cost and some practical benefit (sr 110532).  */
++#ifdef __cplusplus
++extern "C"
++#endif
++char vaGetDisplayDRM (void);
++int
++main (void)
++{
++return vaGetDisplayDRM ();
++  ;
++  return 0;
++}
++_ACEOF
++if ac_fn_c_try_link "$LINENO"
++then :
++  case "$LIBEXT" in
++    dll) ac_cv_lib_soname_va_drm=`$ac_cv_path_LDD conftest.exe | grep "va-drm" | sed -e "s/dll.*/dll/"';2,$d'` ;;
++    dylib) ac_cv_lib_soname_va_drm=`$OTOOL -L conftest$ac_exeext | grep "libva-drm\\.[0-9A-Za-z.]*dylib" | sed -e "s/^.*\/\(libva-drm\.[0-9A-Za-z.]*dylib\).*$/\1/"';2,$d'` ;;
++    *) ac_cv_lib_soname_va_drm=`$READELF -d conftest$ac_exeext | grep "NEEDED.*libva-drm\\.$LIBEXT" | sed -e "s/^.*\\[\\(libva-drm\\.$LIBEXT[^	 ]*\\)\\].*$/\1/"';2,$d'`
++       if ${ac_cv_lib_soname_va_drm:+false} :
++then :
++  ac_cv_lib_soname_va_drm=`$LDD conftest$ac_exeext | grep "libva-drm\\.$LIBEXT" | sed -e "s/^.*\(libva-drm\.$LIBEXT[^	 ]*\).*$/\1/"';2,$d'`
++fi ;;
++  esac
++else case e in #(
++  e) ac_cv_lib_soname_va_drm= ;;
++esac
++fi
++rm -f core conftest.err conftest.$ac_objext conftest.beam \
++    conftest$ac_exeext conftest.$ac_ext
++  LIBS=$ac_check_soname_save_LIBS ;;
++esac
++fi
++if ${ac_cv_lib_soname_va_drm:+false} :
++then :
++  { printf '%s\n' "$as_me:${as_lineno-$LINENO}: result: not found" >&5
++printf '%s\n' "not found" >&6; }
++       VA_CFLAGS=""
++else case e in #(
++  e) { printf '%s\n' "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_soname_va_drm" >&5
++printf '%s\n' "$ac_cv_lib_soname_va_drm" >&6; }
++
++printf '%s\n' "#define SONAME_LIBVA_DRM \"$ac_cv_lib_soname_va_drm\"" >>confdefs.h
++
++        ;;
++esac
++fi
++             { printf '%s\n' "$as_me:${as_lineno-$LINENO}: checking for -lva" >&5
++printf %s "checking for -lva... " >&6; }
++if test ${ac_cv_lib_soname_va+y}
++then :
++  printf %s "(cached) " >&6
++else case e in #(
++  e) ac_check_soname_save_LIBS=$LIBS
++LIBS="-lva  $LIBS"
++  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
++/* end confdefs.h.  */
++
++/* Override any GCC internal prototype to avoid an error.
++   Use char because int might match the return type of a GCC
++   builtin and then its argument prototype would still apply.
++   The 'extern "C"' is for builds by C++ compilers;
++   although this is not generally supported in C code supporting it here
++   has little cost and some practical benefit (sr 110532).  */
++#ifdef __cplusplus
++extern "C"
++#endif
++char vaInitialize (void);
++int
++main (void)
++{
++return vaInitialize ();
++  ;
++  return 0;
++}
++_ACEOF
++if ac_fn_c_try_link "$LINENO"
++then :
++  case "$LIBEXT" in
++    dll) ac_cv_lib_soname_va=`$ac_cv_path_LDD conftest.exe | grep "va" | sed -e "s/dll.*/dll/"';2,$d'` ;;
++    dylib) ac_cv_lib_soname_va=`$OTOOL -L conftest$ac_exeext | grep "libva\\.[0-9A-Za-z.]*dylib" | sed -e "s/^.*\/\(libva\.[0-9A-Za-z.]*dylib\).*$/\1/"';2,$d'` ;;
++    *) ac_cv_lib_soname_va=`$READELF -d conftest$ac_exeext | grep "NEEDED.*libva\\.$LIBEXT" | sed -e "s/^.*\\[\\(libva\\.$LIBEXT[^	 ]*\\)\\].*$/\1/"';2,$d'`
++       if ${ac_cv_lib_soname_va:+false} :
++then :
++  ac_cv_lib_soname_va=`$LDD conftest$ac_exeext | grep "libva\\.$LIBEXT" | sed -e "s/^.*\(libva\.$LIBEXT[^	 ]*\).*$/\1/"';2,$d'`
++fi ;;
++  esac
++else case e in #(
++  e) ac_cv_lib_soname_va= ;;
++esac
++fi
++rm -f core conftest.err conftest.$ac_objext conftest.beam \
++    conftest$ac_exeext conftest.$ac_ext
++  LIBS=$ac_check_soname_save_LIBS ;;
++esac
++fi
++if ${ac_cv_lib_soname_va:+false} :
++then :
++  { printf '%s\n' "$as_me:${as_lineno-$LINENO}: result: not found" >&5
++printf '%s\n' "not found" >&6; }
++       VA_CFLAGS=""
++else case e in #(
++  e) { printf '%s\n' "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_soname_va" >&5
++printf '%s\n' "$ac_cv_lib_soname_va" >&6; }
++
++printf '%s\n' "#define SONAME_LIBVA \"$ac_cv_lib_soname_va\"" >>confdefs.h
++
++        ;;
++esac
++fi
++else case e in #(
++  e) VA_CFLAGS="" ;;
++esac
++fi
++
++CPPFLAGS=$ac_save_pkg_CPPFLAGS
++LIBS=$ac_save_pkg_LIBS
++fi
++
++fi
++if test "x$ac_cv_lib_soname_va_drm" = x -o "x$ac_cv_lib_soname_va" = x
++then :
++  case "x$with_va" in
++  x)   as_fn_append wine_notices "|libva-drm ${notice_platform}development files not found, VA video acceleration won't be supported." ;;
++  xno) ;;
++  *)   as_fn_error $? "libva-drm ${notice_platform}development files not found, VA video acceleration won't be supported.
++This is an error since --with-va was requested." "$LINENO" 5 ;;
++esac
++
++fi
++
++if test "x$with_gphoto" != "xno"
+ then
+     rm -f conftest.err
+ if ${GPHOTO2_CFLAGS:+false} :
+@@ -18454,7 +18874,7 @@ if ${GSTREAMER_CFLAGS:+false} :
+ then :
+   if test ${PKG_CONFIG+y}
+ then :
+-  GSTREAMER_CFLAGS=`$PKG_CONFIG --cflags gstreamer-1.0 gstreamer-video-1.0 gstreamer-audio-1.0 gstreamer-tag-1.0 2>conftest.err`
++  GSTREAMER_CFLAGS=`$PKG_CONFIG --cflags gstreamer-1.0 gstreamer-video-1.0 gstreamer-audio-1.0 gstreamer-tag-1.0 gstreamer-gl-1.0 2>conftest.err`
+ fi
+ fi
+ 
+@@ -18462,15 +18882,15 @@ if ${GSTREAMER_LIBS:+false} :
+ then :
+   if test ${PKG_CONFIG+y}
+ then :
+-  GSTREAMER_LIBS=`$PKG_CONFIG --libs gstreamer-1.0 gstreamer-video-1.0 gstreamer-audio-1.0 gstreamer-tag-1.0 2>/dev/null`
++  GSTREAMER_LIBS=`$PKG_CONFIG --libs gstreamer-1.0 gstreamer-video-1.0 gstreamer-audio-1.0 gstreamer-tag-1.0 gstreamer-gl-1.0 2>/dev/null`
+ fi
+ fi
+ 
+ 
+-printf '%s\n' "$as_me:${as_lineno-$LINENO}: gstreamer-1.0 gstreamer-video-1.0 gstreamer-audio-1.0 gstreamer-tag-1.0 cflags: $GSTREAMER_CFLAGS" >&5
+-printf '%s\n' "$as_me:${as_lineno-$LINENO}: gstreamer-1.0 gstreamer-video-1.0 gstreamer-audio-1.0 gstreamer-tag-1.0 libs: $GSTREAMER_LIBS" >&5
++printf '%s\n' "$as_me:${as_lineno-$LINENO}: gstreamer-1.0 gstreamer-video-1.0 gstreamer-audio-1.0 gstreamer-tag-1.0 gstreamer-gl-1.0 cflags: $GSTREAMER_CFLAGS" >&5
++printf '%s\n' "$as_me:${as_lineno-$LINENO}: gstreamer-1.0 gstreamer-video-1.0 gstreamer-audio-1.0 gstreamer-tag-1.0 gstreamer-gl-1.0 libs: $GSTREAMER_LIBS" >&5
+ if test -s conftest.err; then
+-     printf %s "$as_me:${as_lineno-$LINENO}: gstreamer-1.0 gstreamer-video-1.0 gstreamer-audio-1.0 gstreamer-tag-1.0 errors: " >&5
++     printf %s "$as_me:${as_lineno-$LINENO}: gstreamer-1.0 gstreamer-video-1.0 gstreamer-audio-1.0 gstreamer-tag-1.0 gstreamer-gl-1.0 errors: " >&5
+      cat conftest.err >&5
+ fi
+ rm -f conftest.err
+@@ -19488,16 +19908,105 @@ _ACEOF
+ if ac_fn_c_try_link "$LINENO"
+ then :
+   case "$LIBEXT" in
+-    dll) ac_cv_lib_soname_netapi=`$ac_cv_path_LDD conftest.exe | grep "netapi" | sed -e "s/dll.*/dll/"';2,$d'` ;;
+-    dylib) ac_cv_lib_soname_netapi=`$OTOOL -L conftest$ac_exeext | grep "libnetapi\\.[0-9A-Za-z.]*dylib" | sed -e "s/^.*\/\(libnetapi\.[0-9A-Za-z.]*dylib\).*$/\1/"';2,$d'` ;;
+-    *) ac_cv_lib_soname_netapi=`$READELF -d conftest$ac_exeext | grep "NEEDED.*libnetapi\\.$LIBEXT" | sed -e "s/^.*\\[\\(libnetapi\\.$LIBEXT[^	 ]*\\)\\].*$/\1/"';2,$d'`
+-       if ${ac_cv_lib_soname_netapi:+false} :
++    dll) ac_cv_lib_soname_netapi=`$ac_cv_path_LDD conftest.exe | grep "netapi" | sed -e "s/dll.*/dll/"';2,$d'` ;;
++    dylib) ac_cv_lib_soname_netapi=`$OTOOL -L conftest$ac_exeext | grep "libnetapi\\.[0-9A-Za-z.]*dylib" | sed -e "s/^.*\/\(libnetapi\.[0-9A-Za-z.]*dylib\).*$/\1/"';2,$d'` ;;
++    *) ac_cv_lib_soname_netapi=`$READELF -d conftest$ac_exeext | grep "NEEDED.*libnetapi\\.$LIBEXT" | sed -e "s/^.*\\[\\(libnetapi\\.$LIBEXT[^	 ]*\\)\\].*$/\1/"';2,$d'`
++       if ${ac_cv_lib_soname_netapi:+false} :
++then :
++  ac_cv_lib_soname_netapi=`$LDD conftest$ac_exeext | grep "libnetapi\\.$LIBEXT" | sed -e "s/^.*\(libnetapi\.$LIBEXT[^	 ]*\).*$/\1/"';2,$d'`
++fi ;;
++  esac
++else case e in #(
++  e) ac_cv_lib_soname_netapi= ;;
++esac
++fi
++rm -f core conftest.err conftest.$ac_objext conftest.beam \
++    conftest$ac_exeext conftest.$ac_ext
++  LIBS=$ac_check_soname_save_LIBS ;;
++esac
++fi
++if ${ac_cv_lib_soname_netapi:+false} :
++then :
++  { printf '%s\n' "$as_me:${as_lineno-$LINENO}: result: not found" >&5
++printf '%s\n' "not found" >&6; }
++       printf '%s\n' "#define SONAME_LIBNETAPI \"libnetapi.$LIBEXT\"" >>confdefs.h
++
++else case e in #(
++  e) { printf '%s\n' "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_soname_netapi" >&5
++printf '%s\n' "$ac_cv_lib_soname_netapi" >&6; }
++
++printf '%s\n' "#define SONAME_LIBNETAPI \"$ac_cv_lib_soname_netapi\"" >>confdefs.h
++
++        ;;
++esac
++fi
++CPPFLAGS=$ac_save_pkg_CPPFLAGS
++LIBS=$ac_save_pkg_LIBS
++fi
++
++fi
++if test "x$ac_cv_lib_soname_netapi" = "x"
++then :
++  case "x$with_netapi" in
++  x)   as_fn_append wine_notices "|libnetapi not found, Samba NetAPI won't be supported." ;;
++  xno) ;;
++  *)   as_fn_error $? "libnetapi not found, Samba NetAPI won't be supported.
++This is an error since --with-netapi was requested." "$LINENO" 5 ;;
++esac
++
++fi
++
++
++if test "x$enable_winealsa_drv$enable_winecoreaudio_drv$enable_winepulse_drv$enable_wineoss_drv$enable_wineandroid_drv" = xnonononono -a \
++        "x$with_alsa$with_coreaudio$with_oss$with_pulse" != xnononono
++then
++    as_fn_append wine_warnings "|No sound system was found. Windows applications will be silent."
++fi
++
++if test x$with_vosk != xno
++then
++    { printf '%s\n' "$as_me:${as_lineno-$LINENO}: checking for -lvosk" >&5
++printf %s "checking for -lvosk... " >&6; }
++if test ${ac_cv_lib_soname_vosk+y}
++then :
++  printf %s "(cached) " >&6
++else case e in #(
++  e) ac_check_soname_save_LIBS=$LIBS
++LIBS="-lvosk  $LIBS"
++  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
++/* end confdefs.h.  */
++
++/* Override any GCC internal prototype to avoid an error.
++   Use char because int might match the return type of a GCC
++   builtin and then its argument prototype would still apply.
++   The 'extern "C"' is for builds by C++ compilers;
++   although this is not generally supported in C code supporting it here
++   has little cost and some practical benefit (sr 110532).  */
++#ifdef __cplusplus
++extern "C"
++#endif
++char vosk_recognizer_new (void);
++int
++main (void)
++{
++return vosk_recognizer_new ();
++  ;
++  return 0;
++}
++_ACEOF
++if ac_fn_c_try_link "$LINENO"
++then :
++  case "$LIBEXT" in
++    dll) ac_cv_lib_soname_vosk=`$ac_cv_path_LDD conftest.exe | grep "vosk" | sed -e "s/dll.*/dll/"';2,$d'` ;;
++    dylib) ac_cv_lib_soname_vosk=`$OTOOL -L conftest$ac_exeext | grep "libvosk\\.[0-9A-Za-z.]*dylib" | sed -e "s/^.*\/\(libvosk\.[0-9A-Za-z.]*dylib\).*$/\1/"';2,$d'` ;;
++    *) ac_cv_lib_soname_vosk=`$READELF -d conftest$ac_exeext | grep "NEEDED.*libvosk\\.$LIBEXT" | sed -e "s/^.*\\[\\(libvosk\\.$LIBEXT[^	 ]*\\)\\].*$/\1/"';2,$d'`
++       if ${ac_cv_lib_soname_vosk:+false} :
+ then :
+-  ac_cv_lib_soname_netapi=`$LDD conftest$ac_exeext | grep "libnetapi\\.$LIBEXT" | sed -e "s/^.*\(libnetapi\.$LIBEXT[^	 ]*\).*$/\1/"';2,$d'`
++  ac_cv_lib_soname_vosk=`$LDD conftest$ac_exeext | grep "libvosk\\.$LIBEXT" | sed -e "s/^.*\(libvosk\.$LIBEXT[^	 ]*\).*$/\1/"';2,$d'`
+ fi ;;
+   esac
+ else case e in #(
+-  e) ac_cv_lib_soname_netapi= ;;
++  e) ac_cv_lib_soname_vosk= ;;
+ esac
+ fi
+ rm -f core conftest.err conftest.$ac_objext conftest.beam \
+@@ -19505,44 +20014,32 @@ rm -f core conftest.err conftest.$ac_objext conftest.beam \
+   LIBS=$ac_check_soname_save_LIBS ;;
+ esac
+ fi
+-if ${ac_cv_lib_soname_netapi:+false} :
++if ${ac_cv_lib_soname_vosk:+false} :
+ then :
+   { printf '%s\n' "$as_me:${as_lineno-$LINENO}: result: not found" >&5
+ printf '%s\n' "not found" >&6; }
+-       printf '%s\n' "#define SONAME_LIBNETAPI \"libnetapi.$LIBEXT\"" >>confdefs.h
+ 
+ else case e in #(
+-  e) { printf '%s\n' "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_soname_netapi" >&5
+-printf '%s\n' "$ac_cv_lib_soname_netapi" >&6; }
++  e) { printf '%s\n' "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_soname_vosk" >&5
++printf '%s\n' "$ac_cv_lib_soname_vosk" >&6; }
+ 
+-printf '%s\n' "#define SONAME_LIBNETAPI \"$ac_cv_lib_soname_netapi\"" >>confdefs.h
++printf '%s\n' "#define SONAME_LIBVOSK \"$ac_cv_lib_soname_vosk\"" >>confdefs.h
+ 
+         ;;
+ esac
+ fi
+-CPPFLAGS=$ac_save_pkg_CPPFLAGS
+-LIBS=$ac_save_pkg_LIBS
+-fi
+-
+ fi
+-if test "x$ac_cv_lib_soname_netapi" = "x"
++if test x$ac_cv_lib_soname_vosk = x
+ then :
+-  case "x$with_netapi" in
+-  x)   as_fn_append wine_notices "|libnetapi not found, Samba NetAPI won't be supported." ;;
++  case "x$with_vosk" in
++  x)   as_fn_append wine_notices "|libvosk ${notice_platform}development files not found, speech recognition won't be supported." ;;
+   xno) ;;
+-  *)   as_fn_error $? "libnetapi not found, Samba NetAPI won't be supported.
+-This is an error since --with-netapi was requested." "$LINENO" 5 ;;
++  *)   as_fn_error $? "libvosk ${notice_platform}development files not found, speech recognition won't be supported.
++This is an error since --with-vosk was requested." "$LINENO" 5 ;;
+ esac
+ 
+ fi
+ 
+-
+-if test "x$enable_winealsa_drv$enable_winecoreaudio_drv$enable_winepulse_drv$enable_wineoss_drv$enable_wineandroid_drv" = xnonononono -a \
+-        "x$with_alsa$with_coreaudio$with_oss$with_pulse" != xnononono
+-then
+-    as_fn_append wine_warnings "|No sound system was found. Windows applications will be silent."
+-fi
+-
+ if test "x$with_vulkan" != "xno"
+ then
+     { printf '%s\n' "$as_me:${as_lineno-$LINENO}: checking for -lvulkan" >&5
+@@ -19683,6 +20180,236 @@ esac
+ 
+ fi
+ 
++if test "x$with_gcrypt" != "xno"
++then
++    rm -f conftest.err
++if ${GCRYPT_CFLAGS:+false} :
++then :
++  if test ${PKG_CONFIG+y}
++then :
++  GCRYPT_CFLAGS=`$PKG_CONFIG --cflags libgcrypt 2>conftest.err`
++fi
++fi
++
++if ${GCRYPT_LIBS:+false} :
++then :
++  if test ${PKG_CONFIG+y}
++then :
++  GCRYPT_LIBS=`$PKG_CONFIG --libs libgcrypt 2>/dev/null`
++fi
++fi
++
++
++printf '%s\n' "$as_me:${as_lineno-$LINENO}: libgcrypt cflags: $GCRYPT_CFLAGS" >&5
++printf '%s\n' "$as_me:${as_lineno-$LINENO}: libgcrypt libs: $GCRYPT_LIBS" >&5
++if test -s conftest.err; then
++     printf %s "$as_me:${as_lineno-$LINENO}: libgcrypt errors: " >&5
++     cat conftest.err >&5
++fi
++rm -f conftest.err
++if test -n "$GCRYPT_CFLAGS$GCRYPT_LIBS"
++then :
++  ac_save_pkg_CPPFLAGS=$CPPFLAGS
++ac_save_pkg_LIBS=$LIBS
++CPPFLAGS="$CPPFLAGS $GCRYPT_CFLAGS"
++LIBS="$GCRYPT_LIBS $LIBS"
++ac_fn_c_check_header_compile "$LINENO" "gcrypt.h" "ac_cv_header_gcrypt_h" "$ac_includes_default"
++if test "x$ac_cv_header_gcrypt_h" = xyes
++then :
++  printf '%s\n' "#define HAVE_GCRYPT_H 1" >>confdefs.h
++
++fi
++
++        if test "$ac_cv_header_gcrypt_h" = "yes"
++        then
++            { printf '%s\n' "$as_me:${as_lineno-$LINENO}: checking for -lgcrypt" >&5
++printf %s "checking for -lgcrypt... " >&6; }
++if test ${ac_cv_lib_soname_gcrypt+y}
++then :
++  printf %s "(cached) " >&6
++else case e in #(
++  e) ac_check_soname_save_LIBS=$LIBS
++LIBS="-lgcrypt $GCRYPT_LIBS $LIBS"
++  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
++/* end confdefs.h.  */
++
++/* Override any GCC internal prototype to avoid an error.
++   Use char because int might match the return type of a GCC
++   builtin and then its argument prototype would still apply.
++   The 'extern "C"' is for builds by C++ compilers;
++   although this is not generally supported in C code supporting it here
++   has little cost and some practical benefit (sr 110532).  */
++#ifdef __cplusplus
++extern "C"
++#endif
++char gcry_sexp_build (void);
++int
++main (void)
++{
++return gcry_sexp_build ();
++  ;
++  return 0;
++}
++_ACEOF
++if ac_fn_c_try_link "$LINENO"
++then :
++  case "$LIBEXT" in
++    dll) ac_cv_lib_soname_gcrypt=`$ac_cv_path_LDD conftest.exe | grep "gcrypt" | sed -e "s/dll.*/dll/"';2,$d'` ;;
++    dylib) ac_cv_lib_soname_gcrypt=`$OTOOL -L conftest$ac_exeext | grep "libgcrypt\\.[0-9A-Za-z.]*dylib" | sed -e "s/^.*\/\(libgcrypt\.[0-9A-Za-z.]*dylib\).*$/\1/"';2,$d'` ;;
++    *) ac_cv_lib_soname_gcrypt=`$READELF -d conftest$ac_exeext | grep "NEEDED.*libgcrypt\\.$LIBEXT" | sed -e "s/^.*\\[\\(libgcrypt\\.$LIBEXT[^	 ]*\\)\\].*$/\1/"';2,$d'`
++       if ${ac_cv_lib_soname_gcrypt:+false} :
++then :
++  ac_cv_lib_soname_gcrypt=`$LDD conftest$ac_exeext | grep "libgcrypt\\.$LIBEXT" | sed -e "s/^.*\(libgcrypt\.$LIBEXT[^	 ]*\).*$/\1/"';2,$d'`
++fi ;;
++  esac
++else case e in #(
++  e) ac_cv_lib_soname_gcrypt= ;;
++esac
++fi
++rm -f core conftest.err conftest.$ac_objext conftest.beam \
++    conftest$ac_exeext conftest.$ac_ext
++  LIBS=$ac_check_soname_save_LIBS ;;
++esac
++fi
++if ${ac_cv_lib_soname_gcrypt:+false} :
++then :
++  { printf '%s\n' "$as_me:${as_lineno-$LINENO}: result: not found" >&5
++printf '%s\n' "not found" >&6; }
++
++else case e in #(
++  e) { printf '%s\n' "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_soname_gcrypt" >&5
++printf '%s\n' "$ac_cv_lib_soname_gcrypt" >&6; }
++
++printf '%s\n' "#define SONAME_LIBGCRYPT \"$ac_cv_lib_soname_gcrypt\"" >>confdefs.h
++
++        ;;
++esac
++fi
++        fi
++CPPFLAGS=$ac_save_pkg_CPPFLAGS
++LIBS=$ac_save_pkg_LIBS
++fi
++
++fi
++if test "x$ac_cv_lib_soname_gcrypt" = "x"
++then :
++  case "x$with_gcrypt" in
++  x)   as_fn_append wine_notices "|libgcrypt ${notice_platform}development files not found, GCRYPT won't be supported." ;;
++  xno) ;;
++  *)   as_fn_error $? "libgcrypt ${notice_platform}development files not found, GCRYPT won't be supported.
++This is an error since --with-gcrypt was requested." "$LINENO" 5 ;;
++esac
++
++fi
++
++if test "x$with_piper" != "xno"
++then
++    rm -f conftest.err
++if ${PIPER_CFLAGS:+false} :
++then :
++  if test ${PKG_CONFIG+y}
++then :
++  PIPER_CFLAGS=`$PKG_CONFIG --cflags piper 2>conftest.err`
++fi
++fi
++
++if ${PIPER_LIBS:+false} :
++then :
++  if test ${PKG_CONFIG+y}
++then :
++  PIPER_LIBS=`$PKG_CONFIG --libs piper 2>/dev/null`
++fi
++fi
++
++PIPER_LIBS=${PIPER_LIBS:-"-lpiper"}
++printf '%s\n' "$as_me:${as_lineno-$LINENO}: piper cflags: $PIPER_CFLAGS" >&5
++printf '%s\n' "$as_me:${as_lineno-$LINENO}: piper libs: $PIPER_LIBS" >&5
++if test -s conftest.err; then
++     printf %s "$as_me:${as_lineno-$LINENO}: piper errors: " >&5
++     cat conftest.err >&5
++fi
++rm -f conftest.err
++if test -n "$PIPER_CFLAGS$PIPER_LIBS"
++then :
++  ac_save_pkg_CPPFLAGS=$CPPFLAGS
++ac_save_pkg_LIBS=$LIBS
++CPPFLAGS="$CPPFLAGS $PIPER_CFLAGS"
++LIBS="$PIPER_LIBS $LIBS"
++ac_fn_c_check_header_compile "$LINENO" "piper/piper_c.h" "ac_cv_header_piper_piper_c_h" "$ac_includes_default"
++if test "x$ac_cv_header_piper_piper_c_h" = xyes
++then :
++  { printf '%s\n' "$as_me:${as_lineno-$LINENO}: checking for piperInitialize in -lpiper" >&5
++printf %s "checking for piperInitialize in -lpiper... " >&6; }
++if test ${ac_cv_lib_piper_piperInitialize+y}
++then :
++  printf %s "(cached) " >&6
++else case e in #(
++  e) ac_check_lib_save_LIBS=$LIBS
++LIBS="-lpiper $PIPER_LIBS $LIBS"
++cat confdefs.h - <<_ACEOF >conftest.$ac_ext
++/* end confdefs.h.  */
++
++/* Override any GCC internal prototype to avoid an error.
++   Use char because int might match the return type of a GCC
++   builtin and then its argument prototype would still apply.
++   The 'extern "C"' is for builds by C++ compilers;
++   although this is not generally supported in C code supporting it here
++   has little cost and some practical benefit (sr 110532).  */
++#ifdef __cplusplus
++extern "C"
++#endif
++char piperInitialize (void);
++int
++main (void)
++{
++return piperInitialize ();
++  ;
++  return 0;
++}
++_ACEOF
++if ac_fn_c_try_link "$LINENO"
++then :
++  ac_cv_lib_piper_piperInitialize=yes
++else case e in #(
++  e) ac_cv_lib_piper_piperInitialize=no ;;
++esac
++fi
++rm -f core conftest.err conftest.$ac_objext conftest.beam \
++    conftest$ac_exeext conftest.$ac_ext
++LIBS=$ac_check_lib_save_LIBS ;;
++esac
++fi
++{ printf '%s\n' "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_piper_piperInitialize" >&5
++printf '%s\n' "$ac_cv_lib_piper_piperInitialize" >&6; }
++if test "x$ac_cv_lib_piper_piperInitialize" = xyes
++then :
++  :
++else case e in #(
++  e) PIPER_LIBS="" ;;
++esac
++fi
++
++else case e in #(
++  e) PIPER_LIBS="" ;;
++esac
++fi
++
++CPPFLAGS=$ac_save_pkg_CPPFLAGS
++LIBS=$ac_save_pkg_LIBS
++fi
++
++fi
++if test "$ac_cv_lib_piper_piperInitialize" != "yes"
++then :
++  case "x$with_piper" in
++  x)   as_fn_append wine_notices "|libpiper ${notice_platform}development files not found, protontts won't be supported." ;;
++  xno) ;;
++  *)   as_fn_error $? "libpiper ${notice_platform}development files not found, protontts won't be supported.
++This is an error since --with-piper was requested." "$LINENO" 5 ;;
++esac
++enable_protontts=${enable_protontts:-no}
++fi
++
+ 
+ if test "x${GCC}" = "xyes"
+ then
+@@ -20982,6 +21709,12 @@ if test "x$ac_cv_func_posix_fallocate" = xyes
+ then :
+   printf '%s\n' "#define HAVE_POSIX_FALLOCATE 1" >>confdefs.h
+ 
++fi
++ac_fn_c_check_func "$LINENO" "ppoll" "ac_cv_func_ppoll"
++if test "x$ac_cv_func_ppoll" = xyes
++then :
++  printf '%s\n' "#define HAVE_PPOLL 1" >>confdefs.h
++
+ fi
+ ac_fn_c_check_func "$LINENO" "prctl" "ac_cv_func_prctl"
+ if test "x$ac_cv_func_prctl" = xyes
+@@ -21126,6 +21859,80 @@ fi
+ 
+ LIBS=$ac_save_LIBS
+ 
++ac_save_LIBS=$LIBS
++{ printf '%s\n' "$as_me:${as_lineno-$LINENO}: checking for library containing shm_open" >&5
++printf %s "checking for library containing shm_open... " >&6; }
++if test ${ac_cv_search_shm_open+y}
++then :
++  printf %s "(cached) " >&6
++else case e in #(
++  e) ac_func_search_save_LIBS=$LIBS
++cat confdefs.h - <<_ACEOF >conftest.$ac_ext
++/* end confdefs.h.  */
++
++/* Override any GCC internal prototype to avoid an error.
++   Use char because int might match the return type of a GCC
++   builtin and then its argument prototype would still apply.
++   The 'extern "C"' is for builds by C++ compilers;
++   although this is not generally supported in C code supporting it here
++   has little cost and some practical benefit (sr 110532).  */
++#ifdef __cplusplus
++extern "C"
++#endif
++char shm_open (void);
++int
++main (void)
++{
++return shm_open ();
++  ;
++  return 0;
++}
++_ACEOF
++for ac_lib in '' rt
++do
++  if test -z "$ac_lib"; then
++    ac_res="none required"
++  else
++    ac_res=-l$ac_lib
++    LIBS="-l$ac_lib  $ac_func_search_save_LIBS"
++  fi
++  if ac_fn_c_try_link "$LINENO"
++then :
++  ac_cv_search_shm_open=$ac_res
++fi
++rm -f core conftest.err conftest.$ac_objext conftest.beam \
++    conftest$ac_exeext
++  if test ${ac_cv_search_shm_open+y}
++then :
++  break
++fi
++done
++if test ${ac_cv_search_shm_open+y}
++then :
++
++else case e in #(
++  e) ac_cv_search_shm_open=no ;;
++esac
++fi
++rm conftest.$ac_ext
++LIBS=$ac_func_search_save_LIBS ;;
++esac
++fi
++{ printf '%s\n' "$as_me:${as_lineno-$LINENO}: result: $ac_cv_search_shm_open" >&5
++printf '%s\n' "$ac_cv_search_shm_open" >&6; }
++ac_res=$ac_cv_search_shm_open
++if test "$ac_res" != no
++then :
++  test "$ac_res" = "none required" || LIBS="$ac_res $LIBS"
++
++printf '%s\n' "#define HAVE_SHM_OPEN 1" >>confdefs.h
++
++                test "$ac_res" = "none required" || RT_LIBS="$ac_res"
++
++fi
++
++LIBS=$ac_save_LIBS
++
+ { printf '%s\n' "$as_me:${as_lineno-$LINENO}: checking for sched_setaffinity" >&5
+ printf %s "checking for sched_setaffinity... " >&6; }
+ if test ${wine_cv_have_sched_setaffinity+y}
+@@ -21873,6 +22680,8 @@ fi ;;
+ esac
+ 
+ 
++enable_vcruntime140_1=${enable_vcruntime140_1:-x86_64,arm64ec,aarch64}
++
+ if test -z "$PE_ARCHS"
+ then
+     enable_wow64=${enable_wow64:-no}
+@@ -21882,6 +22691,12 @@ then
+     enable_compiler_rt=${enable_compiler_rt:-no}
+ fi
+ 
++if test "$host_cpu" = "x86_64"
++then
++    enable_loader64=${enable_loader64:-yes}
++else
++    enable_loader64=${enable_loader64:-no}
++fi
+ enable_winetest=${enable_winetest:-$enable_tests}
+ 
+ 
+@@ -21913,6 +22728,8 @@ wine_fn_config_makefile dlls/advpack enable_advpack
+ wine_fn_config_makefile dlls/advpack/tests enable_tests
+ wine_fn_config_makefile dlls/aero.msstyles enable_aero_msstyles
+ wine_fn_config_makefile dlls/amsi enable_amsi
++wine_fn_config_makefile dlls/amd_ags_x64 enable_amd_ags_x64
++wine_fn_config_makefile dlls/amdxc64 enable_amdxc64
+ wine_fn_config_makefile dlls/amstream enable_amstream
+ wine_fn_config_makefile dlls/amstream/tests enable_tests
+ wine_fn_config_makefile dlls/apisetschema enable_apisetschema
+@@ -21920,6 +22737,7 @@ wine_fn_config_makefile dlls/apphelp enable_apphelp
+ wine_fn_config_makefile dlls/apphelp/tests enable_tests
+ wine_fn_config_makefile dlls/appwiz.cpl enable_appwiz_cpl
+ wine_fn_config_makefile dlls/appxdeploymentclient enable_appxdeploymentclient
++wine_fn_config_makefile dlls/atiadlxx enable_atiadlxx
+ wine_fn_config_makefile dlls/atl enable_atl
+ wine_fn_config_makefile dlls/atl/tests enable_tests
+ wine_fn_config_makefile dlls/atl100 enable_atl100
+@@ -21932,6 +22750,7 @@ wine_fn_config_makefile dlls/atl90 enable_atl90
+ wine_fn_config_makefile dlls/atlthunk enable_atlthunk
+ wine_fn_config_makefile dlls/atlthunk/tests enable_tests
+ wine_fn_config_makefile dlls/atmlib enable_atmlib
++wine_fn_config_makefile dlls/audioses enable_audioses
+ wine_fn_config_makefile dlls/authz enable_authz
+ wine_fn_config_makefile dlls/avicap32 enable_avicap32
+ wine_fn_config_makefile dlls/avifil32 enable_avifil32
+@@ -22249,6 +23068,7 @@ wine_fn_config_makefile dlls/ieproxy enable_ieproxy
+ wine_fn_config_makefile dlls/iertutil enable_iertutil
+ wine_fn_config_makefile dlls/iertutil/tests enable_tests
+ wine_fn_config_makefile dlls/ifsmgr.vxd enable_ifsmgr_vxd
++wine_fn_config_makefile dlls/igd10iumd64 enable_igd10iumd64
+ wine_fn_config_makefile dlls/imaadp32.acm enable_imaadp32_acm
+ wine_fn_config_makefile dlls/imagehlp enable_imagehlp
+ wine_fn_config_makefile dlls/imagehlp/tests enable_tests
+@@ -22502,6 +23322,7 @@ wine_fn_config_makefile dlls/ntoskrnl.exe enable_ntoskrnl_exe
+ wine_fn_config_makefile dlls/ntoskrnl.exe/tests enable_tests
+ wine_fn_config_makefile dlls/ntprint enable_ntprint
+ wine_fn_config_makefile dlls/ntprint/tests enable_tests
++wine_fn_config_makefile dlls/nvcuda enable_nvcuda
+ wine_fn_config_makefile dlls/objsel enable_objsel
+ wine_fn_config_makefile dlls/odbc32 enable_odbc32
+ wine_fn_config_makefile dlls/odbc32/tests enable_tests
+@@ -22549,6 +23370,7 @@ wine_fn_config_makefile dlls/prntvpt/tests enable_tests
+ wine_fn_config_makefile dlls/profapi enable_profapi
+ wine_fn_config_makefile dlls/propsys enable_propsys
+ wine_fn_config_makefile dlls/propsys/tests enable_tests
++wine_fn_config_makefile dlls/protontts enable_protontts
+ wine_fn_config_makefile dlls/psapi enable_psapi
+ wine_fn_config_makefile dlls/psapi/tests enable_tests
+ wine_fn_config_makefile dlls/pstorec enable_pstorec
+@@ -23010,11 +23832,13 @@ wine_fn_config_makefile libs/xml2 enable_xml2
+ wine_fn_config_makefile libs/xslt enable_xslt
+ wine_fn_config_makefile libs/zlib enable_zlib
+ wine_fn_config_makefile loader enable_loader
++wine_fn_config_makefile loader64 enable_loader64
+ wine_fn_config_makefile nls enable_nls
+ wine_fn_config_makefile po enable_po
+ wine_fn_config_makefile programs/arp enable_arp
+ wine_fn_config_makefile programs/aspnet_regiis enable_aspnet_regiis
+ wine_fn_config_makefile programs/attrib enable_attrib
++wine_fn_config_makefile programs/belauncher enable_belauncher
+ wine_fn_config_makefile programs/cabarc enable_cabarc
+ wine_fn_config_makefile programs/cacls enable_cacls
+ wine_fn_config_makefile programs/certutil enable_certutil
+@@ -23029,6 +23853,7 @@ wine_fn_config_makefile programs/cscript enable_cscript
+ wine_fn_config_makefile programs/dism enable_dism
+ wine_fn_config_makefile programs/dllhost enable_dllhost
+ wine_fn_config_makefile programs/dplaysvr enable_dplaysvr
++wine_fn_config_makefile programs/dotnetfx35 enable_dotnetfx35
+ wine_fn_config_makefile programs/dpnsvr enable_dpnsvr
+ wine_fn_config_makefile programs/dpvsetup enable_dpvsetup
+ wine_fn_config_makefile programs/dxdiag enable_dxdiag
+@@ -23045,6 +23870,7 @@ wine_fn_config_makefile programs/findstr enable_findstr
+ wine_fn_config_makefile programs/findstr/tests enable_tests
+ wine_fn_config_makefile programs/fsutil enable_fsutil
+ wine_fn_config_makefile programs/fsutil/tests enable_tests
++wine_fn_config_makefile programs/getminidump enable_getminidump
+ wine_fn_config_makefile programs/hh enable_hh
+ wine_fn_config_makefile programs/hostname enable_hostname
+ wine_fn_config_makefile programs/icacls enable_icacls
+@@ -23104,6 +23930,7 @@ wine_fn_config_makefile programs/start enable_start
+ wine_fn_config_makefile programs/subst enable_subst
+ wine_fn_config_makefile programs/svchost enable_svchost
+ wine_fn_config_makefile programs/systeminfo enable_systeminfo
++wine_fn_config_makefile programs/tabtip enable_tabtip
+ wine_fn_config_makefile programs/taskkill enable_taskkill
+ wine_fn_config_makefile programs/tasklist enable_tasklist
+ wine_fn_config_makefile programs/tasklist/tests enable_tests
+@@ -24143,6 +24970,12 @@ GNUTLS_CFLAGS = $GNUTLS_CFLAGS
+ GNUTLS_LIBS = $GNUTLS_LIBS
+ HWLOC_CFLAGS = $HWLOC_CFLAGS
+ HWLOC_LIBS = $HWLOC_LIBS
++DRM_CFLAGS = $DRM_CFLAGS
++DRM_LIBS = $DRM_LIBS
++DRMAMDGPU_CFLAGS = $DRMAMDGPU_CFLAGS
++DRMAMDGPU_LIBS = $DRMAMDGPU_LIBS
++GMP_CFLAGS = $GMP_CFLAGS
++GMP_LIBS = $GMP_LIBS
+ SANE_CFLAGS = $SANE_CFLAGS
+ SANE_LIBS = $SANE_LIBS
+ USB_CFLAGS = $USB_CFLAGS
+@@ -24184,6 +25017,10 @@ GSSAPI_LIBS = $GSSAPI_LIBS
+ PROCSTAT_LIBS = $PROCSTAT_LIBS
+ NETAPI_CFLAGS = $NETAPI_CFLAGS
+ NETAPI_LIBS = $NETAPI_LIBS
++GCRYPT_CFLAGS = $GCRYPT_CFLAGS
++GCRYPT_LIBS = $GCRYPT_LIBS
++PIPER_CFLAGS = $PIPER_CFLAGS
++PIPER_LIBS = $PIPER_LIBS
+ MSVCRTFLAGS = $MSVCRTFLAGS
+ WINELOADER_PROGRAMS = $WINELOADER_PROGRAMS
+ RT_LIBS = $RT_LIBS
+diff --git a/configure.ac b/configure.ac
+index 91225fd0410..18e80ac5189 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -34,6 +34,7 @@ AC_ARG_WITH(dbus,      AS_HELP_STRING([--without-dbus],[do not use DBus (dynamic
+ AC_ARG_WITH(ffmpeg,    AS_HELP_STRING([--without-ffmpeg],[do not use the FFmpeg library]))
+ AC_ARG_WITH(fontconfig,AS_HELP_STRING([--without-fontconfig],[do not use fontconfig]))
+ AC_ARG_WITH(freetype,  AS_HELP_STRING([--without-freetype],[do not use the FreeType library]))
++AC_ARG_WITH(gcrypt,    AS_HELP_STRING([--without-gcrypt],[do not use libgcrypt]))
+ AC_ARG_WITH(gettext,   AS_HELP_STRING([--without-gettext],[do not use gettext]))
+ AC_ARG_WITH(gettextpo, AS_HELP_STRING([--with-gettextpo],[use the GetTextPO library to rebuild po files]),
+             [if test "x$withval" = "xno"; then ac_cv_header_gettext_po_h=no; fi])
+@@ -52,6 +53,7 @@ AC_ARG_WITH(opengl,    AS_HELP_STRING([--without-opengl],[do not use OpenGL]))
+ AC_ARG_WITH(oss,       AS_HELP_STRING([--without-oss],[do not use the OSS sound support]))
+ AC_ARG_WITH(pcap,      AS_HELP_STRING([--without-pcap],[do not use the Packet Capture library]))
+ AC_ARG_WITH(pcsclite,  AS_HELP_STRING([--without-pcsclite],[do not use PCSC lite]))
++AC_ARG_WITH(piper,     AS_HELP_STRING([--without-piper],[do not use the Piper TTS library]))
+ AC_ARG_WITH(pthread,   AS_HELP_STRING([--without-pthread],[do not use the pthread library]))
+ AC_ARG_WITH(pulse,     AS_HELP_STRING([--without-pulse],[do not use PulseAudio sound support]))
+ AC_ARG_WITH(sane,      AS_HELP_STRING([--without-sane],[do not use SANE (scanner support)]))
+@@ -60,6 +62,7 @@ AC_ARG_WITH(udev,      AS_HELP_STRING([--without-udev],[do not use udev (plug an
+ AC_ARG_WITH(usb,       AS_HELP_STRING([--without-usb],[do not use the libusb library]))
+ AC_ARG_WITH(v4l2,      AS_HELP_STRING([--without-v4l2],[do not use v4l2 (video capture)]))
+ AC_ARG_WITH(va,        AS_HELP_STRING([--without-va],[do not use VA-API (hardware video decoding)]))
++AC_ARG_WITH(vosk,      AS_HELP_STRING([--without-vosk],[do not use Vosk]))
+ AC_ARG_WITH(vulkan,    AS_HELP_STRING([--without-vulkan],[do not use Vulkan]))
+ AC_ARG_WITH(wayland,   AS_HELP_STRING([--without-wayland],[do not build the Wayland driver]))
+ AC_ARG_WITH(xcomposite,AS_HELP_STRING([--without-xcomposite],[do not use the Xcomposite extension]),
+@@ -737,6 +740,7 @@ AC_CHECK_HEADERS(\
+ 	linux/errqueue.h \
+ 	linux/filter.h \
+ 	linux/fs.h \
++	linux/futex.h \
+ 	linux/hdreg.h \
+ 	linux/hidraw.h \
+ 	linux/input.h \
+@@ -772,6 +776,7 @@ AC_CHECK_HEADERS(\
+ 	sys/cdio.h \
+ 	sys/epoll.h \
+ 	sys/event.h \
++	sys/eventfd.h \
+ 	sys/extattr.h \
+ 	sys/filio.h \
+ 	sys/ipc.h \
+@@ -803,7 +808,8 @@ AC_CHECK_HEADERS(\
+ 	syscall.h \
+ 	utime.h \
+ 	valgrind/memcheck.h \
+-	valgrind/valgrind.h
++	valgrind/valgrind.h \
++	vosk_api.h
+ )
+ AC_HEADER_MAJOR()
+ 
+@@ -1579,6 +1585,23 @@ then
+     esac
+ fi
+ 
++dnl **** Check for libdrm ****
++WINE_PACKAGE_FLAGS(DRM,[libdrm],,,,
++    [AC_CHECK_HEADERS([xf86drm.h],
++        [WINE_CHECK_SONAME(drm,drmOpen,,,[$DRM_LIBS])])])
++
++WINE_PACKAGE_FLAGS(DRMAMDGPU,[libdrm_amdgpu],,,,
++    [AC_CHECK_HEADERS([amdgpu_drm.h],
++        [WINE_CHECK_SONAME(drm_amdgpu,amdgpu_query_info,,,[$DRMAMDGPU_LIBS])])])
++
++dnl **** Check for libgmp ****
++if test "x$with_gnutls" != "xno"
++then
++    WINE_PACKAGE_FLAGS(GMP,[gmp],[-lgmp],,,
++        [AC_CHECK_HEADERS([gmp.h],
++            [WINE_CHECK_SONAME(gmp,__gmpz_init,,[GMP_CFLAGS=""],[$GMP_LIBS],[[libgmp-*]])])])
++fi
++
+ dnl **** Check for SANE ****
+ if test "x$with_sane" != "xno"
+ then
+@@ -1756,7 +1779,7 @@ WINE_NOTICE_WITH(ffmpeg,[test "x$FFMPEG_LIBS" = x],
+ dnl **** Check for gstreamer ****
+ if test "x$with_gstreamer" != "xno"
+ then
+-    WINE_PACKAGE_FLAGS(GSTREAMER,[gstreamer-1.0 gstreamer-video-1.0 gstreamer-audio-1.0 gstreamer-tag-1.0],,,,
++    WINE_PACKAGE_FLAGS(GSTREAMER,[gstreamer-1.0 gstreamer-video-1.0 gstreamer-audio-1.0 gstreamer-tag-1.0 gstreamer-gl-1.0],,,,
+         [AC_CHECK_HEADER([gst/gst.h],
+             [AC_MSG_CHECKING([whether gint64 defined by gst/gst.h is indeed 64-bit])
+               AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[#include <gst/gst.h>]],
+@@ -1920,6 +1943,14 @@ then
+     WINE_WARNING([No sound system was found. Windows applications will be silent.])
+ fi
+ 
++dnl **** Check for Vosk ****
++if test x$with_vosk != xno
++then
++    WINE_CHECK_SONAME(vosk,vosk_recognizer_new)
++fi
++WINE_NOTICE_WITH(vosk,[test x$ac_cv_lib_soname_vosk = x],
++                 [libvosk ${notice_platform}development files not found, speech recognition won't be supported.])
++
+ dnl *** Check for Vulkan ***
+ if test "x$with_vulkan" != "xno"
+ then
+@@ -1930,6 +1961,31 @@ fi
+ WINE_NOTICE_WITH(vulkan,[test "x$ac_cv_lib_soname_vulkan$ac_cv_lib_soname_MoltenVK" = "x"],
+                  [libvulkan and libMoltenVK ${notice_platform}development files not found, Vulkan won't be supported.])
+ 
++dnl **** Check for gcrypt ****
++if test "x$with_gcrypt" != "xno"
++then
++    WINE_PACKAGE_FLAGS(GCRYPT,[libgcrypt],,,,
++        [AC_CHECK_HEADERS([gcrypt.h])
++        if test "$ac_cv_header_gcrypt_h" = "yes"
++        then
++            WINE_CHECK_SONAME(gcrypt,gcry_sexp_build,,,[$GCRYPT_LIBS])
++        fi])
++fi
++WINE_NOTICE_WITH(gcrypt,[test "x$ac_cv_lib_soname_gcrypt" = "x"],
++                 [libgcrypt ${notice_platform}development files not found, GCRYPT won't be supported.])
++
++dnl **** Check for libpiper ****
++if test "x$with_piper" != "xno"
++then
++    WINE_PACKAGE_FLAGS(PIPER,[piper],[-lpiper],,,
++        [AC_CHECK_HEADER(piper/piper_c.h,
++            [AC_CHECK_LIB(piper,piperInitialize,[:],[PIPER_LIBS=""],[$PIPER_LIBS])],
++            [PIPER_LIBS=""])])
++fi
++WINE_NOTICE_WITH(piper,[test "$ac_cv_lib_piper_piperInitialize" != "yes"],
++                 [libpiper ${notice_platform}development files not found, protontts won't be supported.],
++                 [enable_protontts])
++
+ dnl **** Check for gcc specific options ****
+ 
+ if test "x${GCC}" = "xyes"
+@@ -2113,6 +2169,7 @@ AC_CHECK_FUNCS(\
+ 	port_create \
+ 	posix_fadvise \
+ 	posix_fallocate \
++	ppoll \
+ 	prctl \
+ 	process_vm_readv \
+ 	process_vm_writev \
+@@ -2134,6 +2191,12 @@ AC_SEARCH_LIBS(clock_gettime, rt,
+                 test "$ac_res" = "none required" || AC_SUBST(RT_LIBS,"$ac_res")])
+ LIBS=$ac_save_LIBS
+ 
++ac_save_LIBS=$LIBS
++AC_SEARCH_LIBS(shm_open, rt,
++               [AC_DEFINE(HAVE_SHM_OPEN, 1, [Define to 1 if you have the `shm_open' function.])
++                test "$ac_res" = "none required" || AC_SUBST(RT_LIBS,"$ac_res")])
++LIBS=$ac_save_LIBS
++
+ AC_CACHE_CHECK([for sched_setaffinity],wine_cv_have_sched_setaffinity,
+                 AC_LINK_IFELSE([AC_LANG_PROGRAM(
+ [[#include <sched.h>]], [[sched_setaffinity(0, 0, 0);]])],[wine_cv_have_sched_setaffinity=yes],[wine_cv_have_sched_setaffinity=no]))
+@@ -2369,6 +2432,8 @@ esac
+ 
+ dnl *** Check for modules to disable by default
+ 
++enable_vcruntime140_1=${enable_vcruntime140_1:-x86_64,arm64ec,aarch64}
++
+ if test -z "$PE_ARCHS"
+ then
+     enable_wow64=${enable_wow64:-no}
+@@ -2378,6 +2443,12 @@ then
+     enable_compiler_rt=${enable_compiler_rt:-no}
+ fi
+ 
++if test "$host_cpu" = "x86_64"
++then
++    enable_loader64=${enable_loader64:-yes}
++else
++    enable_loader64=${enable_loader64:-no}
++fi
+ dnl Disable winetest too if tests are disabled
+ enable_winetest=${enable_winetest:-$enable_tests}
+ 
+@@ -2411,6 +2482,8 @@ WINE_CONFIG_MAKEFILE(dlls/advpack)
+ WINE_CONFIG_MAKEFILE(dlls/advpack/tests)
+ WINE_CONFIG_MAKEFILE(dlls/aero.msstyles)
+ WINE_CONFIG_MAKEFILE(dlls/amsi)
++WINE_CONFIG_MAKEFILE(dlls/amd_ags_x64)
++WINE_CONFIG_MAKEFILE(dlls/amdxc64)
+ WINE_CONFIG_MAKEFILE(dlls/amstream)
+ WINE_CONFIG_MAKEFILE(dlls/amstream/tests)
+ WINE_CONFIG_MAKEFILE(dlls/apisetschema)
+@@ -2418,6 +2491,7 @@ WINE_CONFIG_MAKEFILE(dlls/apphelp)
+ WINE_CONFIG_MAKEFILE(dlls/apphelp/tests)
+ WINE_CONFIG_MAKEFILE(dlls/appwiz.cpl)
+ WINE_CONFIG_MAKEFILE(dlls/appxdeploymentclient)
++WINE_CONFIG_MAKEFILE(dlls/atiadlxx)
+ WINE_CONFIG_MAKEFILE(dlls/atl)
+ WINE_CONFIG_MAKEFILE(dlls/atl/tests)
+ WINE_CONFIG_MAKEFILE(dlls/atl100)
+@@ -2430,6 +2504,7 @@ WINE_CONFIG_MAKEFILE(dlls/atl90)
+ WINE_CONFIG_MAKEFILE(dlls/atlthunk)
+ WINE_CONFIG_MAKEFILE(dlls/atlthunk/tests)
+ WINE_CONFIG_MAKEFILE(dlls/atmlib)
++WINE_CONFIG_MAKEFILE(dlls/audioses)
+ WINE_CONFIG_MAKEFILE(dlls/authz)
+ WINE_CONFIG_MAKEFILE(dlls/avicap32)
+ WINE_CONFIG_MAKEFILE(dlls/avifil32)
+@@ -2747,6 +2824,7 @@ WINE_CONFIG_MAKEFILE(dlls/ieproxy)
+ WINE_CONFIG_MAKEFILE(dlls/iertutil)
+ WINE_CONFIG_MAKEFILE(dlls/iertutil/tests)
+ WINE_CONFIG_MAKEFILE(dlls/ifsmgr.vxd)
++WINE_CONFIG_MAKEFILE(dlls/igd10iumd64)
+ WINE_CONFIG_MAKEFILE(dlls/imaadp32.acm)
+ WINE_CONFIG_MAKEFILE(dlls/imagehlp)
+ WINE_CONFIG_MAKEFILE(dlls/imagehlp/tests)
+@@ -3000,6 +3078,7 @@ WINE_CONFIG_MAKEFILE(dlls/ntoskrnl.exe)
+ WINE_CONFIG_MAKEFILE(dlls/ntoskrnl.exe/tests)
+ WINE_CONFIG_MAKEFILE(dlls/ntprint)
+ WINE_CONFIG_MAKEFILE(dlls/ntprint/tests)
++WINE_CONFIG_MAKEFILE(dlls/nvcuda)
+ WINE_CONFIG_MAKEFILE(dlls/objsel)
+ WINE_CONFIG_MAKEFILE(dlls/odbc32)
+ WINE_CONFIG_MAKEFILE(dlls/odbc32/tests)
+@@ -3047,6 +3126,7 @@ WINE_CONFIG_MAKEFILE(dlls/prntvpt/tests)
+ WINE_CONFIG_MAKEFILE(dlls/profapi)
+ WINE_CONFIG_MAKEFILE(dlls/propsys)
+ WINE_CONFIG_MAKEFILE(dlls/propsys/tests)
++WINE_CONFIG_MAKEFILE(dlls/protontts)
+ WINE_CONFIG_MAKEFILE(dlls/psapi)
+ WINE_CONFIG_MAKEFILE(dlls/psapi/tests)
+ WINE_CONFIG_MAKEFILE(dlls/pstorec)
+@@ -3508,11 +3588,13 @@ WINE_CONFIG_MAKEFILE(libs/xml2)
+ WINE_CONFIG_MAKEFILE(libs/xslt)
+ WINE_CONFIG_MAKEFILE(libs/zlib)
+ WINE_CONFIG_MAKEFILE(loader)
++WINE_CONFIG_MAKEFILE(loader64)
+ WINE_CONFIG_MAKEFILE(nls)
+ WINE_CONFIG_MAKEFILE(po)
+ WINE_CONFIG_MAKEFILE(programs/arp)
+ WINE_CONFIG_MAKEFILE(programs/aspnet_regiis)
+ WINE_CONFIG_MAKEFILE(programs/attrib)
++WINE_CONFIG_MAKEFILE(programs/belauncher)
+ WINE_CONFIG_MAKEFILE(programs/cabarc)
+ WINE_CONFIG_MAKEFILE(programs/cacls)
+ WINE_CONFIG_MAKEFILE(programs/certutil)
+@@ -3527,6 +3609,7 @@ WINE_CONFIG_MAKEFILE(programs/cscript)
+ WINE_CONFIG_MAKEFILE(programs/dism)
+ WINE_CONFIG_MAKEFILE(programs/dllhost)
+ WINE_CONFIG_MAKEFILE(programs/dplaysvr)
++WINE_CONFIG_MAKEFILE(programs/dotnetfx35)
+ WINE_CONFIG_MAKEFILE(programs/dpnsvr)
+ WINE_CONFIG_MAKEFILE(programs/dpvsetup)
+ WINE_CONFIG_MAKEFILE(programs/dxdiag)
+@@ -3543,6 +3626,7 @@ WINE_CONFIG_MAKEFILE(programs/findstr)
+ WINE_CONFIG_MAKEFILE(programs/findstr/tests)
+ WINE_CONFIG_MAKEFILE(programs/fsutil)
+ WINE_CONFIG_MAKEFILE(programs/fsutil/tests)
++WINE_CONFIG_MAKEFILE(programs/getminidump)
+ WINE_CONFIG_MAKEFILE(programs/hh)
+ WINE_CONFIG_MAKEFILE(programs/hostname)
+ WINE_CONFIG_MAKEFILE(programs/icacls)
+@@ -3602,6 +3686,7 @@ WINE_CONFIG_MAKEFILE(programs/start)
+ WINE_CONFIG_MAKEFILE(programs/subst)
+ WINE_CONFIG_MAKEFILE(programs/svchost)
+ WINE_CONFIG_MAKEFILE(programs/systeminfo)
++WINE_CONFIG_MAKEFILE(programs/tabtip)
+ WINE_CONFIG_MAKEFILE(programs/taskkill)
+ WINE_CONFIG_MAKEFILE(programs/tasklist)
+ WINE_CONFIG_MAKEFILE(programs/tasklist/tests)
+diff --git a/include/config.h.in b/include/config.h.in
+index 2f8ec5b6eb9..a56600932a5 100644
+--- a/include/config.h.in
++++ b/include/config.h.in
+@@ -6,6 +6,9 @@
+ /* Define to the file extension for executables. */
+ #undef EXEEXT
+ 
++/* Define to 1 if you have the <amdgpu_drm.h> header file. */
++#undef HAVE_AMDGPU_DRM_H
++
+ /* Define to 1 if you have the <arpa/inet.h> header file. */
+ #undef HAVE_ARPA_INET_H
+ 
+@@ -78,6 +81,9 @@
+ /* Define to 1 if you have the 'futimesat' function. */
+ #undef HAVE_FUTIMESAT
+ 
++/* Define to 1 if you have the <gcrypt.h> header file. */
++#undef HAVE_GCRYPT_H
++
+ /* Define to 1 if you have the 'getaddrinfo' function. */
+ #undef HAVE_GETADDRINFO
+ 
+@@ -96,6 +102,9 @@
+ /* Define to 1 if you have the <gettext-po.h> header file. */
+ #undef HAVE_GETTEXT_PO_H
+ 
++/* Define to 1 if you have the <gmp.h> header file. */
++#undef HAVE_GMP_H
++
+ /* Define if we have the libgphoto2_port development environment */
+ #undef HAVE_GPHOTO2_PORT
+ 
+@@ -159,6 +168,9 @@
+ /* Define to 1 if you have the <linux/fs.h> header file. */
+ #undef HAVE_LINUX_FS_H
+ 
++/* Define to 1 if you have the <linux/futex.h> header file. */
++#undef HAVE_LINUX_FUTEX_H
++
+ /* Define if Linux-style gethostbyname_r and gethostbyaddr_r are available */
+ #undef HAVE_LINUX_GETHOSTBYNAME_R_6
+ 
+@@ -318,6 +330,9 @@
+ /* Define to 1 if you have the 'posix_fallocate' function. */
+ #undef HAVE_POSIX_FALLOCATE
+ 
++/* Define to 1 if you have the 'ppoll' function. */
++#undef HAVE_PPOLL
++
+ /* Define to 1 if you have the 'prctl' function. */
+ #undef HAVE_PRCTL
+ 
+@@ -378,6 +393,9 @@
+ /* Define to 1 if 'interface_id' is a member of 'sg_io_hdr_t'. */
+ #undef HAVE_SG_IO_HDR_T_INTERFACE_ID
+ 
++/* Define to 1 if you have the `shm_open' function. */
++#undef HAVE_SHM_OPEN
++
+ /* Define to 1 if 'si_fd' is a member of 'siginfo_t'. */
+ #undef HAVE_SIGINFO_T_SI_FD
+ 
+@@ -507,6 +525,9 @@
+ /* Define to 1 if you have the <sys/epoll.h> header file. */
+ #undef HAVE_SYS_EPOLL_H
+ 
++/* Define to 1 if you have the <sys/eventfd.h> header file. */
++#undef HAVE_SYS_EVENTFD_H
++
+ /* Define to 1 if you have the <sys/event.h> header file. */
+ #undef HAVE_SYS_EVENT_H
+ 
+@@ -645,6 +666,9 @@
+ /* Define to 1 if you have the <valgrind/valgrind.h> header file. */
+ #undef HAVE_VALGRIND_VALGRIND_H
+ 
++/* Define to 1 if you have the <vosk_api.h> header file. */
++#undef HAVE_VOSK_API_H
++
+ /* Define to 1 if the Wine preloader is being used. */
+ #undef HAVE_WINE_PRELOADER
+ 
+@@ -681,6 +705,9 @@
+ /* Define to 1 if 'xcookie' is a member of 'XEvent'. */
+ #undef HAVE_XEVENT_XCOOKIE
+ 
++/* Define to 1 if you have the <xf86drm.h> header file. */
++#undef HAVE_XF86DRM_H
++
+ /* Define to 1 if 'callback' is a member of 'XICCallback'. */
+ #undef HAVE_XICCALLBACK_CALLBACK
+ 
+@@ -732,6 +759,12 @@
+ /* Define to the soname of the libdbus-1 library. */
+ #undef SONAME_LIBDBUS_1
+ 
++/* Define to the soname of the libdrm library. */
++#undef SONAME_LIBDRM
++
++/* Define to the soname of the libdrm_amdgpu library. */
++#undef SONAME_LIBDRM_AMDGPU
++
+ /* Define to the soname of the libEGL library. */
+ #undef SONAME_LIBEGL
+ 
+@@ -741,12 +774,18 @@
+ /* Define to the soname of the libfreetype library. */
+ #undef SONAME_LIBFREETYPE
+ 
++/* Define to the soname of the libgcrypt library. */
++#undef SONAME_LIBGCRYPT
++
+ /* Define to the soname of the libGL library. */
+ #undef SONAME_LIBGL
+ 
+ /* Define to the soname of the libGLESv2 library. */
+ #undef SONAME_LIBGLESV2
+ 
++/* Define to the soname of the libgmp library. */
++#undef SONAME_LIBGMP
++
+ /* Define to the soname of the libgnutls library. */
+ #undef SONAME_LIBGNUTLS
+ 
+@@ -771,6 +810,9 @@
+ /* Define to the soname of the libva-drm library. */
+ #undef SONAME_LIBVA_DRM
+ 
++/* Define to the soname of the libvosk library. */
++#undef SONAME_LIBVOSK
++
+ /* Define to the soname of the libvulkan library. */
+ #undef SONAME_LIBVULKAN
+ 
+diff --git a/loader/main.c b/loader/main.c
+index 71ba308ca86..9268b354257 100644
+--- a/loader/main.c
++++ b/loader/main.c
+@@ -72,7 +72,8 @@ static void init_reserved_areas(void)
+ 
+ #else
+ 
+-/* the preloader will set this variable */
++/* the preloader will set these variables */
++__attribute((visibility("default"))) struct r_debug *wine_r_debug = NULL;
+ const __attribute((visibility("default"))) struct wine_preload_info *wine_main_preload_info = NULL;
+ 
+ static void init_reserved_areas(void)
+@@ -81,6 +82,9 @@ static void init_reserved_areas(void)
+ 
+ #endif
+ 
++static char *remove_tail( const char *str, const char *tail );
++static char *build_path( const char *dir, const char *name );
++
+ /* canonicalize path and return its directory name */
+ static char *realpath_dirname( const char *name )
+ {
+@@ -88,6 +92,15 @@ static char *realpath_dirname( const char *name )
+ 
+     if (fullpath)
+     {
++        if ((p = remove_tail( fullpath, "i386-unix/wine64-preloader")) || (p = remove_tail( fullpath, "i386-unix/wine64")))
++        {
++            char *path;
++
++            free( fullpath );
++            path = build_path( p, "x86_64-unix" );
++            free( p );
++            return path;
++        }
+         p = strrchr( fullpath, '/' );
+         if (p == fullpath) p++;
+         if (p) *p = 0;
+@@ -149,6 +162,7 @@ static void *try_dlopen( const char *argv0 )
+     void *handle;
+ 
+     if (!argv0) return NULL;
++
+     if (!(dir = realpath_dirname( argv0 ))) return NULL;
+ 
+     if ((p = remove_tail( dir, "/loader" )))
+diff --git a/loader/preloader.c b/loader/preloader.c
+index 4808ebb754f..1d869ef0666 100644
+--- a/loader/preloader.c
++++ b/loader/preloader.c
+@@ -79,12 +79,16 @@
+ #ifdef HAVE_ELF_H
+ # include <elf.h>
+ #endif
++
++/* define _r_debug so we can re-define it as r_debug_extended */
++#define _r_debug no_r_debug;
+ #ifdef HAVE_LINK_H
+ # include <link.h>
+ #endif
+ #ifdef HAVE_SYS_LINK_H
+ # include <sys/link.h>
+ #endif
++#undef _r_debug
+ 
+ #include "wine/asm.h"
+ #include "main.h"
+@@ -1388,6 +1392,39 @@ static void set_process_name( int argc, char *argv[] )
+     for (i = 1; i < argc; i++) argv[i] -= off;
+ }
+ 
++struct wld_r_debug_extended
++{
++    struct r_debug base;
++    struct wld_r_debug_extended *r_next;
++};
++
++/* GDB integration, _r_debug_state is *required* for GDB to hook the preloader */
++__attribute((visibility("default"))) void _r_debug_state(void) {}
++__attribute((visibility("default"))) struct wld_r_debug_extended _r_debug = {{0}};
++
++/* sets the preloader r_debug address into DT_DEBUG */
++static void init_r_debug( struct wld_auxv *av )
++{
++    ElfW(Phdr) *phdr, *ph;
++    ElfW(Dyn) *dyn = NULL;
++    char *l_addr;
++    int phnum;
++
++    _r_debug.base.r_version = 2;
++    _r_debug.base.r_brk = (ElfW(Addr))_r_debug_state;
++
++    if (!(phnum = get_auxiliary( av, AT_PHNUM, 0 ))) return;
++    if (!(phdr = (void *)get_auxiliary( av, AT_PHDR, 0 ))) return;
++    l_addr = (char *)phdr - sizeof(ElfW(Ehdr));
++    _r_debug.base.r_ldbase = (ElfW(Addr))l_addr;
++
++    for (ph = phdr; ph < &phdr[phnum]; ++ph) if (ph->p_type == PT_DYNAMIC) break;
++    if (ph >= &phdr[phnum]) return;
++
++    dyn = (void *)(ph->p_vaddr + l_addr);
++    while (dyn->d_tag != DT_DEBUG && dyn->d_tag != DT_NULL) dyn++;
++    if (dyn->d_tag == DT_DEBUG) dyn->d_un.d_ptr = (uintptr_t)&_r_debug;
++}
+ 
+ /*
+  *  wld_start
+@@ -1404,6 +1441,7 @@ void* wld_start( void **stack )
+     struct wld_auxv new_av[8], delete_av[3], *av;
+     struct wld_link_map main_binary_map, ld_so_map;
+     struct wine_preload_info **wine_main_preload_info;
++    struct r_debug *ld_so_r_debug, **wine_r_debug;
+ 
+     pargc = *stack;
+     argv = (char **)pargc + 1;
+@@ -1433,6 +1471,8 @@ void* wld_start( void **stack )
+     dump_auxiliary( av );
+ #endif
+ 
++    init_r_debug( av );
++
+     /* reserve memory that Wine needs */
+     if (reserve) preload_reserve( reserve );
+     for (i = 0; preload_info[i].size; i++)
+@@ -1467,6 +1507,17 @@ void* wld_start( void **stack )
+     interp = (char *)main_binary_map.l_addr + main_binary_map.l_interp;
+     map_so_lib( interp, &ld_so_map );
+ 
++    /* expose ld.so _r_debug as a separate namespace in r_next */
++    ld_so_r_debug = find_symbol( &ld_so_map, "_r_debug", STT_OBJECT );
++    if (ld_so_r_debug) _r_debug.r_next = (struct wld_r_debug_extended *)ld_so_r_debug;
++    else wld_printf( "_r_debug not found in ld.so\n" );
++
++    _r_debug_state(); /* notify GDB that _r_debug is ready */
++
++    wine_r_debug = find_symbol( &main_binary_map, "wine_r_debug", STT_OBJECT );
++    if (wine_r_debug) *wine_r_debug = &_r_debug.base;
++    else wld_printf( "wine_r_debug not found\n" );
++
+     /* store pointer to the preload info into the appropriate main binary variable */
+     wine_main_preload_info = find_symbol( &main_binary_map, "wine_main_preload_info", STT_OBJECT );
+     if (wine_main_preload_info) *wine_main_preload_info = preload_info;
+diff --git a/loader/wine.inf.in b/loader/wine.inf.in
+index 9288b580b68..e4ef690138f 100644
+--- a/loader/wine.inf.in
++++ b/loader/wine.inf.in
+@@ -66,10 +66,14 @@ AddReg=\
+     LicenseInformation,\
+     MCI,\
+     Misc,\
++    NVIDIANGX, \
++    TTS, \
+     OLE,\
+     Printing,\
++    ProtonOverrides,\
+     Services, \
+     SessionMgr,\
++    SteamClient,\
+     ThemeManager
+ 
+ [DefaultInstall]
+@@ -82,6 +86,7 @@ AddReg=\
+ Needs=BaseInstall
+ WineFakeDlls=FakeDllsWin32
+ AddReg=\
++    Packages,\
+     VCRuntime.ntx86,\
+     VersionInfo
+ 
+@@ -96,6 +101,8 @@ Needs=BaseInstall
+ WineFakeDlls=FakeDllsWin64
+ AddReg=\
+     CurrentVersionWow64.ntamd64,\
++    Packages.ntamd64,\
++    SteamClient64, \
+     VCRuntime.ntamd64,\
+     VersionInfo
+ 
+@@ -104,6 +111,8 @@ Needs=BaseInstall
+ WineFakeDlls=FakeDllsWin64
+ AddReg=\
+     CurrentVersionWow64.ntarm64,\
++    Packages.ntarm64,\
++    SteamClient64, \
+     VCRuntime.ntamd64,\
+     VCRuntime.ntarm64,\
+     VersionInfo
+@@ -125,6 +134,8 @@ AddReg=\
+ Needs=BaseWow64Install
+ AddReg=\
+     CurrentVersionWow64.ntx86,\
++    Packages.wow64,\
++    SteamClient64, \
+     VCRuntime.ntamd64,\
+     VCRuntime.ntx86
+ 
+@@ -224,6 +235,8 @@ CurrentVersion="Software\Microsoft\Windows\CurrentVersion"
+ CurrentVersionNT="Software\Microsoft\Windows NT\CurrentVersion"
+ FontSubStr="Software\Microsoft\Windows NT\CurrentVersion\FontSubstitutes"
+ Control="System\CurrentControlSet\Control"
++FontsNT="Software\Microsoft\Windows NT\CurrentVersion\Fonts"
++Packages="Software\Classes\Local Settings\Software\Microsoft\Windows\CurrentVersion\AppModel\PackageRepository\Packages"
+ 
+ [Classes]
+ HKCR,.chm,,2,"chm.file"
+@@ -304,6 +317,7 @@ HKCR,ftp\shell\open\command,,2,"""%11%\winebrowser.exe"" ""%1"""
+ HKCR,http\shell\open\command,,2,"""%11%\winebrowser.exe"" ""%1"""
+ HKCR,https\shell\open\command,,2,"""%11%\winebrowser.exe"" ""%1"""
+ HKCR,mailto\shell\open\command,,2,"""%11%\winebrowser.exe"" ""%1"""
++HKCR,steam\shell\open\command,,,"""%16426%\Steam\Steam.exe"" -- ""%1"""
+ 
+ [ContentIndex]
+ HKLM,System\CurrentControlSet\Control\ContentIndex\Language\Neutral,"WBreakerClass",,"{369647e0-17b0-11ce-9950-00aa004bbb1f}"
+@@ -334,7 +348,7 @@ HKCU,%CurrentVersion%\Run,,16
+ HKCU,%CurrentVersionNT%\Winlogon,,16
+ HKLM,%CurrentVersion%,"CommonFilesDir",,"%16427%"
+ HKLM,%CurrentVersion%,"FirstInstallDateTime",1,21,81,7c,23
+-HKLM,%CurrentVersion%,"ProductId",,"12345-oem-0000001-54321"
++HKLM,%CurrentVersion%,"ProductId",,"00330-50000-00000-AAOEM"
+ HKLM,%CurrentVersion%,"ProgramFilesDir",,"%16422%"
+ HKLM,%CurrentVersion%,"ProgramFilesPath",0x20000,"%%ProgramFiles%%"
+ HKLM,%CurrentVersion%,"RegisteredOrganization",2,""
+@@ -360,7 +374,7 @@ HKLM,%CurrentVersion%\Shell Extensions\Approved,,16
+ HKLM,%CurrentVersion%\Time Zones,"SymbolicLinkValue",0x60000,"\Registry\Machine\%CurrentVersionNT%\Time Zones"
+ HKLM,%CurrentVersion%\Uninstall,,16
+ HKLM,%CurrentVersionNT%,"InstallDate",0x10003,1273299354
+-HKLM,%CurrentVersionNT%,"ProductId",,"12345-oem-0000001-54321"
++HKLM,%CurrentVersionNT%,"ProductId",,"00330-50000-00000-AAOEM"
+ HKLM,%CurrentVersionNT%,"RegisteredOrganization",2,""
+ HKLM,%CurrentVersionNT%,"RegisteredOwner",2,""
+ HKLM,%CurrentVersionNT%,"SystemRoot",,"%10%"
+@@ -390,20 +404,23 @@ HKLM,%CurrentVersionNT%\Ports,,16
+ HKLM,%CurrentVersionNT%\Print,,16
+ HKLM,%CurrentVersionNT%\ProfileList,,16
+ HKLM,%CurrentVersionNT%\Winlogon,"Shell",,"explorer.exe"
++;; App specific heap debug flags
++HKLM,%CurrentVersionNT%\Image File Execution Options\ChaosCode.exe,GlobalFlag,0x00040002,0x00000020
++HKLM,%CurrentVersionNT%\Image File Execution Options\Crysis2Remastered.exe,GlobalFlag,0x00040002,0x00000020
+ 
+ [CurrentVersionWow64.ntamd64]
+ HKLM,%CurrentVersion%,"ProgramFilesDir (x86)",,"%16426%"
+ HKLM,%CurrentVersion%,"CommonFilesDir (x86)",,"%16428%"
+-HKLM,Software\Microsoft\Wow64\x86,,2,"wow64cpu.dll"
++HKLM,Software\Microsoft\Wow64\x86,,,"wow64cpu.dll"
+ 
+ [CurrentVersionWow64.ntarm64]
+ HKLM,%CurrentVersion%,"ProgramFilesDir (x86)",,"%16426%"
+ HKLM,%CurrentVersion%,"CommonFilesDir (x86)",,"%16428%"
+ HKLM,%CurrentVersion%,"ProgramFilesDir (Arm)",,"C:\Program Files (Arm)"
+ HKLM,%CurrentVersion%,"CommonFilesDir (Arm)",,"C:\Program Files (Arm)\Common Files"
+-HKLM,Software\Microsoft\Wow64\amd64,,2,"xtajit64.dll"
++HKLM,Software\Microsoft\Wow64\amd64,,,"libarm64ecfex.dll"
+ HKLM,Software\Microsoft\Wow64\arm,,2,"wowarmhw.dll"
+-HKLM,Software\Microsoft\Wow64\x86,,2,"xtajit.dll"
++HKLM,Software\Microsoft\Wow64\x86,,,"libwow64fex.dll"
+ 
+ [CurrentVersionWow64.ntx86]
+ HKLM,%CurrentVersion%,"ProgramFilesDir (x86)",,"%16422%"
+@@ -418,6 +435,7 @@ HKLM,%CurrentVersionNT%\AeDebug,"Debugger",2,"winedbg --auto %ld %ld"
+ HKLM,%CurrentVersionNT%\AeDebug,"Auto",2,"1"
+ HKCU,Software\Wine\Debug,"RelayExclude",2,"ntdll.RtlEnterCriticalSection;ntdll.RtlTryEnterCriticalSection;ntdll.RtlLeaveCriticalSection;kernel32.48;kernel32.49;kernel32.94;kernel32.95;kernel32.96;kernel32.97;kernel32.98;kernel32.TlsGetValue;kernel32.TlsSetValue;kernel32.FlsGetValue;kernel32.FlsSetValue;kernel32.SetLastError"
+ HKCU,Software\Wine\Debug,"RelayFromExclude",2,"winex11.drv;winemac.drv;user32;gdi32;advapi32;kernel32"
++HKCU,Software\Wine\WineDbg,"ShowCrashDialog",0x00010003,0x00000000
+ 
+ [DirectX]
+ HKLM,Software\Microsoft\DirectX,"Version",,"4.09.00.0904"
+@@ -524,6 +542,32 @@ HKLM,%FontSubStr%,"Times New Roman CYR,204",,"Times New Roman,204"
+ HKLM,%FontSubStr%,"Times New Roman Greek,161",,"Times New Roman,161"
+ HKLM,%FontSubStr%,"Times New Roman TUR,162",,"Times New Roman,162"
+ HKLM,System\CurrentControlSet\Hardware Profiles\Current\Software\Fonts,"LogPixels",0x10003,0x00000060
++HKLM,%FontsNT%,"Arial (TrueType)",,"arial.ttf"
++HKLM,%FontsNT%,"Arial Bold (TrueType)",,"arialbd.ttf"
++HKLM,%FontsNT%,"Courier New (TrueType)",,"cour.ttf"
++HKLM,%FontsNT%,"Courier New Bold (TrueType)",,"courbd.ttf"
++HKLM,%FontsNT%,"Lucida Console",,"lucon.ttf"
++HKLM,%FontsNT%,"Malgun Gothic (TrueType)",,"malgun.ttf"
++HKLM,%FontsNT%,"Marlett (TrueType)",,"marlett.ttf"
++HKLM,%FontsNT%,"Microsoft Sans Serif (TrueType)",,"micross.ttf"
++HKLM,%FontsNT%,"MS Gothic (TrueType)",,"msgothic.ttc"
++HKLM,%FontsNT%,"MS PGothic (TrueType)",,"msgothic.ttc"
++HKLM,%FontsNT%,"MS UI Gothic (TrueType)",,"msgothic.ttc"
++HKLM,%FontsNT%,"Microsoft YaHei (TrueType)",,"msyh.ttf"
++HKLM,%FontsNT%,"Microsoft YaHei Bold (TrueType)",,"msyhbd.ttf"
++HKLM,%FontsNT%,"Nirmala UI (TrueType)",,"nirmala.ttf"
++HKLM,%FontsNT%,"SimSun (TrueType)",,"simsun.ttc"
++HKLM,%FontsNT%,"NSimSun (TrueType)",,"simsun.ttc"
++HKLM,%FontsNT%,"Symbol (TrueType)",,"symbol.ttf"
++HKLM,%FontsNT%,"Tahoma (TrueType)",,"tahoma.ttf"
++HKLM,%FontsNT%,"Tahoma Bold (TrueType)",,"tahomabd.ttf"
++HKLM,%FontsNT%,"Times New Roman (TrueType)",,"times.ttf"
++HKLM,%FontsNT%,"Webdings (TrueType)",,"webdings.ttf"
++HKLM,%FontsNT%,"Wingdings (TrueType)",,"wingdings.ttf"
++HKCU,Software\Wine\Fonts\Replacements,"Palatino Linotype",,"Times New Roman"
++HKCU,Software\Wine\Fonts\Replacements,"Verdana",,"Times New Roman"
++HKCU,Software\Wine\Fonts\Replacements,"Segoe UI Semibold",,"Times New Roman"
++HKCU,Software\Wine\Fonts\Replacements,"Segoe UI",,"Times New Roman"
+ 
+ [MCI]
+ HKLM,%Mci32Str%,"AVIVideo",,"mciavi32.dll"
+@@ -650,6 +694,18 @@ HKCU,Software\Microsoft\Windows\Shell\Associations\UrlAssociations\https\UserCho
+ HKLM,"Software\Microsoft\OLE","EnableDCOM",,"Y"
+ HKLM,"Software\Microsoft\OLE","EnableRemoteConnect",,"N"
+ 
++[Packages]
++HKLM,"%Packages%\Microsoft.VCLibs.140.00_14.0.29231.0_x86__8wekyb3d8bbwe","Path",0x00020002,"%SystemRoot%\system32"
++
++[Packages.ntamd64]
++HKLM,"%Packages%\Microsoft.VCLibs.140.00_14.0.29231.0_x64__8wekyb3d8bbwe","Path",0x00020002,"%SystemRoot%\system32"
++
++[Packages.wow64]
++HKLM,"%Packages%\Microsoft.VCLibs.140.00_14.0.29231.0_x86__8wekyb3d8bbwe","Path",0x00020002,"%SystemRoot%\syswow64"
++
++[Packages.arm64]
++HKLM,"%Packages%\Microsoft.VCLibs.140.00_14.0.29231.0_arm64__8wekyb3d8bbwe","Path",0x00020002,"%SystemRoot%\system32"
++
+ [Printing]
+ HKLM,%Control%\Print\Monitors\Local Port,"Driver",2,"localspl.dll"
+ HKLM,%Control%\Print\Printers,"DefaultSpoolDirectory",2,"%11%\spool\printers"
+@@ -755,6 +811,7 @@ HKLM,SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x86,"Version",2,"14.51.362
+ 11,gecko\plugin,npmshtml.dll
+ 11,Speech\Common,sapi.dll
+ 11,Speech\Engines\TTS,msttsengine.dll
++11,DriverStore\FileRepository\igd_faux.inf_1,igd10iumd64.dll
+ 11,wbem,mofcomp.exe
+ 11,wbem,wbemdisp.dll
+ 11,wbem,wbemprox.dll
+@@ -853,6 +910,7 @@ HKLM,SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x86,"Version",2,"14.51.362
+ 11,gecko\plugin,npmshtml.dll
+ 11,Speech\Common,sapi.dll
+ 11,Speech\Engines\TTS,msttsengine.dll
++11,DriverStore\FileRepository\igd_faux.inf_1,igd10iumd64.dll
+ 11,wbem,mofcomp.exe
+ 11,wbem,wbemdisp.dll
+ 11,wbem,wbemprox.dll
+@@ -1127,7 +1185,6 @@ StartType=3
+ ErrorControl=1
+ 
+ [Services]
+-HKLM,%CurrentVersion%\RunServices,"winemenubuilder",2,"%11%\winemenubuilder.exe -a -r"
+ HKLM,"System\CurrentControlSet\Services\Dnscache\Parameters",,16
+ HKLM,"System\CurrentControlSet\Services\Eventlog\Application",,16
+ HKLM,"System\CurrentControlSet\Services\Eventlog\System","Sources",0x10000,""
+@@ -1145,16 +1202,18 @@ HKLM,%CurrentVersionNT%,"CurrentBuild",2,"19045"
+ HKLM,%CurrentVersionNT%,"CurrentBuildNumber",2,"19045"
+ HKLM,%CurrentVersionNT%,"UBR",0x10003,5796
+ HKLM,%CurrentVersionNT%,"CurrentType",2,"Multiprocessor Free"
+-HKLM,%CurrentVersionNT%,"DigitalProductId",1,00,00,00,00,00,00,00,00,00,00,00,\
++HKLM,%CurrentVersionNT%,"DigitalProductId",2,00,00,00,00,00,00,00,00,00,00,00,\
+ 00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,\
+ 00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,\
+ 00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,\
+ 00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,\
+ 00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,\
+ 00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00
++HKLM,%CurrentVersionNT%,"DisplayVersion",2,"21H1"
+ HKLM,%CurrentVersionNT%,"EditionId",2,"Professional"
+ HKLM,%CurrentVersionNT%,"InstallationType",2,"Client"
+ HKLM,%CurrentVersionNT%,"ProductName",2,"Windows 10 Pro"
++HKLM,%CurrentVersionNT%,"ReleaseId",,"2009"
+ HKLM,%Control%\ProductOptions,"ProductType",2,"WinNT"
+ HKLM,%Control%\Windows,"CSDVersion",0x10003,0
+ HKLM,%Control%\Session Manager\Environment,"OS",2,"Windows_NT"
+@@ -1357,3 +1416,155 @@ InfFiles  = 17
+ NlsFiles  = 11
+ SortFiles = 10,globalization\sorting
+ WinmdFiles = 11,winmetadata
++
++[SteamClient]
++HKCU,Software\Valve\Steam,"SteamPath",,"%16422%\Steam"
++HKCU,Software\Valve\Steam,"SteamExe",,"%16422%\Steam\Steam.exe"
++HKCU,Software\Valve\Steam\ActiveProcess,"PID",0x10001,0x0000fffe
++HKCU,Software\Valve\Steam\ActiveProcess,"SteamClientDll",,"%16422%\Steam\steamclient.dll"
++HKCU,Software\Valve\Steam\ActiveProcess,"SteamPath",,"%16422%\Steam"
++
++[SteamClient64]
++HKCU,Software\Valve\Steam,"SteamPath",,"%16422%\Steam"
++HKCU,Software\Valve\Steam,"SteamExe",,"%16422%\Steam\Steam.exe"
++HKCU,Software\Valve\Steam\ActiveProcess,"PID",0x10001,0x0000fffe
++HKCU,Software\Valve\Steam\ActiveProcess,"SteamClientDll",,"%16426%\Steam\steamclient.dll"
++HKCU,Software\Valve\Steam\ActiveProcess,"SteamClientDll64",,"%16426%\Steam\steamclient64.dll"
++HKCU,Software\Valve\Steam\ActiveProcess,"SteamPath",,"%16426%\Steam"
++HKLM,Software\Wow6432Node\Valve\Steam,"InstallPath",,"%16422%\Steam"
++
++[NVIDIANGX]
++HKLM,Software\NVIDIA Corporation\Global\NGXCore,"FullPath",,"C:\Windows\System32"
++
++[TTS]
++HKLM,Software\Microsoft\Speech\Voices,"DefaultDefaultTokenId",,"HKEY_LOCAL_MACHINE\Software\Microsoft\Speech\Voices\Tokens\ProtonTTS_libritts-r_3"
++HKLM,Software\Microsoft\Speech\Voices\Tokens\ProtonTTS_libritts-r_3,,,"Proton Voice - English (United States) - libritts-r 3"
++HKLM,Software\Microsoft\Speech\Voices\Tokens\ProtonTTS_libritts-r_3,"409",,"Proton Voice - English (United States) - libritts-r 3"
++HKLM,Software\Microsoft\Speech\Voices\Tokens\ProtonTTS_libritts-r_3,"CLSID",,"{52808AE1-D977-4CD8-92D2-FEACB92FE276}"
++HKLM,Software\Microsoft\Speech\Voices\Tokens\ProtonTTS_libritts-r_3,"LengthScale",,"1.4"
++HKLM,Software\Microsoft\Speech\Voices\Tokens\ProtonTTS_libritts-r_3,"ModelPath",,"en_US-libritts_r-medium.onnx"
++HKLM,Software\Microsoft\Speech\Voices\Tokens\ProtonTTS_libritts-r_3,"SpeakerID",,"3"
++HKLM,Software\Microsoft\Speech\Voices\Tokens\ProtonTTS_libritts-r_3\Attributes,"Name",,"Proton Voice - libritts-r 3"
++HKLM,Software\Microsoft\Speech\Voices\Tokens\ProtonTTS_libritts-r_3\Attributes,"Language",,"409"
++HKLM,Software\Microsoft\Speech\Voices\Tokens\ProtonTTS_libritts-r_3\Attributes,"Gender",,"Male"
++HKLM,Software\Microsoft\Speech\Voices\Tokens\ProtonTTS_libritts-r_3\Attributes,"Age",,"Adult"
++HKLM,Software\Microsoft\Speech\Voices\Tokens\ProtonTTS_libritts-r_3\Attributes,"Vendor",,"Wine"
++HKLM,Software\Microsoft\Speech\Voices\Tokens\ProtonTTS_libritts-r_14,,,"Proton Voice - English (United States) - libritts-r 14"
++HKLM,Software\Microsoft\Speech\Voices\Tokens\ProtonTTS_libritts-r_14,"409",,"Proton Voice - English (United States) - libritts-r 14"
++HKLM,Software\Microsoft\Speech\Voices\Tokens\ProtonTTS_libritts-r_14,"CLSID",,"{52808AE1-D977-4CD8-92D2-FEACB92FE276}"
++HKLM,Software\Microsoft\Speech\Voices\Tokens\ProtonTTS_libritts-r_14,"LengthScale",,"1.4"
++HKLM,Software\Microsoft\Speech\Voices\Tokens\ProtonTTS_libritts-r_14,"ModelPath",,"en_US-libritts_r-medium.onnx"
++HKLM,Software\Microsoft\Speech\Voices\Tokens\ProtonTTS_libritts-r_14,"SpeakerID",,"14"
++HKLM,Software\Microsoft\Speech\Voices\Tokens\ProtonTTS_libritts-r_14\Attributes,"Name",,"Proton Voice - libritts-r 14"
++HKLM,Software\Microsoft\Speech\Voices\Tokens\ProtonTTS_libritts-r_14\Attributes,"Language",,"409"
++HKLM,Software\Microsoft\Speech\Voices\Tokens\ProtonTTS_libritts-r_14\Attributes,"Gender",,"Female"
++HKLM,Software\Microsoft\Speech\Voices\Tokens\ProtonTTS_libritts-r_14\Attributes,"Age",,"Adult"
++HKLM,Software\Microsoft\Speech\Voices\Tokens\ProtonTTS_libritts-r_14\Attributes,"Vendor",,"Wine"
++HKLM,Software\Microsoft\Speech_OneCore\Voices,"DefaultDefaultTokenId",,"HKEY_LOCAL_MACHINE\Software\Microsoft\Speech_OneCore\Voices\Tokens\ProtonTTS_libritts-r_3"
++HKLM,Software\Microsoft\Speech_OneCore\Voices\Tokens\ProtonTTS_libritts-r_3,,,"Proton Voice - English (United States) - libritts-r 3"
++HKLM,Software\Microsoft\Speech_OneCore\Voices\Tokens\ProtonTTS_libritts-r_3,"409",,"Proton Voice - English (United States) - libritts-r 3"
++HKLM,Software\Microsoft\Speech_OneCore\Voices\Tokens\ProtonTTS_libritts-r_3,"CLSID",,"{52808AE1-D977-4CD8-92D2-FEACB92FE276}"
++HKLM,Software\Microsoft\Speech_OneCore\Voices\Tokens\ProtonTTS_libritts-r_3,"LengthScale",,"1.4"
++HKLM,Software\Microsoft\Speech_OneCore\Voices\Tokens\ProtonTTS_libritts-r_3,"ModelPath",,"en_US-libritts_r-medium.onnx"
++HKLM,Software\Microsoft\Speech_OneCore\Voices\Tokens\ProtonTTS_libritts-r_3,"SpeakerID",,"3"
++HKLM,Software\Microsoft\Speech_OneCore\Voices\Tokens\ProtonTTS_libritts-r_3\Attributes,"Name",,"Proton Voice - libritts-r 3"
++HKLM,Software\Microsoft\Speech_OneCore\Voices\Tokens\ProtonTTS_libritts-r_3\Attributes,"Language",,"409"
++HKLM,Software\Microsoft\Speech_OneCore\Voices\Tokens\ProtonTTS_libritts-r_3\Attributes,"Gender",,"Male"
++HKLM,Software\Microsoft\Speech_OneCore\Voices\Tokens\ProtonTTS_libritts-r_3\Attributes,"Age",,"Adult"
++HKLM,Software\Microsoft\Speech_OneCore\Voices\Tokens\ProtonTTS_libritts-r_3\Attributes,"Vendor",,"Wine"
++HKLM,Software\Microsoft\Speech_OneCore\Voices\Tokens\ProtonTTS_libritts-r_14,,,"Proton Voice - English (United States) - libritts-r 14"
++HKLM,Software\Microsoft\Speech_OneCore\Voices\Tokens\ProtonTTS_libritts-r_14,"409",,"Proton Voice - English (United States) - libritts-r 14"
++HKLM,Software\Microsoft\Speech_OneCore\Voices\Tokens\ProtonTTS_libritts-r_14,"CLSID",,"{52808AE1-D977-4CD8-92D2-FEACB92FE276}"
++HKLM,Software\Microsoft\Speech_OneCore\Voices\Tokens\ProtonTTS_libritts-r_14,"LengthScale",,"1.4"
++HKLM,Software\Microsoft\Speech_OneCore\Voices\Tokens\ProtonTTS_libritts-r_14,"ModelPath",,"en_US-libritts_r-medium.onnx"
++HKLM,Software\Microsoft\Speech_OneCore\Voices\Tokens\ProtonTTS_libritts-r_14,"SpeakerID",,"14"
++HKLM,Software\Microsoft\Speech_OneCore\Voices\Tokens\ProtonTTS_libritts-r_14\Attributes,"Name",,"Proton Voice - libritts-r 14"
++HKLM,Software\Microsoft\Speech_OneCore\Voices\Tokens\ProtonTTS_libritts-r_14\Attributes,"Language",,"409"
++HKLM,Software\Microsoft\Speech_OneCore\Voices\Tokens\ProtonTTS_libritts-r_14\Attributes,"Gender",,"Female"
++HKLM,Software\Microsoft\Speech_OneCore\Voices\Tokens\ProtonTTS_libritts-r_14\Attributes,"Age",,"Adult"
++HKLM,Software\Microsoft\Speech_OneCore\Voices\Tokens\ProtonTTS_libritts-r_14\Attributes,"Vendor",,"Wine"
++
++[ProtonOverrides]
++;;Likely want *80 and *90 too, but those require removing Wine's manifest files.
++HKCU,Software\Wine\DllOverrides,"atl100",0x2,"native,builtin"
++HKCU,Software\Wine\DllOverrides,"msvcp100",0x2,"native,builtin"
++HKCU,Software\Wine\DllOverrides,"msvcr100",0x2,"native,builtin"
++HKCU,Software\Wine\DllOverrides,"vcomp100",0x2,"native,builtin"
++HKCU,Software\Wine\DllOverrides,"atl110",0x2,"native,builtin"
++HKCU,Software\Wine\DllOverrides,"msvcp110",0x2,"native,builtin"
++HKCU,Software\Wine\DllOverrides,"msvcr110",0x2,"native,builtin"
++HKCU,Software\Wine\DllOverrides,"vcomp110",0x2,"native,builtin"
++HKCU,Software\Wine\DllOverrides,"atl120",0x2,"native,builtin"
++HKCU,Software\Wine\DllOverrides,"msvcp120",0x2,"native,builtin"
++HKCU,Software\Wine\DllOverrides,"msvcr120",0x2,"native,builtin"
++HKCU,Software\Wine\DllOverrides,"vcomp120",0x2,"native,builtin"
++HKCU,Software\Wine\DllOverrides,"api-ms-win-crt-conio-l1-1-0",0x2,"native,builtin"
++HKCU,Software\Wine\DllOverrides,"api-ms-win-crt-heap-l1-1-0",0x2,"native,builtin"
++HKCU,Software\Wine\DllOverrides,"api-ms-win-crt-locale-l1-1-0",0x2,"native,builtin"
++HKCU,Software\Wine\DllOverrides,"api-ms-win-crt-math-l1-1-0",0x2,"native,builtin"
++HKCU,Software\Wine\DllOverrides,"api-ms-win-crt-runtime-l1-1-0",0x2,"native,builtin"
++HKCU,Software\Wine\DllOverrides,"api-ms-win-crt-stdio-l1-1-0",0x2,"native,builtin"
++HKCU,Software\Wine\DllOverrides,"api-ms-win-crt-time-l1-1-0",0x2,"native,builtin"
++HKCU,Software\Wine\DllOverrides,"atl140",0x2,"native,builtin"
++HKCU,Software\Wine\DllOverrides,"concrt140",0x2,"native,builtin"
++HKCU,Software\Wine\DllOverrides,"msvcp140",0x2,"native,builtin"
++HKCU,Software\Wine\DllOverrides,"msvcp140_1",0x2,"native,builtin"
++HKCU,Software\Wine\DllOverrides,"msvcp140_2",0x2,"native,builtin"
++HKCU,Software\Wine\DllOverrides,"msvcp140_atomic_wait",0x2,"native,builtin"
++HKCU,Software\Wine\DllOverrides,"msvcp140_codecvt_ids",0x2,"native,builtin"
++HKCU,Software\Wine\DllOverrides,"msvcr140",0x2,"native,builtin"
++HKCU,Software\Wine\DllOverrides,"ucrtbase",0x2,"native,builtin"
++HKCU,Software\Wine\DllOverrides,"vcomp140",0x2,"native,builtin"
++HKCU,Software\Wine\DllOverrides,"vcruntime140",0x2,"native,builtin"
++HKCU,Software\Wine\DllOverrides,"vccorlib140",0x2,"native,builtin"
++HKCU,Software\Wine\DllOverrides,"atiadlxx",,"disabled"
++HKCU,Software\Wine\DllOverrides,"nvcuda",0x2,"disabled"
++HKCU,Software\Wine\DllOverrides,"vcruntime140_1",0x2,"native,builtin"
++HKLM,Software\Wow6432Node\Valve\Steam\Apps\CommonRedist\.NET\4.8,"4.8",0x10001,1
++HKLM,Software\Wow6432Node\Valve\Steam\Apps\CommonRedist\.NET\4.7.2,"4.7.2",0x10001,1
++HKLM,Software\Wow6432Node\Valve\Steam\Apps\CommonRedist\.NET\4.6.2,"4.6.2",0x10001,1
++HKLM,Software\Wow6432Node\Valve\Steam\Apps\CommonRedist\.NET\4.5.2,"4.5.2",0x10001,1
++HKLM,Software\Wow6432Node\Valve\Steam\Apps\CommonRedist\.NET\4.0,"4.0",0x10001,1
++HKLM,Software\Wow6432Node\Valve\Steam\Apps\CommonRedist\.NET\4.0 Client Profile,"4.0 Client Profile",0x10001,1
++HKLM,Software\Wow6432Node\Valve\Steam\Apps\CommonRedist\.NET\3.5,"3.5",0x10001,1
++HKLM,Software\Wow6432Node\Valve\Steam\Apps\CommonRedist\.NET\3.5 Client Profile,"3.5 Client Profile",0x10001,1
++HKLM,Software\Wow6432Node\Valve\Steam\Apps\CommonRedist\XNA\4.0,"4.0",0x10001,1
++HKCU,Software\Wine\AppDefaults\ShadowOfWar.exe\DllOverrides,"amd_ags_x64",,"disabled"
++HKCU,Software\Wine\AppDefaults\TDUSC.exe\DllOverrides,"xinput1_3",,"native,builtin"
++HKCU,Software\Wine\AppDefaults\WRCG.exe\DllOverrides,"xinput1_3",,"native,builtin"
++;;App-specific overrides for atiadlxx.dll.
++HKCU,Software\Wine\AppDefaults\s2_sp64_ship.exe\DllOverrides,"atiadlxx",,"builtin"
++HKCU,Software\Wine\AppDefaults\s2_mp64_ship.exe\DllOverrides,"atiadlxx",,"builtin"
++HKCU,Software\Wine\AppDefaults\h1_sp64_ship.exe\DllOverrides,"atiadlxx",,"builtin"
++HKCU,Software\Wine\AppDefaults\h1_mp64_ship.exe\DllOverrides,"atiadlxx",,"builtin"
++HKCU,Software\Wine\AppDefaults\iw7_ship.exe\DllOverrides,"atiadlxx",,"builtin"
++HKCU,Software\Wine\AppDefaults\BlackOps3.exe\DllOverrides,"atiadlxx",,"builtin"
++HKCU,Software\Wine\AppDefaults\NFS16.exe\DllOverrides,"atiadlxx",,"builtin"
++HKCU,Software\Wine\AppDefaults\ShadowOfWar.exe\DllOverrides,"atiadlxx",,"builtin"
++HKCU,Software\Wine\AppDefaults\DIRT5.exe\DllOverrides,"atiadlxx",,"builtin"
++HKCU,Software\Wine\AppDefaults\Paradox Launcher.exe\DllOverrides,,4,
++HKCU,Software\Wine\AppDefaults\gotg.exe\DllOverrides,"atiadlxx",,"builtin"
++HKCU,Software\Wine\AppDefaults\RelicCardinal.exe\DllOverrides,"atiadlxx",,"builtin"
++HKCU,Software\Wine\AppDefaults\msedgewebview2.exe,"Version",,"win7"
++HKCU,Software\Wine\AppDefaults\Imperiums.exe,"Version",,"win11"
++HKCU,Software\Wine\AppDefaults\Avengers.exe\DllOverrides,"atiadlxx",,"builtin"
++HKCU,Software\Wine\AppDefaults\starwarssquadrons.exe\DllOverrides,"atiadlxx",,"builtin"
++HKCU,Software\Wine\AppDefaults\GW2.Main_Win64_Retail.exe\DllOverrides,"atiadlxx",,"builtin"
++HKCU,Software\Wine\AppDefaults\Spider-Man.exe\DllOverrides,"atiadlxx",,"builtin"
++HKCU,Software\Wine\AppDefaults\RiftApart.exe\DllOverrides,"atiadlxx",,"builtin"
++HKCU,Software\Wine\AppDefaults\ffxvi.exe\DllOverrides,"atiadlxx",,"builtin"
++HKCU,Software\Wine\AppDefaults\ffxvi_demo.exe\DllOverrides,"atiadlxx",,"builtin"
++HKCU,Software\Wine\AppDefaults\FarCryNewDawn.exe\DllOverrides,"atiadlxx",,"builtin"
++HKCU,Software\Wine\AppDefaults\FarCry5.exe\DllOverrides,"atiadlxx",,"builtin"
++HKCU,Software\Wine\AppDefaults\rayne1.exe\DllOverrides,"d3d8",,"native"
++HKCU,Software\Wine\AppDefaults\rayne2.exe\DllOverrides,"d3d8",,"native"
++HKLM,Software\Wow6432Node\lucasarts entertainment company llc\Star Wars: Episode I Racer\v1.0,"Display Height",0x10001,480
++HKLM,Software\Wow6432Node\lucasarts entertainment company llc\Star Wars: Episode I Racer\v1.0,"Display Width",0x10001,640
++HKCU,Software\Wine\AppDefaults\RDR2.exe\DllOverrides,"vulkan-1",,"native"
++HKCU,Software\Wine\AppDefaults\ActOfWar.exe,"Version",,"winxp"
++HKCU,Software\Wine\AppDefaults\DarkOmen.exe,"Version",,"winxp"
++HKLM,Software\Khronos\OpenXR\1,"ActiveRuntime",,"C:\openxr\wineopenxr64.json"
++HKLM,Software\Wow6432Node\Khronos\OpenXR\1,"ActiveRuntime",,"C:\openxr\wineopenxr64.json"
++;;Other app-specific overrides
++HKCU,Software\Wine\AppDefaults\Pentiment.exe\DllOverrides,"SpeechSynthesisWrapper",4,
++HKCU,Software\Wine\AppDefaults\Maine-Win64-Shipping.exe\DllOverrides,"SpeechSynthWrapper",4,
+diff --git a/loader64/Makefile.in b/loader64/Makefile.in
+new file mode 100644
+index 00000000000..cfbe51d44d2
+--- /dev/null
++++ b/loader64/Makefile.in
+@@ -0,0 +1,20 @@
++PARENTSRC = ../loader
++
++SOURCES = \
++	main.c \
++	preloader.c \
++	preloader_mac.c
++
++PROGRAMS = wine64 wine64-preloader
++INSTALL_LIB = wine64 wine64-preloader
++UNIX_CFLAGS = -fPIE
++
++preloader_EXTRADEFS = -fno-builtin
++
++wine64_OBJS = main.o
++wine64_DEPS = $(WINELOADER_DEPENDS)
++wine64_LDFLAGS = $(WINELOADER_LDFLAGS) $(LDEXECFLAGS) $(PTHREAD_LIBS)
++
++wine64_preloader_OBJS = preloader.o
++wine64_preloader_DEPS = $(WINELOADER_DEPENDS)
++wine64_preloader_LDFLAGS = $(WINEPRELOADER_LDFLAGS)
+diff --git a/tools/Makefile.in b/tools/Makefile.in
+index 97d69914966..7a769fcd06e 100644
+--- a/tools/Makefile.in
++++ b/tools/Makefile.in
+@@ -4,6 +4,7 @@ PROGRAMS = \
+ 	make_xftmpl
+ 
+ SOURCES = \
++	gdbinit.py.in \
+ 	install.c \
+ 	make_xftmpl.c \
+ 	makedep.c
+diff --git a/tools/gdbinit.py b/tools/gdbinit.py
+new file mode 100644
+index 00000000000..b8bd6df1151
+--- /dev/null
++++ b/tools/gdbinit.py
+@@ -0,0 +1,117 @@
++#!/bin/env python3
++
++# Copyright 2021 Rémi Bernon for CodeWeavers
++#
++# This library is free software; you can redistribute it and/or
++# modify it under the terms of the GNU Lesser General Public
++# License as published by the Free Software Foundation; either
++# version 2.1 of the License, or (at your option) any later version.
++#
++# This library is distributed in the hope that it will be useful,
++# but WITHOUT ANY WARRANTY; without even the implied warranty of
++# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++# Lesser General Public License for more details.
++#
++# You should have received a copy of the GNU Lesser General Public
++# License along with this library; if not, write to the Free Software
++# Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
++
++from __future__ import print_function
++
++import gdb
++import re
++import subprocess
++import sys
++
++class LoadSymbolFiles(gdb.Command):
++  'Command to load symbol files directly from /proc/<pid>/maps.'
++  
++  def __init__(self):
++    sup = super(LoadSymbolFiles, self)
++    sup.__init__('load-symbol-files', gdb.COMMAND_FILES, gdb.COMPLETE_NONE,
++                 False)
++
++    self.libs = {}
++    gdb.execute('alias -a lsf = load-symbol-files', True)
++
++  def invoke(self, arg, from_tty):
++    pid = gdb.selected_inferior().pid
++    if not pid in self.libs: self.libs[pid] = {}
++
++    def command(cmd, confirm=from_tty, to_string=not from_tty):
++      gdb.execute(cmd, from_tty=confirm, to_string=to_string)
++
++    def execute(cmd):
++      return subprocess.check_output(cmd, stderr=subprocess.STDOUT) \
++                       .decode('utf-8')
++
++    # load mappings addresses
++    libs = {}
++    with open('/proc/{}/maps'.format(pid), 'r') as maps:
++      for line in maps:
++        addr, _, _, _, node, path = re.split(r'\s+', line, 5)
++        path = path.strip()
++        if node == '0': continue
++        if path in libs: continue
++        libs[path] = int(addr.split('-')[0], 16)
++
++    # unload symbol file if address changed
++    for k in set(libs) & set(self.libs[pid]):
++      if libs[k] != self.libs[pid][k]:
++        try:
++          command('remove-symbol-file "{}"'.format(k), confirm=False)
++        except:
++          print("warn: Failed to unload symbol file {}".format(k))
++        finally:
++          del self.libs[pid][k]
++
++    # load symbol file for new mappings
++    for k in set(libs) - set(self.libs[pid]):
++        if arg is not None and re.search(arg, k) is None: continue
++        addr = self.libs[pid][k] = libs[k]
++        has_debug = False
++        offs = None
++
++        try:
++          out = execute(['file', k])
++        except:
++          continue
++
++        # try loading mapping as ELF
++        try:
++          out = execute(['readelf', '-l', k])
++          for line in out.split('\n'):
++            if not 'LOAD' in line: continue
++            base = int(line.split()[2], 16)
++            break
++        except:
++          # assume mapping is PE
++          base = -1
++
++        try:
++          name = None
++          cmd = 'add-symbol-file "{}"'.format(k)
++          out = execute(['objdump', '-h', k])
++          for line in out.split('\n'):
++            if '2**' in line:
++              _, name, _, vma, _, off, _ = line.split(maxsplit=6)
++              if base < 0: offs = int(off, 16)
++              else: offs = int(vma, 16) - base
++            if 'ALLOC' in line:
++              cmd += ' -s {} 0x{:x}'.format(name, addr + offs)
++            elif name in ['.gnu_debuglink', '.debug_info']:
++              has_debug = True
++            elif 'DEBUGGING' in line:
++              has_debug = True
++        except:
++          continue
++
++        if not has_debug:
++          print('no debugging info found in {}'.format(k))
++          continue
++
++        print('loading symbols for {}'.format(k))
++        command(cmd, confirm=False, to_string=True)
++
++
++LoadSymbolFiles()
+diff --git a/tools/gdbinit.py.in b/tools/gdbinit.py.in
+new file mode 120000
+index 00000000000..9fb7fdf9b92
+--- /dev/null
++++ b/tools/gdbinit.py.in
+@@ -0,0 +1 @@
++gdbinit.py
+\ No newline at end of file
+diff --git a/tools/gdbunwind.py b/tools/gdbunwind.py
+new file mode 100644
+index 00000000000..8611d789f1f
+--- /dev/null
++++ b/tools/gdbunwind.py
+@@ -0,0 +1,177 @@
++#!/bin/env python3
++
++# Copyright 2021 Rémi Bernon for CodeWeavers
++#
++# This library is free software; you can redistribute it and/or
++# modify it under the terms of the GNU Lesser General Public
++# License as published by the Free Software Foundation; either
++# version 2.1 of the License, or (at your option) any later version.
++#
++# This library is distributed in the hope that it will be useful,
++# but WITHOUT ANY WARRANTY; without even the implied warranty of
++# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++# Lesser General Public License for more details.
++#
++# You should have received a copy of the GNU Lesser General Public
++# License along with this library; if not, write to the Free Software
++# Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
++
++from gdb.unwinder import Unwinder
++import gdb
++import re
++
++ARCH_OFFSETS_X86_64 = {
++    "rax":           (0x0000, 'void *'),
++    "rbx":           (0x0008, 'void *'),
++    "rcx":           (0x0010, 'void *'),
++    "rdx":           (0x0018, 'void *'),
++    "rsi":           (0x0020, 'void *'),
++    "rdi":           (0x0028, 'void *'),
++    "r8":            (0x0030, 'void *'),
++    "r9":            (0x0038, 'void *'),
++    "r10":           (0x0040, 'void *'),
++    "r11":           (0x0048, 'void *'),
++    "r12":           (0x0050, 'void *'),
++    "r13":           (0x0058, 'void *'),
++    "r14":           (0x0060, 'void *'),
++    "r15":           (0x0068, 'void *'),
++    "rip":           (0x0070, 'void *'),
++    "cs":            (0x0078, 'void *'),
++    "eflags":        (0x0080, 'void *'),
++    "rsp":           (0x0088, 'void *'),
++    "ss":            (0x0090, 'void *'),
++    "rbp":           (0x0098, 'void *'),
++    "prev_frame":    (0x00a0, 'void *'),
++    "syscall_cfa":   (0x00a8, 'void *'),
++    # "syscall_flags": (0x00b0, 'unsigned int'),
++    # "restore_flags": (0x00b4, 'unsigned int'),
++    "teb_offset":    (0x0328, 'void *'),
++}
++
++ARCH_OFFSETS_I386 = {
++    # "syscall_flags": (0x000, 'unsigned short'),
++    # "restore_flags": (0x002, 'unsigned short'),
++    "eflags":        (0x004, 'unsigned int'),
++    "eip":           (0x008, 'void *'),
++    "esp":           (0x00c, 'void *'),
++    "cs":            (0x010, 'unsigned short'),
++    "ss":            (0x012, 'unsigned short'),
++    "ds":            (0x014, 'unsigned short'),
++    "es":            (0x016, 'unsigned short'),
++    "fs":            (0x018, 'unsigned short'),
++    "gs":            (0x01a, 'unsigned short'),
++    "eax":           (0x01c, 'void *'),
++    "ebx":           (0x020, 'void *'),
++    "ecx":           (0x024, 'void *'),
++    "edx":           (0x028, 'void *'),
++    "edi":           (0x02c, 'void *'),
++    "esi":           (0x030, 'void *'),
++    "ebp":           (0x034, 'void *'),
++    "syscall_cfa":   (0x038, 'void *'),
++    "prev_frame":    (0x03c, 'void *'),
++    "teb_offset":    (0x1f8, 'void *'),
++}
++
++
++def arch_offsets(arch):
++    if 'x86-64' in arch:
++        return ARCH_OFFSETS_X86_64
++    if 'i386' in arch:
++        return ARCH_OFFSETS_I386
++
++
++def find_syscall_frame(sp, arch, teb):
++    (off, type) = arch_offsets(arch)['teb_offset']
++    frame = int(gdb.parse_and_eval(f'*(void **){teb + off}'))
++
++    while frame:
++        (off, type) = arch_offsets(arch)['prev_frame']
++        next_frame = int(gdb.parse_and_eval(f'*(void **){(frame + off)}'))
++        if not next_frame: return frame
++
++        (off, type) = arch_offsets(arch)['ebp']
++        ebp = int(gdb.parse_and_eval(f'*(void **){(next_frame + off)}'))
++        if ebp >= sp: return frame
++
++
++def callback_registers(pc, sp, pending_frame):
++    arch = pending_frame.architecture().name()
++
++    if 'x86-64' in arch:
++        frame = int(pending_frame.read_register("rbp"))
++        frame = (frame - 0x448) & ~0x3f
++
++        (off, type) = arch_offsets(arch)['syscall_cfa']
++        val = gdb.parse_and_eval(f'*({type} *){int(frame + off)}')
++        yield 'rip', gdb.parse_and_eval(f'*(void **){int(val - 8)}')
++        yield 'rbp', val - 16
++
++    elif 'i386' in arch:
++        teb = int(pending_frame.read_register('edx'))
++        frame = find_syscall_frame(sp, arch, teb)
++
++        (off, type) = arch_offsets(arch)['syscall_cfa']
++        val = gdb.parse_and_eval(f'*({type} *){int(frame + off)}')
++        yield 'eip', gdb.parse_and_eval(f'*(void **){int(val - 4)}')
++        yield 'ebp', val - 8
++
++
++def registers(pc, sp, pending_frame):
++    arch = pending_frame.architecture().name()
++    frame = sp
++
++    if 'x86-64' in arch:
++        if 'syscall' in str(pc):
++            rbp = pending_frame.read_register("rbp")
++            frame = rbp - 0x98
++    elif 'i386' in arch:
++        if 'syscall' in str(pc):
++            ebp = pending_frame.read_register("ebp")
++            frame = ebp - 0x34
++        else:
++            frame += 16
++
++    for reg, (off, type) in arch_offsets(arch).items():
++        val = gdb.parse_and_eval(f'*({type} *){int(frame + off)}')
++
++        if reg in ('eflags', 'cs', 'ss', 'ds', 'es', 'fs', 'gs'):
++            int32 = gdb.lookup_type('int')
++            val = val.cast(int32)
++        if reg in ('syscall_cfa', 'prev_frame', 'teb_offset'):
++            continue
++
++        yield reg, val
++
++
++class WineSyscallFrameId(object):
++    def __init__(self, sp, pc):
++        self.sp = sp
++        self.pc = pc
++
++
++class WineSyscallUnwinder(Unwinder):
++    def __init__(self):
++        super().__init__("WineSyscallUnwinder", gdb.SIGTRAMP_FRAME)
++        self.pattern = re.compile('__wine_(syscall|unix_call)'
++                                  '|KiUserCallbackDispatcher')
++
++    def __call__(self, pending_frame):
++        pc = pending_frame.read_register("pc")
++        if self.pattern.search(str(pc)) is None:
++            return None
++
++        sp = pending_frame.read_register("sp")
++        frame = WineSyscallFrameId(sp, pc)
++        if 'KiUserCallbackDispatcher' in str(pc):
++            unwind_info = pending_frame.create_unwind_info(frame)
++            for reg, val in callback_registers(pc, sp, pending_frame):
++                unwind_info.add_saved_register(reg, val)
++            return unwind_info
++
++        unwind_info = pending_frame.create_unwind_info(frame)
++        for reg, val in registers(pc, sp, pending_frame):
++            unwind_info.add_saved_register(reg, val)
++        return unwind_info
++
++
++gdb.unwinder.register_unwinder(None, WineSyscallUnwinder(), replace=True)
+diff --git a/tools/make_requests b/tools/make_requests
+index 4b8139596a3..0da99df3e3d 100755
+--- a/tools/make_requests
++++ b/tools/make_requests
+@@ -43,12 +43,12 @@ my %formats =
+     "union apc_call"           => [ 64, 8 ],
+     "union apc_result"         => [ 40, 8 ],
+     "struct async_data"        => [ 40, 8 ],
+     "struct context_data"      => [ 1712, 8 ],
+     "struct cursor_pos"        => [ 24, 8 ],
+     "union debug_event_data"   => [ 160, 8 ],
+     "struct filesystem_event"  => [ 12, 4 ],
+     "struct generic_map"       => [ 16, 4 ],
+-    "struct handle_info"       => [ 20, 4 ],
++    "struct handle_info"       => [ 32, 8 ],
+     "union hw_input"           => [ 40, 8 ],
+     "union irp_params"         => [ 32, 8 ],
+     "struct luid"              => [  8, 4 ],
+diff --git a/tools/makedep.c b/tools/makedep.c
+index a5393b3db28..4f41fc44814 100644
+--- a/tools/makedep.c
++++ b/tools/makedep.c
+@@ -144,6 +144,7 @@ static struct strarray subdirs;
+ static struct strarray delay_import_libs;
+ static struct strarray top_install[NB_INSTALL_RULES];
+ static const char *root_src_dir;
++static const char *root_obj_dir;
+ static const char *tools_dir;
+ static const char *tools_ext;
+ static const char *wine64_dir;
+@@ -168,6 +169,7 @@ static const char *make_xftmpl;
+ static const char *sfnt2fon;
+ static const char *winebuild;
+ static const char *winegcc;
++static const char *winegpp;
+ static const char *widl;
+ static const char *wrc;
+ static const char *wmc;
+@@ -213,6 +215,7 @@ struct makefile
+     const char     *parent_dir;
+     const char     *module;
+     const char     *testdll;
++    const char     *extlib;
+     const char     *staticlib;
+     const char     *importlib;
+     const char     *unixlib;
+@@ -220,6 +223,8 @@ struct makefile
+     bool            external;
+     bool            is_win16;
+     bool            is_exe;
++    bool            has_cxx;
++    bool            is_external;
+     bool            noentry;
+     bool            nodefaultlibs;
+     bool            disabled[MAX_ARCHS];
+@@ -739,6 +744,16 @@ static char *root_src_dir_path( const char *path )
+ }
+ 
+ 
++/*******************************************************************
++ *         root_obj_dir_path
++ */
++static char *root_obj_dir_path( const char *path )
++{
++    if (!root_obj_dir) return (char *)path;
++    return concat_paths( root_obj_dir, path );
++}
++
++
+ /*******************************************************************
+  *         tools_dir_path
+  */
+@@ -757,6 +772,14 @@ static char *tools_path( const char *name )
+     return strmake( "%s/%s%s", tools_dir_path( name ), name, tools_ext );
+ }
+ 
++/*******************************************************************
++ *         tools_path
++ */
++static char *tools_path_winegpp(void)
++{
++    return strmake( "%s/%s%s", tools_dir_path( "winegcc" ), "wineg++", tools_ext );
++}
++
+ 
+ /*******************************************************************
+  *         tools_base_path
+@@ -1316,6 +1339,7 @@ static const struct
+ } parse_functions[] =
+ {
+     { ".c",   parse_c_file },
++    { ".cpp", parse_c_file },
+     { ".h",   parse_c_file },
+     { ".inc", parse_c_file },
+     { ".inl", parse_c_file },
+@@ -2365,7 +2389,7 @@ static struct strarray add_unix_libraries( const struct makefile *make, struct s
+     struct strarray ret = empty_strarray;
+     struct strarray all_libs = empty_strarray;
+ 
+-    if (strcmp( make->unixlib, "ntdll.so" )) strarray_add( &all_libs, "-lntdll" );
++    if (strcmp( make->unixlib, "ntdll.so" ) && !make->is_external) strarray_add( &all_libs, "-lntdll" );
+     strarray_addall( &all_libs, get_expanded_make_var_array( make, "UNIX_LIBS" ));
+ 
+     STRARRAY_FOR_EACH( file, &all_libs )
+@@ -2856,10 +2880,10 @@ static const char *cmd_prefix( const char *cmd )
+ /*******************************************************************
+  *         output_winegcc_command
+  */
+-static void output_winegcc_command( struct makefile *make, unsigned int arch )
++static void output_winegcc_command( struct makefile *make, unsigned int arch, int is_cxx )
+ {
+-    output( "\t%s%s -o $@", cmd_prefix( "CCLD" ), winegcc );
+-    output_filename( "--wine-objdir ." );
++    output( "\t%s%s -o $@", cmd_prefix( "CCLD" ), is_cxx ? winegpp : winegcc );
++    output_filename( strmake( "--wine-objdir %s", root_obj_dir_path( "." ) ) );
+     if (tools_dir)
+     {
+         output_filename( "--winebuild" );
+@@ -3567,7 +3591,7 @@ static void output_source_testdll( struct makefile *make, struct incl_file *sour
+         output_filename( winebuild );
+         output_filename( winegcc );
+         output( "\n" );
+-        output_winegcc_command( make, link_arch );
++        output_winegcc_command( make, link_arch, 0 );
+         output_filename( "-s" );
+         output_filenames( dll_flags );
+         if (link_arch) output_filenames( get_expanded_arch_var_array( make, "EXTRADLLFLAGS", link_arch ));
+@@ -3657,11 +3681,13 @@ static void output_source_one_arch( struct makefile *make, struct incl_file *sou
+                                     struct strarray defines, struct strarray *targets,
+                                     unsigned int arch )
+ {
+-    const char *obj_name, *var_cc, *var_cflags;
++    const int is_cxx = strendswith( source->name, ".cpp" );
++    const char *obj_name, *var_cc, *var_cxx, *var_cflags, *var_cxxflags;
+     struct compile_command *cmd;
+     struct strarray cflags = empty_strarray;
+ 
+     if (make->disabled[arch] && !(source->file->flags & FLAG_C_IMPLIB)) return;
++    make->has_cxx |= is_cxx;
+     if (is_subdir_other_arch( source->name, arch )) return;
+ 
+     if (arch)
+@@ -3701,14 +3727,18 @@ static void output_source_one_arch( struct makefile *make, struct incl_file *sou
+     if ((source->file->flags & FLAG_ARM64EC_X64) && !strcmp( archs.str[arch], "arm64ec" ))
+     {
+         var_cc     = "$(x86_64_CC)";
++        var_cxx    = "$(x86_64_CXX)";
+         var_cflags = "$(x86_64_CFLAGS)";
++        var_cxxflags = "$(x86_64_CXXFLAGS)";
+         strarray_add( &cflags, "-D__arm64ec_x64__" );
+         strarray_addall( &cflags, get_expanded_make_var_array( top_makefile, "x86_64_EXTRACFLAGS" ));
+     }
+     else if (source->file->flags & FLAG_C_CXX)
+     {
+         var_cc     = arch_make_variable( "CXX", arch );
++        var_cxx    = arch_make_variable( "CXX", arch );
+         var_cflags = arch_make_variable( "CXXFLAGS", arch );
++        var_cxxflags = arch_make_variable( "CXXFLAGS", arch );
+         if (make->external)
+             strarray_addall( &cflags, remove_warning_flags( extra_cxxflags[arch] ));
+         else
+@@ -3717,7 +3747,9 @@ static void output_source_one_arch( struct makefile *make, struct incl_file *sou
+     else
+     {
+         var_cc     = arch_make_variable( "CC", arch );
++        var_cxx    = arch_make_variable( "CXX", arch );
+         var_cflags = arch_make_variable( "CFLAGS", arch );
++        var_cxxflags = arch_make_variable( "CXXFLAGS", arch );
+         if (make->external)
+             strarray_addall( &cflags, remove_warning_flags( extra_cflags[arch] ));
+         else
+@@ -3749,10 +3781,10 @@ static void output_source_one_arch( struct makefile *make, struct incl_file *sou
+     }
+ 
+     output( "%s: %s\n", obj_dir_path( make, obj_name ), source->filename );
+-    output( "\t%s%s -c -o $@ %s", cmd_prefix( "CC" ), var_cc, source->filename );
++    output( "\t%s%s -c -o $@ %s", cmd_prefix( is_cxx ? "CXX" : "CC" ), is_cxx ? var_cxx : var_cc, source->filename );
+     output_filenames( defines );
+     output_filenames( cflags );
+-    output_filename( var_cflags );
++    output_filename( is_cxx ? var_cxxflags : var_cflags );
+     output( "\n" );
+ 
+     if (make->testdll && strendswith( source->name, ".c" ) &&
+@@ -3898,12 +3930,14 @@ static const struct
+ static void output_fake_module( struct makefile *make, const char *spec_file )
+ {
+     unsigned int arch = 0;  /* fake modules are always native */
+-    const char *name = strmake( "%s/%s", arch_pe_dirs[arch], make->module );
++    const char *name, *module;
+ 
+     if (make->disabled[arch]) return;
++    if (!(module = get_expanded_make_variable( make, strmake( "%s_%s", archs.str[arch], "MODULE" ) ))) module = make->module;
+ 
++    name = strmake( "%s%s", arch_pe_dirs[arch], module );
+     strarray_add( &make->all_targets[arch], name );
+-    install_data_file( make, make->module, name, strmake( "$(libdir)/wine/%s", arch_pe_dirs[arch] ), NULL );
++    install_data_file( make, module, name, strmake( "$(libdir)/wine/%s", arch_pe_dirs[arch] ), NULL );
+ 
+     output( "%s:", obj_dir_path( make, name ));
+     if (spec_file) output_filename( spec_file );
+@@ -3911,7 +3945,7 @@ static void output_fake_module( struct makefile *make, const char *spec_file )
+     output_filename( winebuild );
+     output_filename( winegcc );
+     output( "\n" );
+-    output_winegcc_command( make, arch );
++    output_winegcc_command( make, arch, 0 );
+     output_filename( "-Wb,--fake-module" );
+     if (!make->is_exe) output_filename( "-shared" );
+     if (spec_file) output_filename( spec_file );
+@@ -3930,20 +3964,21 @@ static void output_module( struct makefile *make, unsigned int arch )
+     struct strarray all_libs = empty_strarray;
+     struct strarray dep_libs = empty_strarray;
+     struct strarray imports = make->imports;
+-    const char *p, *module_name;
++    const char *p, *module_name, *module;
+     char *spec_file = NULL;
+     unsigned int link_arch;
+ 
++    if (!(module = get_expanded_arch_var( make, "MODULE", arch ))) module = make->module;
+     if (!make->is_exe)
+     {
+         if (make->data_only || make->noentry || strendswith( make->module, ".drv" ) ||
+             strarray_exists( make->extradllflags, "-Wl,--subsystem,native" ))
+         {
+             /* spec file is optional */
+-            struct incl_file *spec = find_src_file( make, replace_extension( make->module, ".dll", ".spec" ));
++            struct incl_file *spec = find_src_file( make, replace_extension( module, ".dll", ".spec" ));
+             if (spec) spec_file = spec->filename;
+         }
+-        else spec_file = src_dir_path( make, replace_extension( make->module, ".dll", ".spec" ));
++        else spec_file = src_dir_path( make, replace_extension( module, ".dll", ".spec" ));
+     }
+ 
+     if (!make->data_only && (arch || !make->noentry))
+@@ -3966,7 +4001,7 @@ static void output_module( struct makefile *make, unsigned int arch )
+                 if (import) strarray_add( &all_libs, strmake( "%s%s", delay_load_flags[arch], import->module ));
+             }
+         }
+-        if (!make->disabled[link_arch]) install_program( make, make->module, arch,
++        if (!make->disabled[link_arch]) install_program( make, module, arch,
+                                                          module_name, arch_install_dirs[arch] );
+         if (!arch && unix_lib_supported) output_fake_module( make, spec_file );
+     }
+@@ -3976,8 +4011,8 @@ static void output_module( struct makefile *make, unsigned int arch )
+         if (make->disabled[arch]) return;
+         link_arch = arch;
+ 
+-        module_name = strmake( "%s/%s", arch_pe_dirs[arch], make->module );
+-        install_data_file( make, make->module, module_name,
++        module_name = strmake( "%s/%s", arch_pe_dirs[arch], module );
++        install_data_file( make, module, module_name,
+                            strmake( "$(libdir)/wine/%s", arch_pe_dirs[arch] ), NULL );
+     }
+ 
+@@ -3990,8 +4025,10 @@ static void output_module( struct makefile *make, unsigned int arch )
+     output_filenames( dep_libs );
+     output_filename( winebuild );
+     output_filename( winegcc );
++    if (make->has_cxx)
++        output_filename( winegpp );
+     output( "\n" );
+-    output_winegcc_command( make, link_arch );
++    output_winegcc_command( make, link_arch, make->has_cxx );
+     if (arch) output_filename( "-Wl,--wine-builtin" );
+     if (!make->is_exe) output_filename( "-shared" );
+     if (spec_file)
+@@ -4061,16 +4098,19 @@ static void output_unix_lib( struct makefile *make )
+     struct strarray unix_deps = empty_strarray;
+     struct strarray unix_libs = add_unix_libraries( make, &unix_deps );
+     unsigned int arch = 0;  /* unix libs are always native */
++    const char *unixlib;
+ 
+     if (make->disabled[arch]) return;
++    if (!(unixlib = get_expanded_make_variable( make, strmake( "%s_%s", archs.str[arch], "UNIXLIB" ) ))) unixlib = make->unixlib;
+ 
+-    strarray_add( &make->all_targets[arch], make->unixlib );
+-    install_program( make, make->unixlib, arch, make->unixlib, arch_install_dirs[arch] );
+-    output( "%s:", obj_dir_path( make, make->unixlib ));
++    strarray_add( &make->all_targets[arch], unixlib );
++    install_program( make, unixlib, arch, unixlib, arch_install_dirs[arch] );
++    output( "%s:", obj_dir_path( make, unixlib ));
+     output_filenames_obj_dir( make, make->unixobj_files );
+     output_filenames( unix_deps );
+     output( "\n" );
+-    output( "\t%s$(CC) -o $@", cmd_prefix( "CCLD" ));
++    if (make->has_cxx) output( "\t%s$(CXX) -o $@", cmd_prefix( "CCLD" ));
++    else output( "\t%s$(CC) -o $@", cmd_prefix( "CCLD" ));
+     output_filenames( get_expanded_make_var_array( make, "UNIXLDFLAGS" ));
+     output_filenames_obj_dir( make, make->unixobj_files );
+     output_filenames( unix_libs );
+@@ -4130,7 +4170,7 @@ static void output_test_module( struct makefile *make, unsigned int arch )
+     strarray_add( &make->all_targets[arch], testmodule );
+     strarray_add( &make->clean_files, stripped );
+     output( "%s:\n", obj_dir_path( make, testmodule ));
+-    output_winegcc_command( make, link_arch );
++    output_winegcc_command( make, link_arch, 0 );
+     output_filenames( make->extradllflags );
+     output_filenames_obj_dir( make, make->object_files[arch] );
+     if (link_arch != arch) output_filenames_obj_dir( make, make->object_files[link_arch] );
+@@ -4140,7 +4180,7 @@ static void output_test_module( struct makefile *make, unsigned int arch )
+     output_filename( arch_make_variable( "LDFLAGS", link_arch ));
+     output( "\n" );
+     output( "%s:\n", obj_dir_path( make, stripped ));
+-    output_winegcc_command( make, link_arch );
++    output_winegcc_command( make, link_arch, 0 );
+     output_filename( "-s" );
+     output_filename( strmake( "-Wb,-F,%s_test.exe", basemodule ));
+     output_filenames( make->extradllflags );
+@@ -4228,7 +4268,7 @@ static void output_programs( struct makefile *make )
+         }
+         strarray_addall( &make->all_targets[arch], symlinks );
+ 
+-        install_dir = !strcmp( make->obj_dir, "loader" ) ? arch_install_dirs[arch] : "$(bindir)";
++        install_dir = !strcmp( make->obj_dir, "loader" ) || !strcmp( make->obj_dir, "loader64" ) ? arch_install_dirs[arch] : "$(bindir)";
+         install_program( make, name, arch, program, install_dir );
+         STRARRAY_FOR_EACH( link, &symlinks )
+             install_program_symlink( make, link, obj_dir_path( make, program ),
+@@ -4806,6 +4846,8 @@ static void output_top_makefile( struct makefile *make )
+     output( ".PRECIOUS: Makefile\n" );
+     output( ".MAKEFILEDEPS:\n" );
+     output( ".SUFFIXES:\n" );
++    if (root_obj_dir) goto done;
++
+     output( "Makefile: config.status %s\n", makedep );
+     output( "\t@./config.status Makefile\n" );
+     output( "config.status: %s\n", root_src_dir_path( "configure" ));
+@@ -4850,6 +4892,7 @@ static void output_top_makefile( struct makefile *make )
+         strarray_add( &make->maintainerclean_files, "include/config.h.in" );
+     }
+ 
++done:
+     for (i = 0; i < subdirs.count; i++) output_sources( submakes[i] );
+     output_sources( make );
+ 
+@@ -4940,11 +4983,13 @@ static void load_sources( struct makefile *make )
+     if (make->testdll)
+     {
+         struct makefile *parent = get_parent_makefile( make );
++        if (!parent) goto no_parent;
+         for (arch = 0; arch < archs.count; arch++)
+         {
+             if (parent->disabled[arch]) make->disabled[arch] = true;
+             if (parent->is_exe && native_archs[arch]) make->disabled[arch] = true;
+         }
++no_parent:;
+     }
+ 
+     if (make->obj_dir && strarray_exists( disabled_dirs, make->obj_dir )) make->disabled[0] = true;
+@@ -4987,7 +5032,7 @@ static void load_sources( struct makefile *make )
+         strarray_add( &make->include_args, strmake( "-I%s", make->src_dir ));
+     if (make->parent_dir)
+         strarray_add( &make->include_args, strmake( "-I%s", src_dir_path( make, make->parent_dir )));
+-    strarray_add( &make->include_args, "-Iinclude" );
++    strarray_add( &make->include_args, strmake( "-I%s", root_obj_dir_path( "include" ) ) );
+     if (root_src_dir) strarray_add( &make->include_args, strmake( "-I%s", root_src_dir_path( "include" )));
+ 
+     list_init( &make->sources );
+@@ -5078,7 +5123,7 @@ static unsigned int find_pe_arch( const char *arch )
+ int main( int argc, char *argv[] )
+ {
+     const char *makeflags = getenv( "MAKEFLAGS" );
+-    const char *target;
++    const char *target, *tmp;
+     unsigned int i, j, arch, ec_arch;
+ 
+     if (makeflags) parse_makeflags( makeflags );
+@@ -5123,6 +5168,7 @@ int main( int argc, char *argv[] )
+         top_install[i] = get_expanded_make_var_array( top_makefile, strmake( "TOP_%s", install_variables[i] ));
+ 
+     root_src_dir       = get_expanded_make_variable( top_makefile, "srcdir" );
++    root_obj_dir       = get_expanded_make_variable( top_makefile, "objdir" );
+     tools_dir          = get_expanded_make_variable( top_makefile, "toolsdir" );
+     tools_ext          = get_expanded_make_variable( top_makefile, "toolsext" );
+     wine64_dir         = get_expanded_make_variable( top_makefile, "wine64dir" );
+@@ -5156,6 +5202,7 @@ int main( int argc, char *argv[] )
+     sfnt2fon    = tools_path( "sfnt2fon" );
+     winebuild   = tools_path( "winebuild" );
+     winegcc     = tools_path( "winegcc" );
++    winegpp     = tools_path_winegpp();
+     widl        = tools_path( "widl" );
+     wrc         = tools_path( "wrc" );
+     wmc         = tools_path( "wmc" );
+@@ -5212,7 +5259,18 @@ int main( int argc, char *argv[] )
+     subdirs = get_expanded_make_var_array( top_makefile, "SUBDIRS" );
+     submakes = xmalloc( subdirs.count * sizeof(*submakes) );
+ 
+-    for (i = 0; i < subdirs.count; i++) submakes[i] = parse_makefile( subdirs.str[i] );
++    for (i = 0; i < subdirs.count; i++)
++    {
++        submakes[i] = parse_makefile( subdirs.str[i] );
++        if (*(tmp = subdirs.str[i]) == '/')
++        {
++            tmp = strmake( "dlls%s", strrchr( tmp, '/' ) );
++            submakes[i]->is_external = 1;
++        }
++        submakes[i]->obj_dir = subdirs.str[i] = tmp;
++    }
++
++    if (!include_makefile) include_makefile = parse_makefile( root_src_dir_path( "include" ) );
+ 
+     load_sources( top_makefile );
+     load_sources( include_makefile );
+diff --git a/tools/winebuild/spec32.c b/tools/winebuild/spec32.c
+index a9e547b7bc0..afef7f93455 100644
+--- a/tools/winebuild/spec32.c
++++ b/tools/winebuild/spec32.c
+@@ -62,7 +62,7 @@ static unsigned int hash_filename( const char *name )
+     /* FNV-1 hash */
+     unsigned int ret = 2166136261u;
+     while (*name) ret = (ret * 16777619) ^ *name++;
+-    return ret;
++    return ret + target.cpu;
+ }
+ 
+ /* check if entry point needs a relay thunk */
