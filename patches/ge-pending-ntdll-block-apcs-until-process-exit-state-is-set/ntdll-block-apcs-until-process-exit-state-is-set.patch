@@ -26,13 +26,26 @@ termination behavior. This does not skip process detach or force an exit.
 diff --git a/dlls/ntdll/unix/process.c b/dlls/ntdll/unix/process.c
 --- a/dlls/ntdll/unix/process.c
 +++ b/dlls/ntdll/unix/process.c
-@@ -965,15 +965,19 @@ NTSTATUS WINAPI NtTerminateProcess( HANDLE handle, LONG exit_code )
+@@ -965,28 +965,32 @@ NTSTATUS WINAPI NtTerminateProcess( HANDLE handle, LONG exit_code )
   */
  NTSTATUS WINAPI NtTerminateProcess( HANDLE handle, LONG exit_code )
  {
 +    sigset_t sigset;
      unsigned int ret;
      BOOL self;
+ 
+     TRACE("handle %p, exit_code %d, process_exiting %d.\n", handle, (int)exit_code, process_exiting);
+ 
+     if (handle == GetCurrentProcess())
+     {
+         if (process_termination_delay)
+         {
+             ERR( "HACK: delaying termination.\n" );
+             usleep( 50 * 1000 );
+         }
+         terminate_process_running = TRUE;
+         terminate_process_exit_code = exit_code;
+     }
  
 +    /* Do not dispatch APCs after killing the other threads until process_exiting
 +     * is set: they may need a mutex left locked by one of those threads. */

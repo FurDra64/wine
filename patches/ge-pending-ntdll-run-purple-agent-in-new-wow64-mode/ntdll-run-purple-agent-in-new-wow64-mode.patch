@@ -19,10 +19,7 @@ https://github.com/GloriousEggroll/proton-ge-custom/issues/870
 diff --git a/dlls/ntdll/unix/loader.c b/dlls/ntdll/unix/loader.c
 --- a/dlls/ntdll/unix/loader.c
 +++ b/dlls/ntdll/unix/loader.c
-@@ -486,6 +486,17 @@ NTSTATUS exec_wineloader( char **argv, int socketfd, const struct pe_image_info
-     if (pe_info->image_flags & IMAGE_FLAGS_ComPlusNativeReady)
-         machine = is_machine_64bit( native_machine ) ? IMAGE_FILE_MACHINE_AMD64 : native_machine;
- 
+@@ -489,3 +544,14 @@ NTSTATUS exec_wineloader( char **argv, int socketfd, const struct pe_image_info
      signal( SIGPIPE, SIG_DFL );
  
 +    /* HACK: NCSOFT PURPLE's VMProtect-packed purple-agent.exe fails its loader check

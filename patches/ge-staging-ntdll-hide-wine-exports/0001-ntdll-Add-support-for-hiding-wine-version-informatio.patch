@@ -15,7 +15,7 @@ index 28115daae6825a651e189aadc7c5b5c497968b4d..30836102b6de02d5ed6c3fbe6704015e
 +++ b/dlls/ntdll/loader.c
 @@ -85,6 +85,8 @@ static const WCHAR system_dir[] = L"C:\\windows\\system32\\";
  /* system search path */
- static const WCHAR system_path[] = L"C:\\windows\\system32;C:\\windows\\system;C:\\windows";
+ static const WCHAR system_path[] = L"C:\\windows\\system32;C:\\windows\\system;C:\\windows;C:\\Program Files (x86)\\Steam";
  
 +#define IS_OPTION_TRUE(ch) ((ch) == 'y' || (ch) == 'Y' || (ch) == 't' || (ch) == 'T' || (ch) == '1')
 +
