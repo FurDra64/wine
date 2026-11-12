@@ -95,3 +95,22 @@ flowchart LR
 - [ ] GE/rtspの最終選定（rtspは保留中）
 - [ ] 取込レビューの粒度（patchset単位 or fork更新単位）
 - [ ] 台帳lint化の時期（Wave 2以降）
+
+## 8. 追加候補（2026-11-12調査）
+
+| fork | URL | 分類 | 理由 |
+|---|---|---|---|
+| Proton-Wineland | github.com/nanomatters/proton-salkim | base候補/摘み取り | Wayland集中。週次リリースで現役。Proton運用ならbase候補、wine側には摘み取り |
+| DW-Proton | dawn.wine/dawn-winery/dwproton | 摘み取り | Proton-CachyOS＋EM＋独自修正の完成品。土台にせず摘む |
+| Proton-Tkg | github.com/Frogging-Family/wine-tkg-git（内proton-tkg/） | 摘み取り | ビルドシステム。patchset摘み取り用 |
+| Proton-EM | github.com/Etaash-mathamsetty/Proton | 摘み取り | winewayland/HDRの元栓。CachyOS経由で間接取得が安い場合多 |
+| Wine-Tkg | 同上wine-tkg-git | 摘み取り | staging除外/調整の捌き方が参考になる |
+
+## 9. wine-stagingを土台にする案の是非
+
+結論：**土台は変えず、stagingは摘み取り元の筆頭に据える。**
+
+- stagingはforkではなく「upstream開発版へのpatchset」（約275〜290件、2週毎rebase、保守はほぼ単騎）
+- こちらのupstream master毎日FFが「完全追従」に相当するため、staging検討の前提は満たしている
+- 全面採用は非推奨：実験280件をValve 12群の上に載せると衝突面が跳ね上がり、単騎保守のrebase遅延リスクも抱える
+- 運用：stagingのrebaseをdrift検出の対象に加え、必要分だけ摘む（tkgの捌き方を参照）
