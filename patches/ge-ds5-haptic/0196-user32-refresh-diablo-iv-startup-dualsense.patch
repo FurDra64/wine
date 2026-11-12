@@ -53,7 +53,7 @@ index 051f4e48..8473d729 100644
  WINE_DECLARE_DEBUG_CHANNEL(keyboard);
 +WINE_DECLARE_DEBUG_CHANNEL(rawinput);
  
-@@ -515,6 +516,123 @@ static DWORD CALLBACK devnotify_window_callbackA(HANDLE handle, DWORD flags, DEV
+@@ -515,6 +516,125 @@ static DWORD CALLBACK devnotify_window_callbackA(HANDLE handle, DWORD flags, DEV
      return 0;
  }
  
@@ -131,8 +131,10 @@ index 051f4e48..8473d729 100644
 +    event->dbcc_classguid = hid_guid;
 +    wcscpy( event->dbcc_name, path );
 +    TRACE_(rawinput)( "Refreshing Diablo IV startup DualSense %s on window %p.\n", debugstr_w(path), startup->hwnd );
-+    steam_input_devnotify( startup->hwnd, DBT_DEVICEARRIVAL, (DEV_BROADCAST_HDR *)event,
-+                          !IsWindowUnicode( startup->hwnd ) );
++    if (IsWindowUnicode( startup->hwnd ))
++        devnotify_window_callbackW( startup->hwnd, DBT_DEVICEARRIVAL, (DEV_BROADCAST_HDR *)event );
++    else
++        devnotify_window_callbackA( startup->hwnd, DBT_DEVICEARRIVAL, (DEV_BROADCAST_HDR *)event );
 +    free( event );
 +
 +done:
