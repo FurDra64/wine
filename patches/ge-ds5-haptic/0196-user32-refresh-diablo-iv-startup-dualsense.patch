@@ -48,13 +48,8 @@ index 051f4e48..8473d729 100644
  #include "wine/debug.h"
  #include "wine/plugplay.h"
  
-@@ -32,3 +32,4 @@
- WINE_DEFAULT_DEBUG_CHANNEL(win);
- WINE_DECLARE_DEBUG_CHANNEL(keyboard);
-+WINE_DECLARE_DEBUG_CHANNEL(rawinput);
- 
-@@ -515,6 +516,125 @@ static DWORD CALLBACK devnotify_window_callbackA(HANDLE handle, DWORD flags, DEV
-     return 0;
+@@ -602,6 +687,125 @@ static DWORD CALLBACK steam_input_callbackA(HANDLE handle, DWORD flags, DEV_BROADCAST_HDR *header)
+     return steam_input_devnotify(handle, flags, header, TRUE);
  }
  
 +static void *diablo_startup_notify;
