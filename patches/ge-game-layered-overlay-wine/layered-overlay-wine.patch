@@ -97,8 +97,9 @@ index 614450e72d6..8cb0f0d2b52 100644
  
  WINE_DEFAULT_DEBUG_CHANNEL(x11drv);
  
-@@ -232,7 +232,67 @@
-     return ret > 0;
+@@ -258,6 +343,62 @@ static BOOL enable_fullscreen_hack( HWND hwnd )
+     if (NtUserGetDpiForWindow( hwnd ) != NtUserGetWinMonitorDpi( hwnd, MDT_RAW_DPI )) return TRUE; /* needs DPI scaling */
+     return FALSE;
  }
  
 +/* Opt-in via WINE_LAYERED_OVERLAY_SHAPE=1. For borderless WS_EX_LAYERED windows that
@@ -159,11 +160,14 @@ index 614450e72d6..8cb0f0d2b52 100644
 +
  static BOOL needs_offscreen_rendering( HWND hwnd, BOOL raw )
  {
+@@ -383,4 +528,8 @@ static BOOL needs_offscreen_rendering( HWND hwnd, BOOL raw )
+     if (needs_offscreen) return needs_offscreen;
+ 
 +    /* Layered overlay (DWM-glass style) painting per-pixel alpha via a 3D client surface. */
 +    if ((layered_overlay_shape_enabled() || layered_overlay_alpha_enabled()) &&
 +        (NtUserGetWindowLongW( hwnd, GWL_EXSTYLE ) & WS_EX_LAYERED))
 +        return TRUE;
-     if (!raw && NtUserGetDpiForWindow( hwnd ) != NtUserGetWinMonitorDpi( hwnd, MDT_RAW_DPI )) return TRUE; /* needs DPI scaling */
+     if (!raw && NtUserGetDpiForWindow( hwnd ) != NtUserGetWinMonitorDpi( hwnd, MDT_RAW_DPI ) && !enable_fullscreen_hack( hwnd )) return TRUE; /* needs DPI scaling */
      if (NtUserGetAncestor( hwnd, GA_PARENT ) != NtUserGetDesktopWindow()) return TRUE; /* child window, needs compositing */
 @@ -339,6 +427,16 @@ static void x11drv_client_surface_destroy( struct client_surface *client )
      if (surface->window) destroy_client_window( hwnd, surface->window );
@@ -516,15 +520,28 @@ index 63a8536c71..fa0aafe4d4 100644
  
      return (CWSaveUnder | CWColormap | CWBorderPixel | CWBackPixel |
              CWEventMask | CWBitGravity | CWBackingStore);
-@@ -548,10 +548,13 @@
+@@ -595,23 +643,26 @@ static void sync_window_input_shape( struct x11drv_win_data *data )
  {
  #ifdef HAVE_LIBXSHAPE
      DWORD ex_style = NtUserGetWindowLongW( data->hwnd, GWL_EXSTYLE );
 +    /* ALPHA mode's input shape comes from the readback; with it off keep the stock pass-through */
 +    BOOL overlay = layered_overlay_shape_enabled() ||
 +                   (layered_overlay_alpha_enabled() && layered_overlay_input_shape_enabled());
+     char const *sgi;
  
      if (!data->whole_window) return;
+ 
+     /* HACK for bug 27151 - TBH: Task Bar Hero (3678970) does not take input
+      *
+      * The game constantly calls GetCursorPos() to check if the cursor position is inside its window.
+      * If so, it removes WS_EX_TRANSPARENT and thus input gets allowed. However, GetCursorPos()
+      * doesn't work reliably, especially on Wayland. On Wayland, the cursor needs to be on an X11
+      * window that takes input for the cursor position to be updated. When the cursor is on a Wayland
+      * window, XQueryPointer() doesn't work and no XI_RawMotion event for the root window is sent so
+      * the cursor position becomes stale. This hack rejects setting an empty input shape for the
+      * window so that it can get input.
+      */
+     if ((sgi = getenv( "SteamGameId" )) && !strcmp( sgi, "3678970" )) return;
  
 -    if (ex_style & WS_EX_TRANSPARENT)
 +    if ((ex_style & WS_EX_TRANSPARENT) && !overlay)

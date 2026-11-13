@@ -164,7 +164,7 @@ Fixes: https://github.com/GloriousEggroll/proton-ge-custom/issues/881
      for (int i = 0; i < instance->obj.physical_device_count; i++)
          vulkan_instance_remove_object( &instance->obj, &instance->obj.physical_devices[i].obj );
      vulkan_instance_remove_object( &instance->obj, &instance->obj.obj );
-@@ -1533,7 +1635,9 @@
+@@ -2320,7 +2422,9 @@
  static VkResult win32u_vkCreateWin32SurfaceKHR( VkInstance client_instance, const VkWin32SurfaceCreateInfoKHR *create_info,
                                                  const VkAllocationCallbacks *allocator, VkSurfaceKHR *ret )
  {
@@ -174,8 +174,8 @@ Fixes: https://github.com/GloriousEggroll/proton-ge-custom/issues/881
      VkSurfaceKHR host_surface;
      struct surface *surface;
      HWND dummy = NULL;
-@@ -1558,7 +1662,23 @@
-     if (!(surface->client = get_unused_client_surface( surface->hwnd, 0, FALSE ))) res = VK_ERROR_OUT_OF_HOST_MEMORY;
+@@ -2345,7 +2449,23 @@
+     if (!(surface->client = get_unused_client_surface( surface->hwnd, 0, fshack_enabled ))) res = VK_ERROR_OUT_OF_HOST_MEMORY;
      else
      {
 +        if (win32u_instance->nvidia_wayland)

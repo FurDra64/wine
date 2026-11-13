@@ -1,0 +1,5 @@
+Feature: valve-graphics-wsi
+Description: Windowing/graphics WSI (win32u/X11/Wayland/GL/Vulkan/user32) for Valve delta. Valve-only delta vs upstream 11.21 (2528aff2620); snapshot b18c88ca34af6b6eb7983a7d17dc362d716a0093 (live bleeding-edge 5b557605b4 via refs/task/valve/bleeding-edge).
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: valve-native-overrides

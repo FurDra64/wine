@@ -138,25 +138,14 @@ diff --git a/dlls/win32u/input.c b/dlls/win32u/input.c
 index c24bbab..1b6501e 100644
 --- a/dlls/win32u/input.c
 +++ b/dlls/win32u/input.c
-@@ -848,17 +848,20 @@ BOOL WINAPI NtUserGetCursorPos( POINT *pt )
+@@ -848,11 +848,14 @@ BOOL WINAPI NtUserGetCursorPos( POINT *pt )
  
      if (!pt) return FALSE;
  
--    while ((status = get_shared_desktop( &lock, &desktop_shm )) == STATUS_PENDING)
+-    if (!get_shared_cursor_pos( pt, &last_change )) return FALSE;
 +    if (!sni_get_context_menu_pos( pt ))
-     {
--        pt->x = desktop_shm->cursor.x;
--        pt->y = desktop_shm->cursor.y;
--        last_change = desktop_shm->cursor.last_change;
--    }
--    if (status) return FALSE;
-+        while ((status = get_shared_desktop( &lock, &desktop_shm )) == STATUS_PENDING)
-+        {
-+            pt->x = desktop_shm->cursor.x;
-+            pt->y = desktop_shm->cursor.y;
-+            last_change = desktop_shm->cursor.last_change;
-+        }
-+        if (status) return FALSE;
++    {
++        if (!get_shared_cursor_pos( pt, &last_change )) return FALSE;
  
 -    /* query new position from graphics driver if we haven't updated recently */
 -    if (NtGetTickCount() - last_change > 100) ret = user_driver->pGetCursorPos( pt );

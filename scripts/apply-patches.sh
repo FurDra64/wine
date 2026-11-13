@@ -104,14 +104,19 @@ if [[ "$CHECK" == 1 ]]; then
         shopt -u nullglob
         for seed_f in "${seed_files[@]}"; do
             while IFS= read -r hdr || [[ -n "$hdr" ]]; do
-                rel="${hdr#--- a/}"
-                rel="${rel%%$'\t'*}"
+                if [[ "$hdr" == 'diff --git a/'* ]]; then
+                    rel="${hdr#diff --git a/}"
+                    rel="${rel%% *}"
+                else
+                    rel="${hdr#--- a/}"
+                    rel="${rel%%$'\t'*}"
+                fi
                 [[ "$rel" == "/dev/null" || "$rel" == "$hdr" ]] && continue
                 if [[ -f "$DESTDIR/$rel" && ! -f "$SHADOW/$rel" ]]; then
                     mkdir -p "$SHADOW/$(dirname "$rel")"
                     cp -p "$DESTDIR/$rel" "$SHADOW/$rel"
                 fi
-            done < <(grep '^--- ' "$seed_f" || true)
+            done < <(grep -E '^(diff --git|---) ' "$seed_f" || true)
         done
     done
 fi
