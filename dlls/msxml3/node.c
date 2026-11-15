@@ -4965,22 +4965,6 @@ HRESULT create_attribute_node(const WCHAR *name, const WCHAR *uri, struct domnod
     return create_node(attr, ret);
 }
 
-static void LIBXML2_LOG_CALLBACK validate_error(void* ctx, char const* msg, ...)
-{
-    va_list ap;
-    va_start(ap, msg);
-    LIBXML2_CALLBACK_ERR(domdoc_validateNode, msg, ap);
-    va_end(ap);
-}
-
-static void LIBXML2_LOG_CALLBACK validate_warning(void* ctx, char const* msg, ...)
-{
-    va_list ap;
-    va_start(ap, msg);
-    LIBXML2_CALLBACK_WARN(domdoc_validateNode, msg, ap);
-    va_end(ap);
-}
-
 static HRESULT return_validation_error(struct validation_context *ctxt, IXMLDOMParseError **err)
 {
     HRESULT hr;
@@ -5160,12 +5144,22 @@ HRESULT node_validate(struct domnode *doc, IXMLDOMNode *node_obj, IXMLDOMParseEr
     if ((dtd = domnode_get_dtd(node_get_doc(node))))
     {
         if (node->type == NODE_DOCUMENT)
+        {
             root = domnode_get_root_element(node);
+        }
         else
+        {
             root = node;
+
+            /* Collect ID values, unless we're validating a root node. */
+            if (node->parent != node_get_doc(node))
+                parser_dtd_collect_ids(&ctxt, dtd->dtd, node);
+        }
 
         if (!node_dtd_validate_node(&ctxt, dtd->dtd, root))
             return return_validation_error(&ctxt, err);
+
+        ++validated;
     }
 
     /* References are accumulated along with id's and have to be cross-checked
@@ -5173,33 +5167,11 @@ HRESULT node_validate(struct domnode *doc, IXMLDOMNode *node_obj, IXMLDOMParseEr
     if (!parser_dtd_validate_references(&ctxt))
         return return_validation_error(&ctxt, err);
 
-    xmldoc = create_xmldoc_from_domdoc(node, &xmlnode);
-
-    /* DTD validation */
-    if (xmldoc->intSubset || xmldoc->extSubset)
-    {
-        xmlValidCtxtPtr vctx = xmlNewValidCtxt();
-        int ret;
-
-        vctx->error = validate_error;
-        vctx->warning = validate_warning;
-        ++validated;
-
-        ret = node->type == NODE_DOCUMENT ? xmlValidateDocument(vctx, xmldoc) : xmlValidateElement(vctx, xmldoc, xmlnode);
-        if (!ret)
-        {
-            /* TODO: get a real error code here */
-            TRACE("DTD validation failed\n");
-            ctxt.code = E_XML_INVALID;
-            hr = S_FALSE;
-        }
-        xmlFreeValidCtxt(vctx);
-    }
-
     /* Schema validation */
     schema = doc->properties->schemaCache;
     if (hr == S_OK && schema)
     {
+        xmldoc = create_xmldoc_from_domdoc(node, &xmlnode);
 
         hr = SchemaCache_validate_tree(schema, xmlnode);
         if (SUCCEEDED(hr))
@@ -5221,8 +5193,9 @@ HRESULT node_validate(struct domnode *doc, IXMLDOMNode *node_obj, IXMLDOMParseEr
             /* not really OK, just didn't find a schema for the ns */
             hr = S_OK;
         }
+
+        xmlFreeDoc(xmldoc);
     }
-    xmlFreeDoc(xmldoc);
 
     if (!validated)
     {
