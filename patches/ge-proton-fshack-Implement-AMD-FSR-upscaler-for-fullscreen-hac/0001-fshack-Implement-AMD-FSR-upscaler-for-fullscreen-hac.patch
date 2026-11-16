@@ -1,4 +1,4 @@
-From 92fbaabc91a040584dde1c809f1bd980b8147250 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Stelios Tsampas <loathingkernel@gmail.com>
 Date: Mon, 5 May 2025 22:56:51 +0300
 Subject: [PATCH] win32u: fshack: Implement AMD FSR upscaler for fullscreen
@@ -16,7 +16,7 @@ Co-authored-by: Ph42oN <julle.ys.57@gmail.com>
 
 diff --git a/dlls/win32u/fsr_spv.h b/dlls/win32u/fsr_spv.h
 new file mode 100644
-index 0000000000000000000000000000000000000000..8863cda74a4f27328a114394ed1d57c7a498cacf
+index 0000000..8863cda
 --- /dev/null
 +++ b/dlls/win32u/fsr_spv.h
 @@ -0,0 +1,1173 @@
@@ -1194,11 +1194,11 @@ index 0000000000000000000000000000000000000000..8863cda74a4f27328a114394ed1d57c7
 +
 +#endif /* __FSR_SPV_H */
 diff --git a/dlls/win32u/sysparams.c b/dlls/win32u/sysparams.c
-index 575e6425a9f44b66bf97163f12a9af823ef0af00..1c2d436a7eb24eee6b798f3702653b07645dd9d5 100644
+index 061fcae..6c2e76e 100644
 --- a/dlls/win32u/sysparams.c
 +++ b/dlls/win32u/sysparams.c
-@@ -2335,6 +2335,125 @@ static void add_monitor( const struct gdi_monitor *gdi_monitor, void *param )
-     ctx->monitor_count++;
+@@ -2104,6 +2104,125 @@ static void add_monitor( const struct gdi_monitor *gdi_monitor, void *param )
+     }
  }
  
 +/* Return whether fsr should be used */
@@ -1323,7 +1323,7 @@ index 575e6425a9f44b66bf97163f12a9af823ef0af00..1c2d436a7eb24eee6b798f3702653b07
  static UINT add_screen_size( SIZE *sizes, UINT count, SIZE size )
  {
      UINT i = 0;
-@@ -2383,6 +2502,7 @@ static SIZE *get_screen_sizes( const DEVMODEW *maximum, const DEVMODEW *modes, U
+@@ -2152,6 +2271,7 @@ static SIZE *get_screen_sizes( const DEVMODEW *maximum, const DEVMODEW *modes, U
          {2880, 1620},
          {3200, 1800},
          /* 16:10 */
@@ -1331,7 +1331,7 @@ index 575e6425a9f44b66bf97163f12a9af823ef0af00..1c2d436a7eb24eee6b798f3702653b07
          {1440,  900},
          {1680, 1050},
          {1920, 1200},
-@@ -2405,14 +2525,40 @@ static SIZE *get_screen_sizes( const DEVMODEW *maximum, const DEVMODEW *modes, U
+@@ -2174,14 +2294,40 @@ static SIZE *get_screen_sizes( const DEVMODEW *maximum, const DEVMODEW *modes, U
      UINT i, count;
  
      const char *env;
@@ -1372,7 +1372,7 @@ index 575e6425a9f44b66bf97163f12a9af823ef0af00..1c2d436a7eb24eee6b798f3702653b07
          count += add_screen_size( sizes, count, default_sizes[i] );
      }
  
-@@ -2423,12 +2569,33 @@ static SIZE *get_screen_sizes( const DEVMODEW *maximum, const DEVMODEW *modes, U
+@@ -2192,12 +2338,33 @@ static SIZE *get_screen_sizes( const DEVMODEW *maximum, const DEVMODEW *modes, U
          count += ARRAY_SIZE(lowres_sizes);
      }
  
@@ -1407,19 +1407,19 @@ index 575e6425a9f44b66bf97163f12a9af823ef0af00..1c2d436a7eb24eee6b798f3702653b07
      }
  
 diff --git a/dlls/win32u/vulkan.c b/dlls/win32u/vulkan.c
-index d1de7021100b5783b8a36016ebd81a5d389b3e0a..9a6e24c373b0cb182c566fd897242e34a5c279e0 100644
+index 1ae40e1..a835205 100644
 --- a/dlls/win32u/vulkan.c
 +++ b/dlls/win32u/vulkan.c
-@@ -43,6 +43,8 @@
+@@ -34,6 +34,8 @@
+ #include "win32u_private.h"
  #include "ntuser_private.h"
- #include "wine/hwnd_dmabuf.h"
  
 +#include "fsr_spv.h"
 +
  WINE_DEFAULT_DEBUG_CHANNEL(vulkan);
  
  static PFN_vkGetDeviceProcAddr p_vkGetDeviceProcAddr;
-@@ -188,6 +190,22 @@ static struct surface *surface_from_handle( VkSurfaceKHR handle )
+@@ -153,6 +155,22 @@ static struct surface *surface_from_handle( VkSurfaceKHR handle )
      return CONTAINING_RECORD( obj, struct surface, obj );
  }
  
@@ -1442,7 +1442,7 @@ index d1de7021100b5783b8a36016ebd81a5d389b3e0a..9a6e24c373b0cb182c566fd897242e34
  /* Return whether integer scaling is on */
  static BOOL fs_hack_is_integer(void)
  {
-@@ -206,10 +224,18 @@ struct fs_hack_image
+@@ -171,10 +189,18 @@ struct fs_hack_image
      uint32_t cmd_queue_idx;
      VkCommandBuffer cmd;
      VkImage swapchain_image;
@@ -1463,7 +1463,7 @@ index d1de7021100b5783b8a36016ebd81a5d389b3e0a..9a6e24c373b0cb182c566fd897242e34
  };
  
  static const char *debugstr_vkextent2d( const VkExtent2D *ext )
-@@ -330,14 +356,18 @@ struct swapchain
+@@ -193,14 +219,18 @@ struct swapchain
      UINT fshack_dpi;
      VkExtent2D host_extents;
      VkCommandPool *cmd_pools; /* VkCommandPool[device->queue_count] */
@@ -1485,7 +1485,7 @@ index d1de7021100b5783b8a36016ebd81a5d389b3e0a..9a6e24c373b0cb182c566fd897242e34
  };
  
  static struct swapchain *swapchain_from_handle( VkSwapchainKHR handle )
-@@ -2294,28 +2324,75 @@ const uint32_t blit_comp_spv[] =
+@@ -2708,28 +2738,75 @@ const uint32_t blit_comp_spv[] =
      0x0000005b, 0x00000021, 0x00040063, 0x00000056, 0x0000005a, 0x0000005b, 0x000100fd, 0x00010038,
  };
  
@@ -1566,7 +1566,7 @@ index d1de7021100b5783b8a36016ebd81a5d389b3e0a..9a6e24c373b0cb182c566fd897242e34
  }
  
  static VkResult create_descriptor_set( struct vulkan_device *device, struct swapchain *swapchain, struct fs_hack_image *hack )
-@@ -2341,7 +2418,7 @@ static VkResult create_descriptor_set( struct vulkan_device *device, struct swap
+@@ -2755,7 +2832,7 @@ static VkResult create_descriptor_set( struct vulkan_device *device, struct swap
      userDescriptorImageInfo.sampler = swapchain->sampler;
  
      realDescriptorImageInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
@@ -1575,7 +1575,7 @@ index d1de7021100b5783b8a36016ebd81a5d389b3e0a..9a6e24c373b0cb182c566fd897242e34
  
      descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
      descriptorWrites[0].dstSet = hack->descriptor_set;
-@@ -2360,10 +2437,47 @@ static VkResult create_descriptor_set( struct vulkan_device *device, struct swap
+@@ -2774,10 +2851,47 @@ static VkResult create_descriptor_set( struct vulkan_device *device, struct swap
      descriptorWrites[1].pImageInfo = &realDescriptorImageInfo;
  
      device->p_vkUpdateDescriptorSets( device->host.device, 2, descriptorWrites, 0, NULL );
@@ -1624,7 +1624,7 @@ index d1de7021100b5783b8a36016ebd81a5d389b3e0a..9a6e24c373b0cb182c566fd897242e34
  {
      VkResult res;
      VkSamplerCreateInfo samplerInfo = {0};
-@@ -2371,18 +2485,20 @@ static VkResult init_blit_images( struct vulkan_device *device, struct swapchain
+@@ -2785,18 +2899,20 @@ static VkResult init_blit_images( struct vulkan_device *device, struct swapchain
      VkDescriptorPoolCreateInfo poolInfo = {0};
      VkDescriptorSetLayoutBinding layoutBindings[2] = {{0}, {0}};
      VkDescriptorSetLayoutCreateInfo descriptorLayoutInfo = {0};
@@ -1652,7 +1652,7 @@ index d1de7021100b5783b8a36016ebd81a5d389b3e0a..9a6e24c373b0cb182c566fd897242e34
      samplerInfo.anisotropyEnable = VK_FALSE;
      samplerInfo.maxAnisotropy = 1;
      samplerInfo.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK;
-@@ -2410,6 +2526,13 @@ static VkResult init_blit_images( struct vulkan_device *device, struct swapchain
+@@ -2824,6 +2940,13 @@ static VkResult init_blit_images( struct vulkan_device *device, struct swapchain
      poolInfo.pPoolSizes = poolSizes;
      poolInfo.maxSets = swapchain->n_images;
  
@@ -1666,7 +1666,7 @@ index d1de7021100b5783b8a36016ebd81a5d389b3e0a..9a6e24c373b0cb182c566fd897242e34
      if ((res = device->p_vkCreateDescriptorPool( device->host.device, &poolInfo, NULL, &swapchain->descriptor_pool )))
      {
          ERR( "vkCreateDescriptorPool: %d\n", res );
-@@ -2439,36 +2562,133 @@ static VkResult init_blit_images( struct vulkan_device *device, struct swapchain
+@@ -2853,36 +2976,133 @@ static VkResult init_blit_images( struct vulkan_device *device, struct swapchain
          goto fail;
      }
  
@@ -1738,15 +1738,15 @@ index d1de7021100b5783b8a36016ebd81a5d389b3e0a..9a6e24c373b0cb182c566fd897242e34
 -        goto fail;
 -    }
 +            device->p_vkGetImageMemoryRequirements(device->host.device, hack->fsr_image, &fsrMemReq);
-+
+ 
+-    if ((res = create_pipeline( device, swapchain, shaderModule ))) goto fail;
 +            offs = fsrMemTotal % fsrMemReq.alignment;
 +            if(offs) fsrMemTotal += fsrMemReq.alignment - offs;
  
--    if ((res = create_pipeline( device, swapchain, shaderModule ))) goto fail;
+-    device->p_vkDestroyShaderModule( device->host.device, shaderModule, NULL );
 +            fsrMemTotal += fsrMemReq.size;
 +        }
- 
--    device->p_vkDestroyShaderModule( device->host.device, shaderModule, NULL );
++
 +        /* allocate backing memory */
 +        device->physical_device->instance->p_vkGetPhysicalDeviceMemoryProperties(device->physical_device->host.physical_device, &memProperties);
 +
@@ -1824,7 +1824,7 @@ index d1de7021100b5783b8a36016ebd81a5d389b3e0a..9a6e24c373b0cb182c566fd897242e34
  
      for (i = 0; i < swapchain->n_images; ++i)
      {
-@@ -2477,14 +2697,14 @@ static VkResult init_blit_images( struct vulkan_device *device, struct swapchain
+@@ -2891,14 +3111,14 @@ static VkResult init_blit_images( struct vulkan_device *device, struct swapchain
          viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
          viewInfo.image = hack->swapchain_image;
          viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
@@ -1841,7 +1841,7 @@ index d1de7021100b5783b8a36016ebd81a5d389b3e0a..9a6e24c373b0cb182c566fd897242e34
          {
              ERR( "vkCreateImageView(blit): %d\n", res );
              goto fail;
-@@ -2500,17 +2720,19 @@ fail:
+@@ -2914,17 +3134,19 @@ fail:
      {
          struct fs_hack_image *hack = &swapchain->fs_hack_images[i];
  
@@ -1869,7 +1869,7 @@ index d1de7021100b5783b8a36016ebd81a5d389b3e0a..9a6e24c373b0cb182c566fd897242e34
  
      device->p_vkDestroyDescriptorSetLayout( device->host.device, swapchain->descriptor_set_layout, NULL );
      swapchain->descriptor_set_layout = VK_NULL_HANDLE;
-@@ -2518,6 +2740,9 @@ fail:
+@@ -2932,6 +3154,9 @@ fail:
      device->p_vkDestroyDescriptorPool( device->host.device, swapchain->descriptor_pool, NULL );
      swapchain->descriptor_pool = VK_NULL_HANDLE;
  
@@ -1879,7 +1879,7 @@ index d1de7021100b5783b8a36016ebd81a5d389b3e0a..9a6e24c373b0cb182c566fd897242e34
      device->p_vkDestroySampler( device->host.device, swapchain->sampler, NULL );
      swapchain->sampler = VK_NULL_HANDLE;
  
-@@ -2527,8 +2752,10 @@ fail:
+@@ -2941,8 +3166,10 @@ fail:
  static void destroy_fs_hack_image( struct vulkan_device *device, struct swapchain *swapchain, struct fs_hack_image *hack )
  {
      device->p_vkDestroyImageView( device->host.device, hack->user_view, NULL );
@@ -1891,7 +1891,7 @@ index d1de7021100b5783b8a36016ebd81a5d389b3e0a..9a6e24c373b0cb182c566fd897242e34
      if (hack->cmd) device->p_vkFreeCommandBuffers( device->host.device, swapchain->cmd_pools[hack->cmd_queue_idx], 1, &hack->cmd );
      device->p_vkDestroySemaphore( device->host.device, hack->blit_finished, NULL );
  }
-@@ -2596,6 +2823,9 @@ static VkResult init_fs_hack_images( struct vulkan_device *device, struct swapch
+@@ -3010,6 +3237,9 @@ static VkResult init_fs_hack_images( struct vulkan_device *device, struct swapch
          imageInfo.queueFamilyIndexCount = createinfo->queueFamilyIndexCount;
          imageInfo.pQueueFamilyIndices = createinfo->pQueueFamilyIndices;
  
@@ -1901,7 +1901,7 @@ index d1de7021100b5783b8a36016ebd81a5d389b3e0a..9a6e24c373b0cb182c566fd897242e34
          if (createinfo->flags & VK_SWAPCHAIN_CREATE_MUTABLE_FORMAT_BIT_KHR)
              imageInfo.flags |= VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT | VK_IMAGE_CREATE_EXTENDED_USAGE_BIT;
          else if (createinfo->imageFormat != VK_FORMAT_B8G8R8A8_SRGB)
-@@ -2671,7 +2901,7 @@ static VkResult init_fs_hack_images( struct vulkan_device *device, struct swapch
+@@ -3085,7 +3315,7 @@ static VkResult init_fs_hack_images( struct vulkan_device *device, struct swapch
          viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
          viewInfo.image = swapchain->fs_hack_images[i].user_image;
          viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
@@ -1910,8 +1910,8 @@ index d1de7021100b5783b8a36016ebd81a5d389b3e0a..9a6e24c373b0cb182c566fd897242e34
          viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
          viewInfo.subresourceRange.baseMipLevel = 0;
          viewInfo.subresourceRange.levelCount = 1;
-@@ -4057,6 +4287,8 @@ static VkResult win32u_vkCreateSwapchainKHR( VkDevice client_device, const VkSwa
-     BOOL presentation_owner;
+@@ -3133,6 +3363,8 @@ static VkResult win32u_vkCreateSwapchainKHR( VkDevice client_device, const VkSwa
+     struct ratio raw_dpi;
      RECT client_rect;
      VkResult res;
 +    BOOL lite;
@@ -1919,8 +1919,8 @@ index d1de7021100b5783b8a36016ebd81a5d389b3e0a..9a6e24c373b0cb182c566fd897242e34
  
      if (!NtUserIsWindow( surface->hwnd ))
      {
-@@ -4111,11 +4343,22 @@ static VkResult win32u_vkCreateSwapchainKHR( VkDevice client_device, const VkSwa
-         if (!(capabilities.supportedUsageFlags & VK_IMAGE_USAGE_STORAGE_BIT))
+@@ -3186,11 +3418,22 @@ static VkResult win32u_vkCreateSwapchainKHR( VkDevice client_device, const VkSwa
+         if (!(caps.supportedUsageFlags & VK_IMAGE_USAGE_STORAGE_BIT))
              FIXME( "Swapchain does not support required VK_IMAGE_USAGE_STORAGE_BIT\n" );
  
 +        swapchain->upscaler.is_fsr = fs_hack_is_fsr(&lite, &sharpness);
@@ -1943,7 +1943,7 @@ index d1de7021100b5783b8a36016ebd81a5d389b3e0a..9a6e24c373b0cb182c566fd897242e34
          if (create_info->imageFormat != VK_FORMAT_B8G8R8A8_UNORM && create_info->imageFormat != VK_FORMAT_B8G8R8A8_SRGB)
              FIXME( "swapchain image format is not BGRA8 UNORM/SRGB. Things may go badly. %d\n",
                     create_info_host.imageFormat );
-@@ -4263,7 +4506,7 @@ static VkResult win32u_vkCreateSwapchainKHR( VkDevice client_device, const VkSwa
+@@ -3217,7 +3460,7 @@ static VkResult win32u_vkCreateSwapchainKHR( VkDevice client_device, const VkSwa
              return res;
          }
  
@@ -1952,7 +1952,7 @@ index d1de7021100b5783b8a36016ebd81a5d389b3e0a..9a6e24c373b0cb182c566fd897242e34
          {
              ERR( "creating blit images failed: %d\n", res );
              device->p_vkDestroySwapchainKHR( device->host.device, swapchain->obj.host.swapchain, NULL );
-@@ -4317,12 +4560,14 @@ void win32u_vkDestroySwapchainKHR( VkDevice client_device, VkSwapchainKHR client
+@@ -3255,12 +3498,14 @@ static void win32u_vkDestroySwapchainKHR( VkDevice client_device, VkSwapchainKHR
              device->p_vkDestroyCommandPool( device->host.device, swapchain->cmd_pools[i], NULL );
          }
  
@@ -1969,7 +1969,7 @@ index d1de7021100b5783b8a36016ebd81a5d389b3e0a..9a6e24c373b0cb182c566fd897242e34
          free( swapchain->cmd_pools );
          free( swapchain->fs_hack_images );
      }
-@@ -4827,6 +5072,31 @@ static VkCommandBuffer create_hack_cmd( struct vulkan_queue *queue, struct swapc
+@@ -3389,6 +3634,31 @@ static VkCommandBuffer create_hack_cmd( struct vulkan_queue *queue, struct swapc
      return cmd;
  }
  
@@ -2001,7 +2001,7 @@ index d1de7021100b5783b8a36016ebd81a5d389b3e0a..9a6e24c373b0cb182c566fd897242e34
  static VkResult record_compute_cmd( struct vulkan_device *device, struct swapchain *swapchain, struct fs_hack_image *hack )
  {
      VkResult res;
-@@ -4836,6 +5106,9 @@ static VkResult record_compute_cmd( struct vulkan_device *device, struct swapcha
+@@ -3398,6 +3668,9 @@ static VkResult record_compute_cmd( struct vulkan_device *device, struct swapcha
  
      TRACE( "recording compute command\n" );
  
@@ -2011,7 +2011,7 @@ index d1de7021100b5783b8a36016ebd81a5d389b3e0a..9a6e24c373b0cb182c566fd897242e34
      beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
      beginInfo.flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;
  
-@@ -4843,45 +5116,23 @@ static VkResult record_compute_cmd( struct vulkan_device *device, struct swapcha
+@@ -3405,45 +3678,23 @@ static VkResult record_compute_cmd( struct vulkan_device *device, struct swapcha
  
      /* for the cs we run... */
      /* transition user image from PRESENT_SRC to SHADER_READ */
@@ -2057,7 +2057,7 @@ index d1de7021100b5783b8a36016ebd81a5d389b3e0a..9a6e24c373b0cb182c566fd897242e34
      /* vec2: blit dst offset in real coords */
      constants[0] = 0;
      constants[1] = 0;
-@@ -4893,40 +5144,23 @@ static VkResult record_compute_cmd( struct vulkan_device *device, struct swapcha
+@@ -3455,40 +3706,23 @@ static VkResult record_compute_cmd( struct vulkan_device *device, struct swapcha
      /* vec2: blit dst extents in real coords */
      constants[2] = swapchain->host_extents.width;
      constants[3] = swapchain->host_extents.height;
@@ -2099,7 +2099,7 @@ index d1de7021100b5783b8a36016ebd81a5d389b3e0a..9a6e24c373b0cb182c566fd897242e34
      barriers[1].srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
      barriers[1].dstAccessMask = 0;
  
-@@ -5113,6 +5347,149 @@ static VkResult repack_present_pnext( struct mempool *pool, VkPresentInfoKHR *ho
+@@ -3504,6 +3738,149 @@ static VkResult record_compute_cmd( struct vulkan_device *device, struct swapcha
      return VK_SUCCESS;
  }
  
@@ -2248,8 +2248,8 @@ index d1de7021100b5783b8a36016ebd81a5d389b3e0a..9a6e24c373b0cb182c566fd897242e34
 +
  static VkResult win32u_vkQueuePresentKHR( VkQueue client_queue, const VkPresentInfoKHR *client_present_info )
  {
-     VkPresentInfoKHR present_info_data = *client_present_info;
-@@ -5154,7 +5531,8 @@ static VkResult win32u_vkQueuePresentKHR( VkQueue client_queue, const VkPresentI
+     static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+@@ -3537,7 +3914,8 @@ static VkResult win32u_vkQueuePresentKHR( VkQueue client_queue, const VkPresentI
              if (hack->cmd) device->p_vkFreeCommandBuffers( queue->device->host.device, swapchain->cmd_pools[hack->cmd_queue_idx], 1, &hack->cmd );
              if (!(queue->device->queue_props[queue->info.queueFamilyIndex].queueFlags & VK_QUEUE_COMPUTE_BIT)) goto failed; /* TODO */
  
@@ -2260,14 +2260,14 @@ index d1de7021100b5783b8a36016ebd81a5d389b3e0a..9a6e24c373b0cb182c566fd897242e34
                  device->p_vkFreeCommandBuffers( queue->device->host.device, swapchain->cmd_pools[hack->cmd_queue_idx], 1, &hack->cmd );
                  hack->cmd = NULL;
 diff --git a/dlls/win32u/win32u_private.h b/dlls/win32u/win32u_private.h
-index 51bca79f7f1c59a6e6b786d2ae742b3b13bb8964..63ac17ed0b9a606c45b78f593d12590f12eb9ab9 100644
+index 0adb7a2..94716a9 100644
 --- a/dlls/win32u/win32u_private.h
 +++ b/dlls/win32u/win32u_private.h
-@@ -204,6 +204,7 @@ extern BOOL get_gpu_info_from_uuid( const GUID *uuid, LUID *luid, UINT32 *node_m
+@@ -215,6 +215,7 @@ extern BOOL use_default_gamma_ramp(void);
  extern BOOL get_float_gamma_ramp( float *ramp, LONG *serial );
  extern BOOL get_global_gamma_ramp( void *data );
  extern BOOL set_global_gamma_ramp( void *data );
 +extern BOOL fs_hack_is_fsr(BOOL *lite, float *sharpness);
  
- extern void fixup_device_id( const struct pci_id **pci_id );
+ /* d3dkmtc. */
  
