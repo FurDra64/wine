@@ -35,6 +35,10 @@ jobs:
         with:
           fetch-depth: 1
 
+      - name: Lint series.conf
+        shell: bash
+        run: bash scripts/lint-series.sh
+
       - name: Dry-run all patchsets
         shell: bash
         run: |
