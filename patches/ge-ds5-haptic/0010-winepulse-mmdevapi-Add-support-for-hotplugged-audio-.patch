@@ -412,7 +412,7 @@ index a3a5ec3741f7f078b68416286d8c5ba6c323f2ae..207f2f09422e5e30e9446c9f96ece2e0
          HRESULT hr;
 @@ -1373,6 +1374,7 @@ static HRESULT WINAPI MMDevEnum_GetDevice(IMMDeviceEnumerator *iface, const WCHA
  
-         if (str && !lstrcmpW(str, name))
+         if (str && !lstrcmpiW(str, name))
          {
 +            LeaveCriticalSection(&device_list_cs);
              CoTaskMemFree(str);
