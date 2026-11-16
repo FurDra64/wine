@@ -1,0 +1,86 @@
+From: GloriousEggroll <gloriouseggroll@gmail.com>
+Date: Thu, 22 Oct 2026 15:00:00 -0600
+Subject: [PATCH] ntdll: Keep the address range the NVIDIA driver reserves for DLSS free.
+
+When a Vulkan device is created with VK_NVX_binary_import /
+VK_NVX_image_view_handle, which DLSS needs, the NVIDIA driver (libcuda)
+looks for free space in /proc/self/maps from 0x200000000 up to 1T (16T in
+one mode on newer drivers) and maps 4G + 2M at the first fit. With
+ntdll-ForceBottomUpAlloc, large allocations land right at 0x200000000, so a
+game that reserves enough memory early (Star Citizen allocates 1T) leaves
+no room, vkCreateDevice fails, DXVK and vkd3d-proton fall back to a device
+without those extensions and DLSS is unavailable.
+
+The mapping was 0x200000000-0x300200000 on all seven GPUs measured, from
+GTX 1660 SUPER to RTX 5080 (4-16G VRAM, 15-62G RAM, 580-615 drivers,
+including hybrid and multi-GPU systems). Keep exactly that range out of
+the free areas on 64-bit so the driver always finds it, while bottom-up
+order is kept for everything else. Allocations at an explicit address are
+still allowed there.
+---
+diff --git a/dlls/ntdll/unix/virtual.c b/dlls/ntdll/unix/virtual.c
+--- a/dlls/ntdll/unix/virtual.c
++++ b/dlls/ntdll/unix/virtual.c
+@@ -1300,6 +1300,18 @@
+     return NULL;
+ }
+
+
++#ifdef _WIN64
++/* The NVIDIA driver reserves 4G + 2M at the first free address from 0x200000000 when a
++ * Vulkan device uses the extensions DLSS needs, and device creation fails if 0x200000000
++ * up to its search limit is taken. Bottom-up allocation would fill exactly that range, so
++ * keep it out of the free areas (but unmapped, the driver looks for it in /proc/self/maps). */
++static char * const blocked_area_start = (char *)0x200000000;
++static char * const blocked_area_end   = (char *)0x300200000;
++#else
++static char * const blocked_area_start = NULL;
++static char * const blocked_area_end   = NULL;
++#endif
++
+ /***********************************************************************
+  *           map_free_area
+@@ -1547,17 +1547,42 @@
+  */
+ static void *map_free_area( void *base, void *end, size_t size, int top_down, int unix_prot, size_t align_mask )
+ {
+     struct wine_rb_entry *first = find_view_inside_range( &base, &end, top_down );
+     ptrdiff_t step = top_down ? -(align_mask + 1) : (align_mask + 1);
+     struct alloc_area area;
+-    void *start;
++    void *start, *result;
+ 
+     memset( &area, 0, sizeof(area) );
+     area.step = step;
+     area.size = size;
+     area.top_down = top_down;
+     area.unix_prot = unix_prot;
+     area.align_mask = align_mask;
+ 
++
++    if (blocked_area_end > (char *)base && blocked_area_start < (char *)end)
++    {
++        /* Range straddles the blocked area, try the parts outside it,
++         * keeping the allocation order (top-down tries the upper part first). */
++        void *low_end = min( (char *)end, blocked_area_start );
++        void *high_start = max( (char *)base, blocked_area_end );
++
++        if (top_down)
++        {
++            if (high_start < end &&
++                (result = map_free_area( high_start, end, size, top_down, unix_prot, align_mask )))
++                return result;
++            if (base < low_end)
++                return map_free_area( base, low_end, size, top_down, unix_prot, align_mask );
++            return NULL;
++        }
++        if (base < low_end &&
++            (result = map_free_area( base, low_end, size, top_down, unix_prot, align_mask )))
++            return result;
++        if (high_start < end)
++            return map_free_area( high_start, end, size, top_down, unix_prot, align_mask );
++        return NULL;
++    }
++
+     if (top_down)
+     {
