@@ -410,9 +410,9 @@ index a3a5ec3741f7f078b68416286d8c5ba6c323f2ae..207f2f09422e5e30e9446c9f96ece2e0
      LIST_FOR_EACH_ENTRY(impl, &device_list, MMDevice, entry)
      {
          HRESULT hr;
-@@ -1768,6 +1944,7 @@ static HRESULT WINAPI MMDevEnum_GetDevice(IMMDeviceEnumerator *iface, const WCHA
+@@ -1373,6 +1374,7 @@ static HRESULT WINAPI MMDevEnum_GetDevice(IMMDeviceEnumerator *iface, const WCHA
  
-         if (str && !lstrcmpiW(str, name))
+         if (str && !lstrcmpW(str, name))
          {
 +            LeaveCriticalSection(&device_list_cs);
              CoTaskMemFree(str);
@@ -939,7 +939,7 @@ index 617708e9cd527826673c6368cb4ba839cc44f473..438c72c3315411029417025ef3a1857a
  }
  
  static void pulse_stream_state(pa_stream *s, void *user)
-@@ -493,46 +728,6 @@ static BOOL pulse_stream_valid(struct pulse_stream *stream)
+@@ -493,47 +728,6 @@ static BOOL pulse_stream_valid(struct pulse_stream *stream)
      return pa_stream_get_state(stream->stream) == PA_STREAM_READY;
  }
  
@@ -953,6 +953,7 @@ index 617708e9cd527826673c6368cb4ba839cc44f473..438c72c3315411029417025ef3a1857a
 -        pa_context_unref(pulse_ctx);
 -
 -    pulse_ctx = pa_context_new(pa_mainloop_get_api(pulse_ml), name);
+-    setenv("PULSE_PROP_application.name", name, 1);
 -    if (!pulse_ctx) {
 -        ERR("Failed to create context\n");
 -        return E_FAIL;
@@ -986,9 +987,12 @@ index 617708e9cd527826673c6368cb4ba839cc44f473..438c72c3315411029417025ef3a1857a
  static UINT pulse_channel_map_to_channel_mask(const pa_channel_map *map)
  {
      int i;
-@@ -591,59 +786,7 @@ static void fill_device_info(PhysDevice *dev, pa_proplist *p)
+@@ -591,62 +786,10 @@ static void fill_device_info(PhysDevice *dev, pa_proplist *p)
      if ((buffer = pa_proplist_gets(p, PA_PROP_DEVICE_PRODUCT_ID)))
          dev->product_id = strtol(buffer, NULL, 16);
+ 
+     if ((buffer = pa_proplist_gets(p, "sysfs.path")))
+         dev->container_id = get_container_id(buffer);
  }
  
 -static void pulse_add_device(struct list *list, pa_proplist *proplist, int index, EndpointFormFactor form,
@@ -1108,7 +1112,7 @@ index 617708e9cd527826673c6368cb4ba839cc44f473..438c72c3315411029417025ef3a1857a
                  params->result = S_OK;
                  return STATUS_SUCCESS;
              case 3:   /* PhysicalSpeakers */
-@@ -2508,16 +2662,20 @@ static NTSTATUS pulse_get_prop_value(void *args)
+@@ -2620,28 +2774,33 @@ static NTSTATUS pulse_get_prop_value(void *args)
                      goto fail;
                  params->value->vt = VT_UI4;
                  params->value->ulVal = dev->channel_mask;
@@ -1117,6 +1121,19 @@ index 617708e9cd527826673c6368cb4ba839cc44f473..438c72c3315411029417025ef3a1857a
                  params->result = S_OK;
                  return STATUS_SUCCESS;
              }
+         } else if (IsEqualGUID(&params->prop->fmtid, &DEVPKEY_Device_ContainerId)) {
+             if (!params->buffer || *params->buffer_size < sizeof(*params->value->puuid)) {
+                 *params->buffer_size = sizeof(*params->value->puuid);
+                 params->result = E_NOT_SUFFICIENT_BUFFER;
+             } else {
+                 params->value->vt = VT_CLSID;
+                 params->value->puuid = params->buffer;
+                 *params->value->puuid = dev->container_id;
+                 params->result = S_OK;
+             }
+ 
++            g_phys_unlock();
+             return STATUS_SUCCESS;
          }
  
 +        g_phys_unlock();

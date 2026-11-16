@@ -245,7 +245,7 @@ index 81432089..31ae1552 100644
  
              set_driver_prop_value(id, flow, (const PROPERTYKEY*)&DEVPKEY_Device_InstanceId);
  
-@@ -512,28 +630,32 @@ static MMDevice *MMDevice_Create(const WCHAR *name, GUID *id, EDataFlow flow, DW
+@@ -512,30 +630,34 @@ static MMDevice *MMDevice_Create(const WCHAR *name, GUID *id, EDataFlow flow, DW
  
                  if (SUCCEEDED(MMDevice_GetPropValue(id, flow, &devicepath_key, &pv2)) && pv2.vt == VT_LPWSTR) {
                      const WCHAR *override;
@@ -282,6 +282,8 @@ index 81432089..31ae1552 100644
              pv.pwszVal = guidstr;
              MMDevice_SetPropValue(id, flow, &deviceinterface_key, &pv);
  
+             set_driver_prop_value(id, flow, (const PROPERTYKEY*)&DEVPKEY_Device_ContainerId);
+
 +            if (FAILED(set_get_driver_prop_value(id, flow, (const PROPERTYKEY*)&DEVPKEY_Device_ContainerId, &container_id)) && state == DEVICE_STATE_ACTIVE)
 +                WARN("Failed to get and set container id\n");
 +

@@ -1,0 +1,5 @@
+Feature: valve-audio
+Description: Valve winepulse.drv delta (PA-mainloop period timer framework, app-name env, udev container ID). Framework required by GE proton-ds5-haptic/video-rework audio patches. Ported from ValveSoftware/wine proton_11.0 (4 commits) onto WineHQ base, preserving upstream timer_thread plumbing.
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: valve-graphics-wsi

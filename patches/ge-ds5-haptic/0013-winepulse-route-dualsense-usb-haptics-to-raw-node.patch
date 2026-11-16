@@ -41,10 +41,11 @@ diff --git a/dlls/winepulse.drv/Makefile.in b/dlls/winepulse.drv/Makefile.in
 index bfde8637..0c808987 100644
 --- a/dlls/winepulse.drv/Makefile.in
 +++ b/dlls/winepulse.drv/Makefile.in
-@@ -1,6 +1,6 @@
+@@ -1,7 +1,7 @@
  UNIXLIB   = winepulse.so
--UNIX_LIBS    = $(PULSE_LIBS) $(PTHREAD_LIBS) -lm
--UNIX_CFLAGS  = $(PULSE_CFLAGS)
+ IMPORTS   = dxguid uuid winmm user32 advapi32 ole32
+-UNIX_LIBS    = $(PULSE_LIBS) $(PTHREAD_LIBS) $(UDEV_LIBS) -lm
+-UNIX_CFLAGS  = $(PULSE_CFLAGS) $(UDEV_CFLAGS)
 +UNIX_LIBS    = $(PULSE_LIBS) $(PTHREAD_LIBS) $(UDEV_LIBS) $(ALSA_LIBS) -lm
 +UNIX_CFLAGS  = $(PULSE_CFLAGS) $(UDEV_CFLAGS) $(ALSA_CFLAGS)
  
@@ -83,12 +84,13 @@ index 9a97f705..41bfe548 100644
      void *locked_ptr;
      BOOL please_quit, just_started, just_underran;
      pa_usec_t mmdev_period_usec;
-@@ -118,6 +126,8 @@ typedef struct _PhysDevice {
+@@ -118,7 +126,9 @@ typedef struct _PhysDevice {
      UINT index;
      REFERENCE_TIME min_period, def_period;
      WAVEFORMATEXTENSIBLE fmt;
 +    char *raw_haptic_target;
 +    char *raw_haptic_alsa_path;
+     GUID container_id;
      char pulse_name[0];
  } PhysDevice;
  
@@ -145,10 +147,13 @@ index 9a97f705..41bfe548 100644
  static void pulse_contextcallback(pa_context *c, void *userdata)
  {
      switch (pa_context_get_state(c))
-@@ -829,6 +861,24 @@ static void fill_device_info(PhysDevice *dev, pa_proplist *p)
+@@ -829,9 +861,27 @@ static void fill_device_info(PhysDevice *dev, pa_proplist *p)
          dev->product_id = strtol(buffer, NULL, 16);
+
+     if ((buffer = pa_proplist_gets(p, "sysfs.path")))
+         dev->container_id = get_container_id(buffer);
  }
- 
+
 +static BOOL is_dualsense_audio_device(const PhysDevice *dev)
 +{
 +    return dev->bus_type == phys_device_bus_usb && dev->vendor_id == 0x054c
@@ -871,10 +876,11 @@ index 9a97f705..41bfe548 100644
      pulse_unlock();
      return STATUS_SUCCESS;
  }
-@@ -1512,12 +2169,20 @@ static NTSTATUS pulse_release_stream(void *args)
+@@ -1512,13 +2169,21 @@ static NTSTATUS pulse_release_stream(void *args)
      }
  
      pulse_lock();
+     remove_stream_from_period(stream);
 +    if (stream->stream)
 +    {
      if (PA_STREAM_IS_GOOD(pa_stream_get_state(stream->stream))) {
@@ -918,26 +924,31 @@ index 9a97f705..41bfe548 100644
  
      if (stream->just_underran)
      {
-@@ -1888,11 +2563,14 @@ static void pulse_timer_loop(void *args)
-                 {
-                     pulse_write(stream);
+@@ -1903,16 +2578,19 @@ static void pa_streams_timer_cb(pa_mainloop_api *api, pa_time_event *e, const struct timeval *tv, void *userdata)
+     LIST_FOR_EACH_ENTRY(stream, &period->streams, struct pulse_stream, period_entry)
+     {
+         if (stream->started)
+         {
+             if (stream->dataflow == eRender)
+             {
+                 pulse_write(stream);
  
--                    /* regardless of what PA does, advance one period */
--                    adv_bytes = min(stream->period_bytes, stream->held_bytes);
--                    stream->lcl_offs_bytes += adv_bytes;
--                    stream->lcl_offs_bytes %= stream->real_bufsize_bytes;
--                    stream->held_bytes -= adv_bytes;
-+                    if (!pulse_stream_haptic(stream))
-+                    {
-+                        /* regardless of what PA does, advance one period */
-+                        adv_bytes = min(stream->period_bytes, stream->held_bytes);
-+                        stream->lcl_offs_bytes += adv_bytes;
-+                        stream->lcl_offs_bytes %= stream->real_bufsize_bytes;
-+                        stream->held_bytes -= adv_bytes;
-+                    }
-                 }
-                 else if(stream->dataflow == eCapture)
-                 {
+-                /* regardless of what PA does, advance one period */
+-                adv_bytes = min(stream->period_bytes, stream->held_bytes);
+-                stream->lcl_offs_bytes += adv_bytes;
+-                stream->lcl_offs_bytes %= stream->real_bufsize_bytes;
+-                stream->held_bytes -= adv_bytes;
++                if (!pulse_stream_haptic(stream))
++                {
++                    /* regardless of what PA does, advance one period */
++                    adv_bytes = min(stream->period_bytes, stream->held_bytes);
++                    stream->lcl_offs_bytes += adv_bytes;
++                    stream->lcl_offs_bytes %= stream->real_bufsize_bytes;
++                    stream->held_bytes -= adv_bytes;
++                }
+             }
+             else if(stream->dataflow == eCapture)
+             {
 @@ -1948,14 +2626,25 @@ static NTSTATUS pulse_start(void *args)
          return STATUS_SUCCESS;
      }

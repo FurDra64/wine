@@ -1,0 +1,12 @@
+diff --git a/dlls/winepulse.drv/pulse.c b/dlls/winepulse.drv/pulse.c
+index 0539a4601be..d05b7132b0c 100644
+--- a/dlls/winepulse.drv/pulse.c
++++ b/dlls/winepulse.drv/pulse.c
+@@ -433,6 +433,7 @@ static HRESULT pulse_connect(const char *name)
+         pa_context_unref(pulse_ctx);
+ 
+     pulse_ctx = pa_context_new(pa_mainloop_get_api(pulse_ml), name);
++    setenv("PULSE_PROP_application.name", name, 1);
+     if (!pulse_ctx) {
+         ERR("Failed to create context\n");
+         return E_FAIL;
