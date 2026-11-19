@@ -82,7 +82,7 @@ index 9a97f705..41bfe548 100644
 +    pa_usec_t haptic_path_check_time;
 +    unsigned int haptic_hotplug_generation;
      void *locked_ptr;
-     BOOL please_quit, just_started, just_underran;
+     BOOL please_quit, just_started, just_underran, pa_started, update_timing_info_pending;
      pa_usec_t mmdev_period_usec;
 @@ -118,7 +126,9 @@ typedef struct _PhysDevice {
      UINT index;
@@ -924,11 +924,11 @@ index 9a97f705..41bfe548 100644
  
      if (stream->just_underran)
      {
-@@ -1903,16 +2578,19 @@ static void pa_streams_timer_cb(pa_mainloop_api *api, pa_time_event *e, const struct timeval *tv, void *userdata)
-     LIST_FOR_EACH_ENTRY(stream, &period->streams, struct pulse_stream, period_entry)
-     {
-         if (stream->started)
-         {
+@@ -1903,16 +2578,19 @@ static void pa_streams_timer_cb(pa_mainloop_api *api, pa_time_event *e, const st
+             else
+             {
+                 ERR("pa_stream_update_timing_info err %d.\n", pa_context_errno(pulse_ctx));
+             }
              if (stream->dataflow == eRender)
              {
                  pulse_write(stream);
