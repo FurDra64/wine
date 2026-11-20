@@ -1,0 +1,5 @@
+Feature: valve-winegstreamer
+Description: Valve winegstreamer delta, ported from ValveSoftware/wine proton_11.0. Six commits: the Proton media-converter GStreamer elements (audioconv, audioconvbin, videoconv, fossilize, murmur3) wired into wg_init_gstreamer, the aac_decoder -> audio_decoder rename that the later audio-decoder fixes anchor on, WMA 5.1/7.1 channel masks, drain/flush for the audio decoder, output block-align/bytes-per-second recalculation, and the H264 aperture padding fix. Commits 0001-0002 are retargeted onto the WineHQ base (media-converter/ is new here, and the rename pre-image differs by two later upstream fixes); 0003-0006 apply unchanged.
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: none
