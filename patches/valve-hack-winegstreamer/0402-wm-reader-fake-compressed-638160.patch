@@ -1,0 +1,49 @@
+diff --git a/dlls/winegstreamer/wm_reader.c b/dlls/winegstreamer/wm_reader.c
+--- a/dlls/winegstreamer/wm_reader.c
++++ b/dlls/winegstreamer/wm_reader.c
+@@ -17,6 +17,9 @@
+  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
+  */
+
++#include <stdlib.h>
++#include <string.h>
++
+ #include "gst_private.h"
+ #include "initguid.h"
+ #include "wmsdk.h"
+@@ -31,6 +34,7 @@ struct wm_stream
+     WORD index;
+     bool eos;
+     bool read_compressed;
++    bool demux_compressed;
+
+     struct wg_parser_buffer current_buffer;
+     DWORD current_buffer_offset;
+@@ -2582,8 +2586,18 @@ static HRESULT WINAPI reader_SetReadStreamSamples(IWMSyncReader2 *iface, WORD st
+         return E_INVALIDARG;
+     }
+
+     stream->read_compressed = compressed;
+-    reinit_stream(reader, compressed);
++
++    {
++        const char *sgi = getenv("SteamGameId");
++        if (sgi && !strcmp(sgi, "638160")) compressed = FALSE;
++    }
++
++    if (stream->demux_compressed != compressed)
++    {
++        stream->demux_compressed = compressed;
++        reinit_stream(reader, compressed);
++    }
+
+     LeaveCriticalSection(&reader->cs);
+     return S_OK;
+@@ -2632,6 +2643,6 @@ static HRESULT WINAPI reader_SetStreamsSelected(IWMSyncReader2 *iface,
+                         selections[i], stream_numbers[i]);
+             TRACE("Enabling stream %u.\n", stream_numbers[i]);
+-            if (stream->read_compressed)
++            if (stream->demux_compressed)
+             {
+                 struct wg_format format;
+                 wg_parser_stream_get_current_format(stream->wg_stream, &format);

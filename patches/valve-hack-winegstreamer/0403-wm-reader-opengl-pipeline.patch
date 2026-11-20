@@ -1,0 +1,211 @@
+diff --git a/dlls/winegstreamer/gst_private.h b/dlls/winegstreamer/gst_private.h
+--- a/dlls/winegstreamer/gst_private.h
++++ b/dlls/winegstreamer/gst_private.h
+@@ -70,7 +70,7 @@ HRESULT wg_sample_queue_create(struct wg_
+ void wg_sample_queue_destroy(struct wg_sample_queue *queue);
+ void wg_sample_queue_flush(struct wg_sample_queue *queue, bool all);
+
+-wg_parser_t wg_parser_create(UINT32 flags); /* see wg_parser_create_flag */
++wg_parser_t wg_parser_create(UINT32 flags); /* see wg_parser_create_flag, incl. USE_OPENGL */
+ void wg_parser_destroy(wg_parser_t parser);
+
+ HRESULT wg_parser_connect(wg_parser_t parser, uint64_t file_size, const WCHAR *uri);
+diff --git a/dlls/winegstreamer/unixlib.h b/dlls/winegstreamer/unixlib.h
+--- a/dlls/winegstreamer/unixlib.h
++++ b/dlls/winegstreamer/unixlib.h
+@@ -221,7 +221,8 @@ enum wg_parser_create_flag
+ {
+     WG_PARSER_CREATE_FLAG_NONE = 0,
+     WG_PARSER_CREATE_FLAG_OUTPUT_COMPRESSED = 1,
+     WG_PARSER_CREATE_FLAG_PTS_REBASED = 2,
++    WG_PARSER_CREATE_FLAG_USE_OPENGL = 4,
+ };
+
+ struct wg_parser_create_params
+diff --git a/dlls/winegstreamer/unixlib.c b/dlls/winegstreamer/unixlib.c
+--- a/dlls/winegstreamer/unixlib.c
++++ b/dlls/winegstreamer/unixlib.c
+@@ -29,6 +29,7 @@
+ #include <gst/video/video.h>
+ #include <gst/audio/audio.h>
+ #include <gst/tag/tag.h>
++#include <gst/gl/gl.h>
+
+ #include "ntstatus.h"
+ #include "winternl.h"
+@@ -49,5 +50,6 @@ GST_DEBUG_CATEGORY(wine);
+
+ static UINT thread_count;
++GstGLDisplay *gl_display;
+
+ GstStreamType stream_type_from_caps(GstCaps *caps)
+ {
+@@ -259,5 +259,7 @@ NTSTATUS wg_init_gstreamer(void *arg)
+ NTSTATUS wg_init_gstreamer(void *arg)
+ {
++    static GstGLContext *gl_context;
++
+     struct wg_init_gstreamer_params *params = arg;
+     char arg0[] = "wine";
+     char arg1[] = "--gst-disable-registry-fork";
+@@ -300,9 +302,31 @@ NTSTATUS wg_init_gstreamer(void *arg)
+     if (!media_converter_init())
+     {
+         GST_ERROR("Failed to init media converter.");
+         return STATUS_UNSUCCESSFUL;
+     }
+ 
++    if (!(gl_display = gst_gl_display_new()))
++        GST_ERROR("Failed to create OpenGL display");
++    else
++    {
++        GError *error = NULL;
++        gboolean ret;
++
++        GST_OBJECT_LOCK(gl_display);
++        ret = gst_gl_display_create_context(gl_display, NULL, &gl_context, &error);
++        GST_OBJECT_UNLOCK(gl_display);
++        g_clear_error(&error);
++
++        if (ret)
++            gst_gl_display_add_context(gl_display, gl_context);
++        else
++        {
++            GST_ERROR("Failed to create OpenGL context");
++            gst_object_unref(gl_display);
++            gl_display = NULL;
++        }
++    }
++
+     return STATUS_SUCCESS;
+ }
+
+diff --git a/dlls/winegstreamer/wg_parser.c b/dlls/winegstreamer/wg_parser.c
+--- a/dlls/winegstreamer/wg_parser.c
++++ b/dlls/winegstreamer/wg_parser.c
+@@ -33,6 +33,8 @@
+ #include <gst/video/video.h>
+ #include <gst/audio/audio.h>
+ #include <gst/tag/tag.h>
++
++#include <gst/gl/gl.h>
+
+ #include "ntstatus.h"
+ #include "winternl.h"
+@@ -41,6 +43,8 @@
+
+ #include "unix_private.h"
+
++extern GstGLDisplay *gl_display;
++
+ typedef enum
+ {
+     GST_AUTOPLUG_SELECT_TRY,
+@@ -76,5 +80,7 @@ struct wg_parser
+     pthread_cond_t init_cond;
+     bool output_compressed, pts_rebased;
++    bool use_opengl;
++    GstContext *context;
+     bool no_more_pads, has_duration, error;
+     bool err_on, warn_on;
+
+@@ -949,5 +955,36 @@ static bool stream_create_post_processing_elements(GstPad *pad, struct wg_parser
+     name = gst_structure_get_name(gst_caps_get_structure(caps, 0));
+     gst_caps_unref(caps);
+
+-    if (!strcmp(name, "video/x-raw"))
++    if (!strcmp(name, "video/x-raw") && parser->use_opengl)
++    {
++        if (!(element = create_element("glupload", "base")))
++            return false;
++        if (!append_element(parser->container, element, &first, &last))
++            return false;
++        if (!(element = create_element("glcolorconvert", "base")))
++            return false;
++        if (!append_element(parser->container, element, &first, &last))
++            return false;
++        if (!(element = create_element("glvideoflip", "base")))
++            return false;
++        if (!append_element(parser->container, element, &first, &last))
++            return false;
++        stream->flip = element;
++        if (!(element = create_element("gldeinterlace", "base")))
++            return false;
++        if (!append_element(parser->container, element, &first, &last))
++            return false;
++        if (!(element = create_element("glcolorconvert", "base")))
++            return false;
++        if (!append_element(parser->container, element, &first, &last))
++            return false;
++        if (!(element = create_element("gldownload", "base")))
++            return false;
++        if (!append_element(parser->container, element, &first, &last))
++            return false;
++
++        if (!link_src_to_element(pad, first) || !link_element_to_sink(last, stream->my_sink))
++            return false;
++    }
++    else if (!strcmp(name, "video/x-raw"))
+     {
+@@ -1674,6 +1705,8 @@ static NTSTATUS wg_parser_connect(void *
+
+     parser->container = gst_bin_new(NULL);
+     gst_element_set_bus(parser->container, parser->bus);
++    if (parser->context)
++        gst_element_set_context(parser->container, parser->context);
+
+     parser->my_src = gst_pad_new_from_static_template(&src_template, "quartz-src");
+     gst_pad_set_getrange_function(parser->my_src, src_getrange_cb);
+@@ -1904,6 +1937,17 @@ static NTSTATUS wg_parser_create(void *a
+     if (!(parser = calloc(1, sizeof(*parser))))
+         return E_OUTOFMEMORY;
+
++    if ((parser->use_opengl = params->flags & WG_PARSER_CREATE_FLAG_USE_OPENGL && gl_display))
++    {
++        if ((parser->context = gst_context_new(GST_GL_DISPLAY_CONTEXT_TYPE, false)))
++            gst_context_set_gl_display(parser->context, gl_display);
++        else
++        {
++            GST_ERROR("Failed to create parser context");
++            parser->use_opengl = FALSE;
++        }
++    }
++
+     pthread_mutex_init(&parser->mutex, NULL);
+     pthread_cond_init(&parser->init_cond, NULL);
+     pthread_cond_init(&parser->read_cond, NULL);
+@@ -1928,6 +1971,9 @@ static NTSTATUS wg_parser_destroy(void *a
+         gst_object_unref(parser->bus);
+     }
+
++    if (parser->context)
++        gst_context_unref(parser->context);
++
+     pthread_mutex_destroy(&parser->mutex);
+     pthread_cond_destroy(&parser->init_cond);
+     pthread_cond_destroy(&parser->read_cond);
+diff --git a/dlls/winegstreamer/wm_reader.c b/dlls/winegstreamer/wm_reader.c
+--- a/dlls/winegstreamer/wm_reader.c
++++ b/dlls/winegstreamer/wm_reader.c
+@@ -1494,7 +1494,10 @@ static HRESULT init_stream(struct wm_reader *reader)
+     HRESULT hr;
+     WORD i;
+
+-    if (!(wg_parser = wg_parser_create(WG_PARSER_CREATE_FLAG_NONE)))
++    /* 32-bit GStreamer ORC cannot efficiently convert I420 to RGBA, use OpenGL converter
++     * in that case but keep the usual codepath otherwise.
++     */
++    if (!(wg_parser = wg_parser_create(sizeof(void *) == 4 ? WG_PARSER_CREATE_FLAG_USE_OPENGL : WG_PARSER_CREATE_FLAG_NONE)))
+         return E_OUTOFMEMORY;
+
+     reader->wg_parser = wg_parser;
+@@ -1621,7 +1624,8 @@ static HRESULT reinit_stream(struct wm_reader *reader, bool read_compressed)
+     wg_parser_destroy(reader->wg_parser);
+     reader->wg_parser = 0;
+
+-    if (!(wg_parser = wg_parser_create(read_compressed ? WG_PARSER_CREATE_FLAG_OUTPUT_COMPRESSED : WG_PARSER_CREATE_FLAG_NONE)))
++    if (!(wg_parser = wg_parser_create((read_compressed ? WG_PARSER_CREATE_FLAG_OUTPUT_COMPRESSED : WG_PARSER_CREATE_FLAG_NONE)
++            | (sizeof(void *) == 4 && !read_compressed ? WG_PARSER_CREATE_FLAG_USE_OPENGL : WG_PARSER_CREATE_FLAG_NONE))))
+         return E_OUTOFMEMORY;
+
+     reader->wg_parser = wg_parser;

@@ -1,0 +1,81 @@
+diff --git a/dlls/winegstreamer/audio_decoder.c b/dlls/winegstreamer/audio_decoder.c
+--- a/dlls/winegstreamer/audio_decoder.c
++++ b/dlls/winegstreamer/audio_decoder.c
+@@ -640,4 +640,37 @@ HRESULT aac_decoder_create(REFIID riid, v
+     *ret = &decoder->IMFTransform_iface;
+     TRACE("Created decoder %p\n", *ret);
+     return S_OK;
+ }
++
++static WAVEFORMATEXTENSIBLE audio_decoder_input_types[] =
++{
++    {.Format = {.wFormatTag = WAVE_FORMAT_EXTENSIBLE, .nChannels = 6, .nSamplesPerSec = 48000, .nAvgBytesPerSec = 1152000, \
++                .nBlockAlign = 24, .wBitsPerSample = 32, .cbSize = sizeof(WAVEFORMATEXTENSIBLE) - sizeof(WAVEFORMATEX)}, \
++     .SubFormat = {0x8d2fd10b,0x5841,0x4a6b,{0x89,0x05,0x58,0x8f,0xec,0x1a,0xde,0xd9}}},
++};
++
++HRESULT audio_decoder_create(REFIID riid, void **ret)
++{
++    struct audio_decoder *decoder;
++    HRESULT hr;
++
++    TRACE("riid %s, ret %p.\n", debugstr_guid(riid), ret);
++
++    if (!(decoder = calloc(1, sizeof(*decoder))))
++        return E_OUTOFMEMORY;
++    decoder->input_types = (WAVEFORMATEXTENSIBLE *)audio_decoder_input_types;
++    decoder->input_type_count = ARRAY_SIZE(audio_decoder_input_types);
++
++    if (FAILED(hr = wg_sample_queue_create(&decoder->wg_sample_queue)))
++    {
++        free(decoder);
++        return hr;
++    }
++
++    decoder->IMFTransform_iface.lpVtbl = &transform_vtbl;
++    decoder->refcount = 1;
++
++    *ret = &decoder->IMFTransform_iface;
++    TRACE("Created decoder %p\n", *ret);
++    return S_OK;
++}
+diff --git a/dlls/winegstreamer/gst_private.h b/dlls/winegstreamer/gst_private.h
+--- a/dlls/winegstreamer/gst_private.h
++++ b/dlls/winegstreamer/gst_private.h
+@@ -179,6 +179,7 @@ unsigned int wg_format_get_stride(const s
+
+ bool wg_video_format_is_rgb(enum wg_video_format format);
+
++HRESULT audio_decoder_create(REFIID riid, void **ret);
+ HRESULT aac_decoder_create(REFIID riid, void **ret);
+ HRESULT h264_decoder_create(REFIID riid, void **ret);
+ HRESULT h264_encoder_create(REFIID riid, void **ret);
+diff --git a/dlls/winegstreamer/mfplat.c b/dlls/winegstreamer/mfplat.c
+--- a/dlls/winegstreamer/mfplat.c
++++ b/dlls/winegstreamer/mfplat.c
+@@ -121,5 +121,6 @@ static const IClassFactoryVtbl class_fact
+     class_factory_LockServer,
+ };
+
++static const GUID CLSID_GStreamerAudioDecoder = {0x480b1517, 0xc8e9, 0x4eae, {0xb0, 0x06, 0xe6, 0x30, 0x07, 0x18, 0xd8, 0x5d}};
+ static const GUID CLSID_GStreamerByteStreamHandler = {0x317df618, 0x5e5a, 0x468a, {0x9f, 0x15, 0xd8, 0x27, 0xa9, 0xa0, 0x81, 0x62}};
+ static const GUID CLSID_wg_aac_decoder = {0xe7889a8a,0x2083,0x4844,{0x83,0x70,0x5e,0xe3,0x49,0xb1,0x45,0x03}};
+@@ -136,3 +137,4 @@ static const struct class_object
+     { &CLSID_wg_aac_decoder, &aac_decoder_create },
++    { &CLSID_GStreamerAudioDecoder, &audio_decoder_create },
+     { &CLSID_wg_h264_decoder, &h264_decoder_create },
+     { &CLSID_wg_h264_encoder, &h264_encoder_create },
+diff --git a/dlls/winegstreamer/winegstreamer_classes.idl b/dlls/winegstreamer/winegstreamer_classes.idl
+--- a/dlls/winegstreamer/winegstreamer_classes.idl
++++ b/dlls/winegstreamer/winegstreamer_classes.idl
+@@ -72,4 +72,10 @@ coclass decodebin_parser {}
+ coclass decodebin_parser {}
+ 
++[
++    threading(both),
++    uuid(480b1517-c8e9-4eae-b006-e6300718d85d)
++]
++coclass GStreamerAudioDecoder {}
++
+ [
+     helpstring("Generic Decodebin Byte Stream Handler"),
