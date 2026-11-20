@@ -1,0 +1,5 @@
+Feature: valve-windows-media-speech
+Description: Valve windows.media.speech delta (unixlib stub + Vosk create/release, unix-side recognition, word-constraint compare, recognition-success event, SemanticInterpretation stub, async-handler Forza HACK, recognizer-create-fail tests). Prerequisite unixlib stub 3f902eff049 included as 0001; 8 target commits applied in valve topological order onto WineHQ base.
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: valve-audio

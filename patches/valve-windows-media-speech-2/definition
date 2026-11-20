@@ -1,0 +1,5 @@
+Feature: valve-windows-media-speech-2
+Description: Valve windows.media.speech delta part 2 (grammar support, Phasmophobia Vosk-model HACK + Steam-UI-language mapping, OPENBLAS single-thread, WINE_FORCE_SR_LOCALE override). Builds on valve-windows-media-speech (group-1); prerequisite HACK 92ed4d9f3 included as 0002. Patches applied in valve topological order. Skipped: 3f902eff049 (already group-1 0001), 2a4eb2c66 HACK (semantic_interpretation Properties stub, region disjoint from 0001 grammar hunks), da9dbe3abcb WIP (manual-recognition tests only).
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: valve-windows-media-speech
