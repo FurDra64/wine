@@ -1,0 +1,33 @@
+diff --git a/dlls/ddraw/surface.c b/dlls/ddraw/surface.c
+index f86ad7a381d..fb68db83e3d 100644
+--- a/dlls/ddraw/surface.c
++++ b/dlls/ddraw/surface.c
+@@ -1650,7 +1650,14 @@ static HRESULT ddraw_surface_blt_clipped(struct ddraw_surface *dst_surface, cons
+         SetRectEmpty(&src_rect);
+     }
+ 
+-    if (!dst_surface->clipper)
++    if (dst_surface->clipper && !ddraw_clipper_is_valid(dst_surface->clipper))
++    {
++        FIXME("Attempting to blit with an invalid clipper.\n");
++        return DDERR_INVALIDPARAMS;
++    }
++
++    if (!dst_surface->clipper || (dst_surface->ddraw->cooperative_level & DDSCL_EXCLUSIVE
++            && dst_surface->clipper->window))
+     {
+         if (src_surface && src_surface->surface_desc.ddsCaps.dwCaps & DDSCAPS_PRIMARYSURFACE)
+             hr = ddraw_surface_update_frontbuffer(src_surface, &src_rect, TRUE, 0);
+@@ -1662,12 +1669,6 @@ static HRESULT ddraw_surface_blt_clipped(struct ddraw_surface *dst_surface, cons
+         return hr;
+     }
+ 
+-    if (!ddraw_clipper_is_valid(dst_surface->clipper))
+-    {
+-        FIXME("Attempting to blit with an invalid clipper.\n");
+-        return DDERR_INVALIDPARAMS;
+-    }
+-
+     scale_x = (float)(src_rect.right - src_rect.left) / (float)(dst_rect.right - dst_rect.left);
+     scale_y = (float)(src_rect.bottom - src_rect.top) / (float)(dst_rect.bottom - dst_rect.top);
+ 

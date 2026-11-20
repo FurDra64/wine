@@ -1,0 +1,5 @@
+Feature: valve-revert
+Description: Valve Revert group 1 from ValveSoftware/wine proton_11.0 (8 commits evaluated, 2 ported). 0001 reverts upstream ntoskrnl child-device enumeration onto a separate thread (9fbdf2b4343 present in our HEAD). 0002 reverts winegstreamer CLSID_decodebin_parser merit reduction (e870f31d3753 present in our HEAD). Skipped 6: ac09f4020b7 (origin 49d7a68 valve-only, tree already without __TRY wrapper), cec419ab380 (origin 33ff26b valve-only 2022 opt, no compare_size block in tree), 00bb4501258/da15850e76f/3e1bb01f3c7 (origins valve-only, no get_joystick_index/joystick_devices/select_default_instance in tree; upstream evolved to joy_id cache), 8fb9c7f7154 (tree Makefiles already in post-revert state).
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: valve-graphics-wsi

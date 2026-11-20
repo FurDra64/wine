@@ -1,0 +1,5 @@
+Feature: valve-ddraw
+Description: Valve ddraw deltas not yet upstream (x87 fpmath, fullscreen frontbuffer blit target, topmost release fix, e-Racer gamma hack, exclusive-mode hwnd clipper ignore). Ported from ValveSoftware/wine proton_11.0 (4912df4e374, 1f6a7f3099a, 14d3bdbb42c, 19c6f062639, 4c175582270-partial). Skipped 2537ca1b788/31bc3a8ddb0/45934fd8871 as superseded by upstream b6a992482b8/6b486ec7830/492d24c2a25; 4c175582270 SetClipper hunk absorbed by upstream 303b7903766 so only the blt_clipped hunk is carried.
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: valve-graphics-wsi
