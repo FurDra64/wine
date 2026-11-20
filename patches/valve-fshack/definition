@@ -1,0 +1,15 @@
+Feature: valve-fshack
+Description: Valve fshack triage slot (8 ValveSoftware/wine proton_11.0 commits audited 2026-11-21: 0 portable, all 8 skipped with evidence — 5 absorbed/carried upstream or by valve-graphics-wsi, 1 superseded upstream, 2 blocked on missing Valve-only frameworks). Reserved for future fshack ports that prove a delta against the shadow tree.
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: valve-graphics-wsi
+
+Triage (oldest first, verified against cumulative shadow HEAD+valve-{build,common-interfaces,runtime-server,kernel,device-input,native-overrides,graphics-wsi,audio}):
+- SKIP 5d7b91f302b (opengl scaling): absorbed — upstream 3489c653109 in HEAD plus monolith e812a15ecb0; p_surface_create signature superseded (client_surface* variant).
+- SKIP 0292917acff (swap interval): absorbed — upstream 361755c0846 in HEAD and shadow (opengl_drawable_flush with interval=0).
+- SKIP 3ea15b2157f (present on flush): absorbed — upstream 361755c0846 in HEAD and shadow (blit+swap on GL_FLUSH_PRESENT).
+- SKIP ecc4d2729f5 (factor out is_wine_reserved_texture): blocked — prereq 03e93f23157 absent from tree and shadow (monolith carries only a dead decl, no WINE_OPENGL_RESERVED_TEXTURE framework).
+- SKIP c394539d9b9 (share last FB state): blocked — prereq 889a48f4108 absent from tree and shadow (no last_framebuffer framework).
+- SKIP 102e6983842 (resolve actual read buffer): already carried — monolith resolve_default_fbo queries curr_read_buffer via glGetIntegerv and blits with it (newer impl: client-rect + sRGB encoding query); 102e variant would regress it.
+- SKIP 6abeb17272e (resolve only before readback): superseded — upstream ce0f51c8ad9 unique-wrapper refactor.
+- SKIP 8f04b950c03 (blit from draw buffer): already carried — monolith wrap_glBlitFramebuffer/EXT/NamedFramebuffer adapted from Valve fda79a cover and exceed 8f04 (translated read_fbo match, read-buffer retarget, binding restore).
