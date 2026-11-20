@@ -1,0 +1,45 @@
+From 4554b0e87d72ca51a22590df6fd4aaab18caeb09 Mon Sep 17 00:00:00 2001
+From: Rémi Bernon <rbernon@codeweavers.com>
+Date: 2024-12-24 10:08:24 +0100
+Subject: [PATCH] HACK: winegstreamer: Expose AV1 decoding support.
+ (retargeted: wmv_decoder list has no theora; wg_media_type has no theora/mpeg-video branches)
+
+Valve-commit: 4554b0e87d72ca51a22590df6fd4aaab18caeb09
+Retarget-note: retargeted: wmv_decoder list has no theora; wg_media_type has no theora/mpeg-video branches
+---
+diff --git a/dlls/winegstreamer/video_decoder.c b/dlls/winegstreamer/video_decoder.c
+--- a/dlls/winegstreamer/video_decoder.c
++++ b/dlls/winegstreamer/video_decoder.c
+@@ -1803,5 +1803,6 @@ static const GUID *const wmv_decoder_inp
+     &MEDIASUBTYPE_WMV3,
+     &MEDIASUBTYPE_VC1S,
++    &MFVideoFormat_AV1,
+ };
+ static const GUID *const wmv_decoder_output_types[] =
+ {
+diff --git a/dlls/winegstreamer/wg_media_type.c b/dlls/winegstreamer/wg_media_type.c
+--- a/dlls/winegstreamer/wg_media_type.c
++++ b/dlls/winegstreamer/wg_media_type.c
+@@ -336,6 +336,14 @@ static void init_caps_from_video_mpeg(GS
+     gst_caps_set_simple(caps, "parsed", G_TYPE_BOOLEAN, TRUE, NULL);
+ }
+ 
++static void init_caps_from_video_av1(GstCaps *caps, const MFVIDEOFORMAT *format, UINT format_size)
++{
++    init_caps_codec_data(caps, format + 1, format_size - sizeof(*format));
++
++    gst_structure_remove_field(gst_caps_get_structure(caps, 0), "format");
++    gst_structure_set_name(gst_caps_get_structure(caps, 0), "video/x-av1");
++}
++
+ static void init_caps_from_video_subtype(GstCaps *caps, const GUID *subtype, const void *format, UINT format_size)
+ {
+     if (IsEqualGUID(subtype, &MFVideoFormat_CVID))
+@@ -355,5 +363,7 @@ static void init_caps_from_video_subtype
+     if (IsEqualGUID(subtype, &MEDIASUBTYPE_MPEG1Payload))
+         return init_caps_from_video_mpeg(caps, format, format_size);
++    if (IsEqualGUID(subtype, &MFVideoFormat_AV1))
++        return init_caps_from_video_av1(caps, format, format_size);
+ 
+     GST_FIXME("Unsupported subtype " WG_GUID_FORMAT, WG_GUID_ARGS(*subtype));
+ }

@@ -1,0 +1,5 @@
+Feature: valve-hack-winegstreamer
+Description: Valve HACK winegstreamer delta group-3 (block 0301-0308, 5 ports / 3 skips). URI scheme handler with uridecodebin (4d9083e70bc, retargeted), AV1 decode caps (4554b0e87d7, retargeted), Opus decode caps wg_media_type only (b2a834d2913, audio_decoder.c hunk dropped: file absent on this base), quartz_parser raw-format conversions (bae09b9161a, parser_create UINT32 retarget), GST_GL_WINDOW=x11 (2b76249421f verbatim). Skipped: 89df48e795e (needs demux_compressed from unported 4abf4a41104), 5917a552027 (needs KiriKiri faking infra 8f4db8f22ec/4abf4a41104), 18b446c6ebc (needs OpenGL pipeline 80eb9f6e2bd + old wg_parser_create signature). Ported from ValveSoftware/wine proton_11.0 onto WineHQ base; Wine tree untouched, .patch files only.
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: valve-winegstreamer
