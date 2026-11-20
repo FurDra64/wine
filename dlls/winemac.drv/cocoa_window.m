@@ -174,6 +174,24 @@ static inline NSUInteger adjusted_modifiers_for_settings(NSUInteger modifiers)
     return new_modifiers;
 }
 
+static void update_key_repeat(void)
+{
+    static NSTimeInterval last_delay = -1, last_interval = -1;
+    NSTimeInterval delay = [NSEvent keyRepeatDelay];
+    NSTimeInterval interval = [NSEvent keyRepeatInterval];
+    int spi_delay, spi_speed;
+
+    if (delay == last_delay && interval == last_interval) return;
+    last_delay = delay;
+    last_interval = interval;
+    spi_delay = MIN(3, MAX(0, delay * 4 - 0.5));
+    spi_speed = MIN(31, MAX(0, 0.4 / interval - 0.5));
+
+    NtUserSystemParametersInfo(SPI_SETKEYBOARDDELAY, spi_delay, NULL, 0);
+    NtUserSystemParametersInfo(SPI_SETKEYBOARDSPEED, spi_speed, NULL, 0);
+    NtUserCallOneParam(delay > 0, NtUserCallOneParam_SetKeyboardAutoRepeat);
+}
+
 static inline BOOL stage_manager_enabled(void)
 {
     /* There is no documented way to determine if Stage Manager is enabled,
@@ -1696,8 +1714,6 @@ static inline BOOL stage_manager_enabled(void)
             [queue discardEventsMatchingMask:event_mask_for_type(WINDOW_BROUGHT_FORWARD) |
                                              event_mask_for_type(WINDOW_GOT_FOCUS) |
                                              event_mask_for_type(WINDOW_LOST_FOCUS) |
-                                             event_mask_for_type(WINDOW_MAXIMIZE_REQUESTED) |
-                                             event_mask_for_type(WINDOW_MINIMIZE_REQUESTED) |
                                              event_mask_for_type(WINDOW_RESTORE_REQUESTED)
                                    forWindow:self];
             return;
@@ -1733,8 +1749,6 @@ static inline BOOL stage_manager_enabled(void)
         [queue discardEventsMatchingMask:event_mask_for_type(WINDOW_BROUGHT_FORWARD) |
                                          event_mask_for_type(WINDOW_GOT_FOCUS) |
                                          event_mask_for_type(WINDOW_LOST_FOCUS) |
-                                         event_mask_for_type(WINDOW_MAXIMIZE_REQUESTED) |
-                                         event_mask_for_type(WINDOW_MINIMIZE_REQUESTED) |
                                          event_mask_for_type(WINDOW_RESTORE_REQUESTED)
                                forWindow:self];
     }
@@ -1962,6 +1976,8 @@ static inline BOOL stage_manager_enabled(void)
         macdrv_event* event;
         CGEventRef cgevent;
         WineApplicationController* controller = [WineApplicationController sharedController];
+
+        if (pressed) update_key_repeat();
 
         event = macdrv_create_event(pressed ? KEY_PRESS : KEY_RELEASE, self);
         event->key.keycode   = keyCode;
@@ -2403,9 +2419,7 @@ static inline BOOL stage_manager_enabled(void)
             return;
         }
 
-        macdrv_event* event = macdrv_create_event(WINDOW_MINIMIZE_REQUESTED, self);
-        [queue postEvent:event];
-        macdrv_release_event(event);
+        macdrv_window_minimize_requested(self.hwnd);
 
         WineWindow* parent = (WineWindow*)self.parentWindow;
         if ([parent isKindOfClass:[WineWindow class]])
@@ -2539,15 +2553,8 @@ static inline BOOL stage_manager_enabled(void)
      */
     - (void) keyDown:(NSEvent *)theEvent
     {
-        if ([theEvent isARepeat])
-        {
-            if (!allowKeyRepeats)
-                return;
-        }
-        else
-            allowKeyRepeats = YES;
-
-        [self postKeyEvent:theEvent];
+        if (![theEvent isARepeat])
+            [self postKeyEvent:theEvent];
     }
 
     - (void) flagsChanged:(NSEvent *)theEvent
@@ -2584,9 +2591,6 @@ static inline BOOL stage_manager_enabled(void)
             if (changed & modifiers[i].mask)
             {
                 BOOL pressed = (modifierFlags & modifiers[i].mask) != 0;
-
-                if (pressed)
-                    allowKeyRepeats = NO;
 
                 if (i == last_changed)
                     lastModifierFlags = modifierFlags;
@@ -2734,14 +2738,14 @@ static inline BOOL stage_manager_enabled(void)
 
     - (void)windowDidMiniaturize:(NSNotification *)notification
     {
-        macdrv_event* event;
+        WineApplicationController* controller = [WineApplicationController sharedController];
 
         if (fullscreen && [self isOnActiveSpace])
-            [[WineApplicationController sharedController] updateFullscreenWindows];
+            [controller updateFullscreenWindows];
 
-        event = macdrv_create_event(WINDOW_DID_MINIMIZE, self);
-        [queue postEvent:event];
-        macdrv_release_event(event);
+        /* If all our windows are minimized, disable cursor clipping. */
+        if (![controller isAnyWineWindowVisible])
+            NtUserClipCursor(NULL);
     }
 
     - (void)windowDidMove:(NSNotification *)notification
@@ -2814,9 +2818,7 @@ static inline BOOL stage_manager_enabled(void)
         }
         else if (!resizable)
         {
-            macdrv_event* event = macdrv_create_event(WINDOW_MAXIMIZE_REQUESTED, self);
-            [queue postEvent:event];
-            macdrv_release_event(event);
+            macdrv_window_maximize_requested(self.hwnd);
             return NO;
         }
 
