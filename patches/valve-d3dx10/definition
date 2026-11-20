@@ -1,0 +1,5 @@
+Feature: valve-d3dx10
+Description: Valve d3dx10 delta (D3DX10CreateAsyncShaderResourceViewProcessor impl, CreateShaderResourceViewFrom{File,Memory,Resource}, SaveTextureTo{Memory,File} with DDS/DXT10/non-DDS WIC paths). Ported from ValveSoftware/wine proton_11.0 (8 commits ed581161c2a..c7b2ce3ab42 range) onto WineHQ base. SaveTextureToMemory adapted to in-tree staging framework ( Valve d3d10_texture map/unmap framework unported); DXT10 extended-header + WIC tables moved to util.c; async-processor/header decls already in valve-common-interfaces monolith. Prerequisite stub 0c7d34d3fac folded into 0001.
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: valve-graphics-wsi
