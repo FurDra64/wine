@@ -49,9 +49,9 @@ index 9288b580..e70d6d0a 100644
  11,,windowscodecs.dll,1
 -11,,winegstreamer.dll,1
 +11,,winedmo.dll,1
+ 11,,wineopenxr.dll,1
  55,,wineps.drv,1
  11,,winevulkan.dll,1
- 55,,winprint.dll,1
 diff --git a/tools/gitlab/image.docker b/tools/gitlab/image.docker
 index f6e45275..1a452f64 100644
 --- a/tools/gitlab/image.docker

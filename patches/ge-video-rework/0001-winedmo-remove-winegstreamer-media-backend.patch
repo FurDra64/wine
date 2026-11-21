@@ -1492,9 +1492,12 @@ index 35213329..72bbe2f5 100644
   *
   * Copyright 2020 Derek Lesho
   * Copyright 2020 Zebediah Figura for CodeWeavers
-@@ -18,15 +18,24 @@
+@@ -18,18 +18,27 @@
   * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
   */
+ 
+ #include <stdlib.h>
+ #include <string.h>
  
 -#include "gst_private.h"
 +#include "ntstatus.h"
@@ -12409,9 +12412,12 @@ rename to dlls/winedmo/wm_reader.c
 index 8fc5ff6..a39d7fd 100644
 --- a/dlls/winegstreamer/wm_reader.c
 +++ b/dlls/winedmo/wm_reader.c
-@@ -16,7 +16,15 @@
+@@ -16,10 +16,18 @@
   * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
   */
+ 
+ #include <stdlib.h>
+ #include <string.h>
  
 -#include "gst_private.h"
 +#include "ntstatus.h"
@@ -12426,7 +12432,7 @@ index 8fc5ff6..a39d7fd 100644
  #include "initguid.h"
  #include "wmsdk.h"
  
-@@ -25,15 +33,41 @@ WINE_DEFAULT_DEBUG_CHANNEL(wmvcore);
+@@ -25,16 +33,41 @@ WINE_DEFAULT_DEBUG_CHANNEL(wmvcore);
  struct wm_stream
  {
      struct wm_reader *reader;
@@ -12436,6 +12442,7 @@ index 8fc5ff6..a39d7fd 100644
      WORD index;
      bool eos;
 -    bool read_compressed;
+-    bool demux_compressed;
 -
 -    struct wg_parser_buffer current_buffer;
 -    DWORD current_buffer_offset;
@@ -13339,7 +13346,8 @@ index 8fc5ff6..a39d7fd 100644
          LeaveCriticalSection(&reader->cs);
          TRACE("Returning duration %s.\n", debugstr_time(duration));
          memcpy(value, &duration, sizeof(QWORD));
-@@ -1454,242 +2084,149 @@ static const IWMReaderTimecodeVtbl timecode_vtbl =
+@@ -1454,247 +2084,150 @@ static const IWMReaderTimecodeVtbl timecode_vtbl =
+     timecode_GetTimecodeRangeCount,
      timecode_GetTimecodeRangeBounds,
  };
  
@@ -13386,7 +13394,10 @@ index 8fc5ff6..a39d7fd 100644
 +    UINT stream_count;
      WORD i;
  
--    if (!(wg_parser = wg_parser_create(WG_PARSER_CREATE_FLAG_NONE)))
+-    /* 32-bit GStreamer ORC cannot efficiently convert I420 to RGBA, use OpenGL converter
+-     * in that case but keep the usual codepath otherwise.
+-     */
+-    if (!(wg_parser = wg_parser_create(sizeof(void *) == 4 ? WG_PARSER_CREATE_FLAG_USE_OPENGL : WG_PARSER_CREATE_FLAG_NONE)))
 -        return E_OUTOFMEMORY;
 -
 -    reader->wg_parser = wg_parser;
@@ -13569,7 +13580,8 @@ index 8fc5ff6..a39d7fd 100644
 -    wg_parser_destroy(reader->wg_parser);
 -    reader->wg_parser = 0;
 -
--    if (!(wg_parser = wg_parser_create(read_compressed ? WG_PARSER_CREATE_FLAG_OUTPUT_COMPRESSED : WG_PARSER_CREATE_FLAG_NONE)))
+-    if (!(wg_parser = wg_parser_create((read_compressed ? WG_PARSER_CREATE_FLAG_OUTPUT_COMPRESSED : WG_PARSER_CREATE_FLAG_NONE)
+-            | (sizeof(void *) == 4 && !read_compressed ? WG_PARSER_CREATE_FLAG_USE_OPENGL : WG_PARSER_CREATE_FLAG_NONE))))
 -        return E_OUTOFMEMORY;
 -
 -    reader->wg_parser = wg_parser;
@@ -13617,7 +13629,7 @@ index 8fc5ff6..a39d7fd 100644
          struct wm_stream *stream = &reader->streams[i];
 -        struct wg_format format;
  
--        stream->wg_stream = wg_parser_get_stream(reader->wg_parser, i);
+-        stream->wg_stream = wg_parser_get_stream(reader->wg_parser, reader->stream_count - i - 1);
 -        stream->reader = reader;
 -        wg_parser_stream_get_current_format(stream->wg_stream, &format);
 -        if (stream->selection == WMT_ON)
@@ -14502,11 +14514,21 @@ index 8fc5ff6..a39d7fd 100644
  
      TRACE("reader %p, stream_index %u, compressed %d.\n", reader, stream_number, compressed);
  
-@@ -2583,7 +3163,13 @@ static HRESULT WINAPI reader_SetReadStreamSamples(IWMSyncReader2 *iface, WORD st
+@@ -2583,17 +3163,13 @@ static HRESULT WINAPI reader_SetReadStreamSamples(IWMSyncReader2 *iface, WORD st
      }
  
      stream->read_compressed = compressed;
--    reinit_stream(reader, compressed);
+-
+-    {
+-        const char *sgi = getenv("SteamGameId");
+-        if (sgi && !strcmp(sgi, "638160")) compressed = FALSE;
+-    }
+-
+-    if (stream->demux_compressed != compressed)
+-    {
+-        stream->demux_compressed = compressed;
+-        reinit_stream(reader, compressed);
+-    }
 +    decode = !compressed;
 +
 +    if (stream->decode_stream != decode)
@@ -14553,7 +14575,7 @@ index 8fc5ff6..a39d7fd 100644
 -                FIXME("Ignoring selection %#x for stream %u; treating as enabled.\n",
 -                        selections[i], stream_numbers[i]);
 -            TRACE("Enabling stream %u.\n", stream_numbers[i]);
--            if (stream->read_compressed)
+-            if (stream->demux_compressed)
 -            {
 -                struct wg_format format;
 -                wg_parser_stream_get_current_format(stream->wg_stream, &format);
@@ -15097,10 +15119,10 @@ index 0ead930..0000000
 -	wma_decoder.c
 diff --git a/dlls/winegstreamer/gst_private.h b/dlls/winegstreamer/gst_private.h
 deleted file mode 100644
-index 71ef1798..00000000
+index dd710e6..0000000
 --- a/dlls/winegstreamer/gst_private.h
 +++ /dev/null
-@@ -1,188 +0,0 @@
+@@ -1,190 +0,0 @@
 -/*
 - * GStreamer splitter + decoder, adapted from parser.c
 - *
@@ -15173,7 +15195,7 @@ index 71ef1798..00000000
 -void wg_sample_queue_destroy(struct wg_sample_queue *queue);
 -void wg_sample_queue_flush(struct wg_sample_queue *queue, bool all);
 -
--wg_parser_t wg_parser_create(UINT32 flags); /* see wg_parser_create_flag */
+-wg_parser_t wg_parser_create(UINT32 flags); /* see wg_parser_create_flag, incl. USE_OPENGL */
 -void wg_parser_destroy(wg_parser_t parser);
 -
 -HRESULT wg_parser_connect(wg_parser_t parser, uint64_t file_size, const WCHAR *uri);
@@ -15277,11 +15299,13 @@ index 71ef1798..00000000
 -HRESULT wg_transform_read_data(wg_transform_t transform, struct wg_sample *sample);
 -
 -HRESULT gstreamer_byte_stream_handler_create(REFIID riid, void **obj);
+-HRESULT gstreamer_scheme_handler_create(REFIID riid, void **ret);
 -
 -unsigned int wg_format_get_stride(const struct wg_format *format);
 -
 -bool wg_video_format_is_rgb(enum wg_video_format format);
 -
+-HRESULT audio_decoder_create(REFIID riid, void **ret);
 -HRESULT aac_decoder_create(REFIID riid, void **ret);
 -HRESULT h264_decoder_create(REFIID riid, void **ret);
 -HRESULT h264_encoder_create(REFIID riid, void **ret);
@@ -15291,10 +15315,10 @@ index 71ef1798..00000000
 -#endif /* __GST_PRIVATE_INCLUDED__ */
 diff --git a/dlls/winegstreamer/quartz_parser.c b/dlls/winegstreamer/quartz_parser.c
 deleted file mode 100644
-index 5cddd7bd..00000000
+index ee7816d..0000000
 --- a/dlls/winegstreamer/quartz_parser.c
 +++ /dev/null
-@@ -1,2771 +0,0 @@
+@@ -1,2792 +0,0 @@
 -/*
 - * DirectShow parser filters
 - *
@@ -17119,11 +17143,8 @@ index 5cddd7bd..00000000
 -    return amt_to_wg_format(mt, &format) ? S_OK : S_FALSE;
 -}
 -
--static HRESULT decodebin_parser_source_get_media_type(struct parser_source *pin,
--        unsigned int index, AM_MEDIA_TYPE *mt)
+-static HRESULT get_raw_media_type(struct wg_format *format, unsigned int index, AM_MEDIA_TYPE *mt)
 -{
--    struct wg_format format;
--
 -    static const enum wg_video_format video_formats[] =
 -    {
 -        /* Try to prefer YUV formats over RGB ones. Most decoders output in the
@@ -17143,36 +17164,45 @@ index 5cddd7bd..00000000
 -        WG_VIDEO_FORMAT_RGB15,
 -    };
 -
--    wg_parser_stream_get_current_format(pin->wg_stream, &format);
--
 -    memset(mt, 0, sizeof(AM_MEDIA_TYPE));
 -
--    if (amt_from_wg_format(mt, &format, false))
+-    if (amt_from_wg_format(mt, format, false))
 -    {
 -        if (!index--)
 -            return S_OK;
 -        FreeMediaType(mt);
 -    }
 -
--    if (format.major_type == WG_MAJOR_TYPE_VIDEO && index < ARRAY_SIZE(video_formats))
+-    if (format->major_type == WG_MAJOR_TYPE_VIDEO && index < ARRAY_SIZE(video_formats))
 -    {
--        format.u.video.format = video_formats[index];
+-        format->u.video.format = video_formats[index];
 -        /* Downstream filters probably expect RGB video to be bottom-up. */
--        if (format.u.video.height > 0 && wg_video_format_is_rgb(video_formats[index]))
--            format.u.video.height = -format.u.video.height;
--        if (!amt_from_wg_format(mt, &format, false))
+-        if (format->u.video.height > 0 && wg_video_format_is_rgb(video_formats[index]))
+-            format->u.video.height = -format->u.video.height;
+-        if (!amt_from_wg_format(mt, format, false))
 -            return E_OUTOFMEMORY;
 -        return S_OK;
 -    }
--    else if (format.major_type == WG_MAJOR_TYPE_AUDIO && !index)
+-    else if (format->major_type == WG_MAJOR_TYPE_AUDIO && !index)
 -    {
--        format.u.audio.format = WG_AUDIO_FORMAT_S16LE;
--        if (!amt_from_wg_format(mt, &format, false))
+-        format->u.audio.format = WG_AUDIO_FORMAT_S16LE;
+-        if (!amt_from_wg_format(mt, format, false))
 -            return E_OUTOFMEMORY;
 -        return S_OK;
 -    }
 -
 -    return VFW_S_NO_MORE_ITEMS;
+-}
+-
+-static HRESULT decodebin_parser_source_get_media_type(struct parser_source *pin,
+-        unsigned int index, AM_MEDIA_TYPE *mt)
+-{
+-    struct wg_format format;
+-
+-    TRACE("pin %p, index %d, mt %p.\n", pin, (int)index, mt);
+-
+-    wg_parser_stream_get_current_format(pin->wg_stream, &format);
+-    return get_raw_media_type(&format, index, mt);
 -}
 -
 -static HRESULT parser_create(UINT32 flags, struct parser **parser)
@@ -17753,6 +17783,8 @@ index 5cddd7bd..00000000
 -    HRESULT hr;
 -
 -    wg_parser_stream_get_current_format(pin->wg_stream, &format);
+-    if (format.major_type == WG_MAJOR_TYPE_VIDEO || format.major_type == WG_MAJOR_TYPE_AUDIO)
+-        return amt_to_wg_format(mt, &format) ? S_OK : S_FALSE;
 -    if (!amt_from_wg_format(&pad_mt, &format, false))
 -        return E_OUTOFMEMORY;
 -    hr = compare_media_types(mt, &pad_mt) ? S_OK : S_FALSE;
@@ -17765,9 +17797,11 @@ index 5cddd7bd..00000000
 -{
 -    struct wg_format format;
 -
+-    wg_parser_stream_get_current_format(pin->wg_stream, &format);
+-    if (format.major_type == WG_MAJOR_TYPE_VIDEO || format.major_type == WG_MAJOR_TYPE_AUDIO)
+-        return get_raw_media_type(&format, index, mt);
 -    if (index > 0)
 -        return VFW_S_NO_MORE_ITEMS;
--    wg_parser_stream_get_current_format(pin->wg_stream, &format);
 -    if (!amt_from_wg_format(mt, &format, false))
 -        return E_OUTOFMEMORY;
 -    return S_OK;
@@ -17834,6 +17868,9 @@ index 5cddd7bd..00000000
 -    HRESULT hr;
 -
 -    wg_parser_stream_get_current_format(pin->wg_stream, &format);
+-    if (format.major_type == WG_MAJOR_TYPE_VIDEO || format.major_type == WG_MAJOR_TYPE_AUDIO)
+-        return amt_to_wg_format(mt, &format) ? S_OK : S_FALSE;
+-
 -    if (wg_video_format_is_rgb(format.u.video.format))
 -        format.u.video.height = -format.u.video.height;
 -    if (!amt_from_wg_format(&pad_mt, &format, false))
@@ -17860,6 +17897,10 @@ index 5cddd7bd..00000000
 -        unsigned int index, AM_MEDIA_TYPE *mt)
 -{
 -    struct wg_format format;
+-
+-    wg_parser_stream_get_current_format(pin->wg_stream, &format);
+-    if (format.major_type == WG_MAJOR_TYPE_VIDEO || format.major_type == WG_MAJOR_TYPE_AUDIO)
+-        return get_raw_media_type(&format, index, mt);
 -
 -    if (index > 1)
 -        return VFW_S_NO_MORE_ITEMS;
@@ -18001,6 +18042,8 @@ index 5cddd7bd..00000000
 -    HRESULT hr;
 -
 -    wg_parser_stream_get_current_format(pin->wg_stream, &format);
+-    if (format.major_type == WG_MAJOR_TYPE_VIDEO || format.major_type == WG_MAJOR_TYPE_AUDIO)
+-        return amt_to_wg_format(mt, &format) ? S_OK : S_FALSE;
 -    if (!amt_from_wg_format(&pad_mt, &format, false))
 -        return E_OUTOFMEMORY;
 -    hr = compare_media_types(mt, &pad_mt) ? S_OK : S_FALSE;
@@ -18013,9 +18056,11 @@ index 5cddd7bd..00000000
 -{
 -    struct wg_format format;
 -
+-    wg_parser_stream_get_current_format(pin->wg_stream, &format);
+-    if (format.major_type == WG_MAJOR_TYPE_VIDEO || format.major_type == WG_MAJOR_TYPE_AUDIO)
+-        return get_raw_media_type(&format, index, mt);
 -    if (index > 0)
 -        return VFW_S_NO_MORE_ITEMS;
--    wg_parser_stream_get_current_format(pin->wg_stream, &format);
 -    if (!amt_from_wg_format(mt, &format, false))
 -        return E_OUTOFMEMORY;
 -    return S_OK;
@@ -18189,10 +18234,10 @@ index 3199e362..00000000
 -#endif /* __WINE_WINEGSTREAMER_UNIX_PRIVATE_H */
 diff --git a/dlls/winegstreamer/unixlib.c b/dlls/winegstreamer/unixlib.c
 deleted file mode 100644
-index e595e40..0000000
+index b7de91e..0000000
 --- a/dlls/winegstreamer/unixlib.c
 +++ /dev/null
-@@ -1,349 +0,0 @@
+@@ -1,376 +0,0 @@
 -/*
 - * winegstreamer Unix library interface
 - *
@@ -18227,6 +18272,7 @@ index e595e40..0000000
 -#include <gst/video/video.h>
 -#include <gst/audio/audio.h>
 -#include <gst/tag/tag.h>
+-#include <gst/gl/gl.h>
 -
 -#include "ntstatus.h"
 -#include "winternl.h"
@@ -18244,6 +18290,7 @@ index e595e40..0000000
 -extern bool media_converter_init(void);
 -
 -static UINT thread_count;
+-GstGLDisplay *gl_display;
 -
 -GstStreamType stream_type_from_caps(GstCaps *caps)
 -{
@@ -18455,6 +18502,8 @@ index e595e40..0000000
 -
 -NTSTATUS wg_init_gstreamer(void *arg)
 -{
+-    static GstGLContext *gl_context;
+-
 -    struct wg_init_gstreamer_params *params = arg;
 -    char arg0[] = "wine";
 -    char arg1[] = "--gst-disable-registry-fork";
@@ -18471,6 +18520,7 @@ index e595e40..0000000
 -    if (params->err_on)
 -        setenv("GST_DEBUG", "1", FALSE);
 -    setenv("GST_DEBUG_NO_COLOR", "1", FALSE);
+-    setenv("GST_GL_WINDOW", "x11", 1);
 -
 -    /* GStreamer installs a temporary SEGV handler when it loads plugins
 -     * to initialize its registry calling exit(-1) when any fault is caught.
@@ -18504,6 +18554,28 @@ index e595e40..0000000
 -    {
 -        GST_ERROR("Failed to init media converter.");
 -        return STATUS_UNSUCCESSFUL;
+-    }
+-
+-    if (!(gl_display = gst_gl_display_new()))
+-        GST_ERROR("Failed to create OpenGL display");
+-    else
+-    {
+-        GError *error = NULL;
+-        gboolean ret;
+-
+-        GST_OBJECT_LOCK(gl_display);
+-        ret = gst_gl_display_create_context(gl_display, NULL, &gl_context, &error);
+-        GST_OBJECT_UNLOCK(gl_display);
+-        g_clear_error(&error);
+-
+-        if (ret)
+-            gst_gl_display_add_context(gl_display, gl_context);
+-        else
+-        {
+-            GST_ERROR("Failed to create OpenGL context");
+-            gst_object_unref(gl_display);
+-            gl_display = NULL;
+-        }
 -    }
 -
 -    return STATUS_SUCCESS;
@@ -18544,10 +18616,10 @@ index e595e40..0000000
 -}
 diff --git a/dlls/winegstreamer/unixlib.h b/dlls/winegstreamer/unixlib.h
 deleted file mode 100644
-index d274d6f7..00000000
+index c9f020f..0000000
 --- a/dlls/winegstreamer/unixlib.h
 +++ /dev/null
-@@ -1,482 +0,0 @@
+@@ -1,483 +0,0 @@
 -/*
 - * winegstreamer Unix library interface
 - *
@@ -18773,6 +18845,7 @@ index d274d6f7..00000000
 -    WG_PARSER_CREATE_FLAG_NONE = 0,
 -    WG_PARSER_CREATE_FLAG_OUTPUT_COMPRESSED = 1,
 -    WG_PARSER_CREATE_FLAG_PTS_REBASED = 2,
+-    WG_PARSER_CREATE_FLAG_USE_OPENGL = 4,
 -};
 -
 -struct wg_parser_create_params
@@ -20575,10 +20648,10 @@ index fce3d27a..00000000
 -}
 diff --git a/dlls/winegstreamer/wg_media_type.c b/dlls/winegstreamer/wg_media_type.c
 deleted file mode 100644
-index d4058397..00000000
+index f3e9c71..0000000
 --- a/dlls/winegstreamer/wg_media_type.c
 +++ /dev/null
-@@ -1,840 +0,0 @@
+@@ -1,899 +0,0 @@
 -/*
 - * Copyright 2024 Rémi Bernon for CodeWeavers
 - *
@@ -20643,17 +20716,23 @@ index d4058397..00000000
 -DEFINE_MEDIATYPE_GUID(MFVideoFormat_IV50,MAKEFOURCC('I','V','5','0'));
 -DEFINE_MEDIATYPE_GUID(MFVideoFormat_VC1S,MAKEFOURCC('V','C','1','S'));
 -DEFINE_MEDIATYPE_GUID(MFVideoFormat_ABGR32,D3DFMT_A8B8G8R8);
+-DEFINE_MEDIATYPE_GUID(MFVideoFormat_theora,MAKEFOURCC('t','h','e','o'));
 -
--static void init_caps_codec_data(GstCaps *caps, const void *codec_data, int codec_data_size)
+-static void init_caps_codec_data_name(GstCaps *caps, const void *codec_data, int codec_data_size, const char *name)
 -{
 -    GstBuffer *buffer;
 -
 -    if (codec_data_size > 0 && (buffer = gst_buffer_new_and_alloc(codec_data_size)))
 -    {
 -        gst_buffer_fill(buffer, 0, codec_data, codec_data_size);
--        gst_caps_set_simple(caps, "codec_data", GST_TYPE_BUFFER, buffer, NULL);
+-        gst_caps_set_simple(caps, name, GST_TYPE_BUFFER, buffer, NULL);
 -        gst_buffer_unref(buffer);
 -    }
+-}
+-
+-static void init_caps_codec_data(GstCaps *caps, const void *codec_data, int codec_data_size)
+-{
+-    init_caps_codec_data_name(caps, codec_data, codec_data_size, "codec_data");
 -}
 -
 -static void init_caps_from_wave_format_mpeg1(GstCaps *caps, const MPEG1WAVEFORMAT *format, UINT32 format_size)
@@ -20731,6 +20810,17 @@ index d4058397..00000000
 -    gst_caps_set_simple(caps, "bitrate", G_TYPE_INT, format->wfx.nAvgBytesPerSec * 8, NULL);
 -}
 -
+-static void init_caps_from_wave_format_vorbis(GstCaps *caps, const WAVEFORMATEX *format, UINT32 format_size)
+-{
+-    init_caps_codec_data(caps, format + 1, format->cbSize);
+-
+-    gst_structure_remove_field(gst_caps_get_structure(caps, 0), "format");
+-    gst_structure_set_name(gst_caps_get_structure(caps, 0), "audio/x-vorbis");
+-    gst_caps_set_simple(caps, "block_align", G_TYPE_INT, format->nBlockAlign, NULL);
+-    gst_caps_set_simple(caps, "depth", G_TYPE_INT, format->wBitsPerSample, NULL);
+-    gst_caps_set_simple(caps, "bitrate", G_TYPE_INT, format->wfx.nAvgBytesPerSec * 8, NULL);
+-}
+-
 -static void init_caps_from_wave_format_wma3(GstCaps *caps, const WMAUDIO3WAVEFORMAT *format, UINT32 format_size, UINT version)
 -{
 -    init_caps_codec_data(caps, &format->wfx + 1, format->wfx.cbSize);
@@ -20741,6 +20831,18 @@ index d4058397..00000000
 -    gst_caps_set_simple(caps, "block_align", G_TYPE_INT, format->wfx.nBlockAlign, NULL);
 -    gst_caps_set_simple(caps, "depth", G_TYPE_INT, format->wfx.wBitsPerSample, NULL);
 -    gst_caps_set_simple(caps, "bitrate", G_TYPE_INT, format->wfx.nAvgBytesPerSec * 8, NULL);
+-}
+-
+-static void init_caps_from_wave_format_opus(GstCaps *caps, const WAVEFORMATEX *format, UINT32 format_size)
+-{
+-    init_caps_codec_data(caps, format + 1, format->cbSize);
+-
+-    gst_structure_remove_field(gst_caps_get_structure(caps, 0), "format");
+-    gst_structure_set_name(gst_caps_get_structure(caps, 0), "audio/x-opus");
+-    gst_caps_set_simple(caps, "channel-mapping-family", G_TYPE_INT, 0, NULL);
+-    gst_caps_set_simple(caps, "block_align", G_TYPE_INT, format->nBlockAlign, NULL);
+-    gst_caps_set_simple(caps, "depth", G_TYPE_INT, format->wBitsPerSample, NULL);
+-    gst_caps_set_simple(caps, "bitrate", G_TYPE_INT, format->nAvgBytesPerSec * 8, NULL);
 -}
 -
 -static void init_caps_from_wave_format(GstCaps *caps, const GUID *subtype,
@@ -20760,8 +20862,12 @@ index d4058397..00000000
 -        return init_caps_from_wave_format_wma2(caps, format, format_size);
 -    if (IsEqualGUID(subtype, &MFAudioFormat_WMAudioV9))
 -        return init_caps_from_wave_format_wma3(caps, format, format_size, 3);
+-    if (IsEqualGUID(subtype, &MFAudioFormat_Vorbis))
+-        return init_caps_from_wave_format_vorbis(caps, format, format_size);
 -    if (IsEqualGUID(subtype, &MFAudioFormat_WMAudio_Lossless))
 -        return init_caps_from_wave_format_wma3(caps, format, format_size, 4);
+-    if (IsEqualGUID(subtype, &MFAudioFormat_Opus))
+-        return init_caps_from_wave_format_opus(caps, format, format_size);
 -
 -    GST_FIXME("Unsupported subtype " WG_GUID_FORMAT, WG_GUID_ARGS(*subtype));
 -}
@@ -20880,7 +20986,13 @@ index d4058397..00000000
 -    if (format_size > sizeof(*format) && (buffer = gst_buffer_new_and_alloc(format_size - sizeof(*format))))
 -    {
 -        gst_buffer_fill(buffer, 0, format + 1, format_size - sizeof(*format));
--        gst_caps_set_simple(caps, "streamheader", GST_TYPE_BUFFER, buffer, NULL);
+-        if (format_size - sizeof(*format) >= sizeof(UINT32) && *(UINT32 *)(format + 1) == 0x01000000)
+-            gst_caps_set_simple(caps, "streamheader", GST_TYPE_BUFFER, buffer, NULL);
+-        else
+-        {
+-            gst_caps_set_simple(caps, "codec_data", GST_TYPE_BUFFER, buffer, NULL);
+-            gst_caps_set_simple(caps, "stream-format", G_TYPE_STRING, "avc", NULL);
+-        }
 -        gst_buffer_unref(buffer);
 -    }
 -}
@@ -20905,6 +21017,14 @@ index d4058397..00000000
 -    gst_caps_set_simple(caps, "indeoversion", G_TYPE_INT, 5, NULL);
 -}
 -
+-static void init_caps_from_video_theora(GstCaps *caps, const MFVIDEOFORMAT *format, UINT format_size)
+-{
+-    init_caps_codec_data(caps, format + 1, format_size - sizeof(*format));
+-
+-    gst_structure_remove_field(gst_caps_get_structure(caps, 0), "format");
+-    gst_structure_set_name(gst_caps_get_structure(caps, 0), "video/x-theora");
+-}
+-
 -static void init_caps_from_video_mpeg(GstCaps *caps, const struct mpeg_video_format *format, UINT format_size)
 -{
 -    init_caps_codec_data(caps, format->sequence_header, format->sequence_header_count);
@@ -20914,6 +21034,14 @@ index d4058397..00000000
 -    gst_caps_set_simple(caps, "mpegversion", G_TYPE_INT, 1, NULL);
 -    gst_caps_set_simple(caps, "systemstream", G_TYPE_BOOLEAN, FALSE, NULL);
 -    gst_caps_set_simple(caps, "parsed", G_TYPE_BOOLEAN, TRUE, NULL);
+-}
+-
+-static void init_caps_from_video_av1(GstCaps *caps, const MFVIDEOFORMAT *format, UINT format_size)
+-{
+-    init_caps_codec_data(caps, format + 1, format_size - sizeof(*format));
+-
+-    gst_structure_remove_field(gst_caps_get_structure(caps, 0), "format");
+-    gst_structure_set_name(gst_caps_get_structure(caps, 0), "video/x-av1");
 -}
 -
 -static void init_caps_from_video_subtype(GstCaps *caps, const GUID *subtype, const void *format, UINT format_size)
@@ -20934,8 +21062,12 @@ index d4058397..00000000
 -        return init_caps_from_video_wmv(caps, format, format_size, 3, "WVC1");
 -    if (IsEqualGUID(subtype, &MFVideoFormat_IV50))
 -        return init_caps_from_video_indeo(caps, format, format_size);
+-    if (IsEqualGUID(subtype, &MFVideoFormat_theora))
+-        return init_caps_from_video_theora(caps, format, format_size);
 -    if (IsEqualGUID(subtype, &MEDIASUBTYPE_MPEG1Payload))
 -        return init_caps_from_video_mpeg(caps, format, format_size);
+-    if (IsEqualGUID(subtype, &MFVideoFormat_AV1))
+-        return init_caps_from_video_av1(caps, format, format_size);
 -
 -    GST_FIXME("Unsupported subtype " WG_GUID_FORMAT, WG_GUID_ARGS(*subtype));
 -}
@@ -22572,10 +22704,10 @@ index 5865df61..00000000
 -}
 diff --git a/dlls/winegstreamer/wg_transform.c b/dlls/winegstreamer/wg_transform.c
 deleted file mode 100644
-index 2c17ffc..0000000
+index 479489d..0000000
 --- a/dlls/winegstreamer/wg_transform.c
 +++ /dev/null
-@@ -1,1538 +0,0 @@
+@@ -1,1609 +0,0 @@
 -/*
 - * GStreamer transform backend
 - *
@@ -23123,6 +23255,74 @@ index 2c17ffc..0000000
 -    return parsed_caps;
 -}
 -
+-static GstBuffer *caps_get_buffer(const GstCaps *caps, const char *name, UINT32 *buffer_size)
+-{
+-    const GstStructure *structure = gst_caps_get_structure(caps, 0);
+-    const GValue *buffer_value;
+-
+-    if ((buffer_value = gst_structure_get_value(structure, name)))
+-    {
+-        GstBuffer *buffer = gst_value_get_buffer(buffer_value);
+-        *buffer_size = gst_buffer_get_size(buffer);
+-        return buffer;
+-    }
+-
+-    *buffer_size = 0;
+-    return NULL;
+-}
+-
+-static void push_vorbis_headers(struct wg_transform *transform)
+-{
+-    const uint8_t *ptr, *beg, *end;
+-    GstBuffer *codec_data, *hdr;
+-    UINT32 codec_data_size;
+-    GstBufferMapInfo info;
+-    int i, count, len;
+-
+-    if (!(codec_data = caps_get_buffer(transform->input_caps, "codec_data",
+-            &codec_data_size)) || !codec_data_size) return;
+-    gst_buffer_map(codec_data, &info, GST_MAP_READ);
+-    ptr = info.data;
+-    end = ptr + info.size;
+-
+-    for (len = 0, i = 0, count = *ptr++; ptr < end && i < count; i++)
+-    {
+-        while (ptr < end && *ptr++ == 0xff) len += 0xff;
+-        len += ptr[-1];
+-        GST_DEBUG("buffer %d: %u bytes", i, len);
+-    }
+-    if (len > end - ptr) goto failed;
+-    beg = ptr;
+-    ptr = info.data;
+-
+-    GST_DEBUG("%u stream headers, total length=%u bytes", count + 1, codec_data_size);
+-    for (len = 0, i = 0, count = *ptr++; ptr < end && i < count; i++, len = 0)
+-    {
+-        while (ptr < end && *ptr++ == 0xff) len += 0xff;
+-        len += ptr[-1];
+-
+-        if (!(hdr = gst_buffer_new_memdup(beg, len))) break;
+-        GST_DEBUG("buffer %d: %u bytes", i, len);
+-        GST_BUFFER_FLAG_SET(hdr, GST_BUFFER_FLAG_HEADER);
+-        GST_MEMDUMP("data", beg, len);
+-        gst_pad_push(transform->my_src, hdr);
+-        beg += len;
+-    }
+-
+-    if ((hdr = gst_buffer_new_memdup(beg, end - beg)))
+-    {
+-        GST_DEBUG("buffer %d: %zu bytes", i, end - beg);
+-        GST_MEMDUMP("data", beg, end - beg);
+-        GST_BUFFER_FLAG_SET(hdr, GST_BUFFER_FLAG_HEADER);
+-        gst_pad_push(transform->my_src, hdr);
+-    }
+-
+-failed:
+-    gst_buffer_unmap(codec_data, &info);
+-    gst_buffer_unref(codec_data);
+-}
+-
+-
 -static bool transform_create_decoder_elements(struct wg_transform *transform,
 -        const gchar *input_mime, const gchar *output_mime, GstElement **first, GstElement **last)
 -{
@@ -23358,6 +23558,9 @@ index 2c17ffc..0000000
 -    if (!(event = gst_event_new_segment(&transform->segment))
 -            || !push_event(transform->my_src, event))
 -        goto out;
+-
+-    if (!strcmp(input_mime, "audio/x-vorbis"))
+-        push_vorbis_headers(transform);
 -
 -    GST_INFO("Created winegstreamer transform %p.", transform);
 -    params->transform = (wg_transform_t)(ULONG_PTR)transform;
@@ -24116,10 +24319,10 @@ index 2c17ffc..0000000
 -}
 diff --git a/dlls/winegstreamer/winegstreamer.rgs b/dlls/winegstreamer/winegstreamer.rgs
 deleted file mode 100644
-index 923ba673..00000000
+index c50d3a0..0000000
 --- a/dlls/winegstreamer/winegstreamer.rgs
 +++ /dev/null
-@@ -1,14 +0,0 @@
+@@ -1,42 +0,0 @@
 -HKCR
 -{
 -    NoRemove 'Media Type'
@@ -24130,6 +24333,34 @@ index 923ba673..00000000
 -            {
 -                val '0' = s '0,1,00,0'
 -                val 'Source Filter' = s '{e436ebb5-524f-11ce-9f53-0020af0ba770}'
+-            }
+-        }
+-    }
+-}
+-
+-HKLM
+-{
+-    NoRemove 'Software'
+-    {
+-        NoRemove 'Microsoft'
+-        {
+-            NoRemove 'Windows Media Foundation'
+-            {
+-                NoRemove 'SchemeHandlers'
+-                {
+-                    'http:'
+-                    {
+-                        val '{587eeb6a-7336-4ebd-a4f2-91c948de622c}' = s 'GStreamer Scheme Handler'
+-                    }
+-                    'https:'
+-                    {
+-                        val '{587eeb6a-7336-4ebd-a4f2-91c948de622c}' = s 'GStreamer Scheme Handler'
+-                    }
+-                    'rtsp:'
+-                    {
+-                        val '{587eeb6a-7336-4ebd-a4f2-91c948de622c}' = s 'GStreamer Scheme Handler'
+-                    }
+-                }
 -            }
 -        }
 -    }

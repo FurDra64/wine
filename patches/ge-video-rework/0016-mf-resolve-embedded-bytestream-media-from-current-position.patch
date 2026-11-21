@@ -47,14 +47,13 @@ index 341b8ef9..b5694bc1 100644
      context->url = tmp_url;
      context->result = result;
      IMFAsyncResult_AddRef(context->result);
-@@ -344,6 +346,7 @@ struct media_source
-     CRITICAL_SECTION cs;
+@@ -336,5 +338,6 @@ struct media_source
+     CRITICAL_SECTION demuxer_cs;
  
      UINT64 file_size;
 +    UINT64 stream_offset;
      UINT64 duration;
      bool has_duration;
-     bool is_network;
 @@ -764,7 +767,8 @@ static NTSTATUS CDECL source_stream_read_cb(struct winedmo_stream *stream, BYTE
      if (!*size)
          return STATUS_SUCCESS;

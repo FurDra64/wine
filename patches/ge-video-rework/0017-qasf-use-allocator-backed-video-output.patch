@@ -57,18 +57,34 @@ diff --git a/dlls/qasf/asfreader.c b/dlls/qasf/asfreader.c
 index dacfccf54abfc4dbf6ae53b7fa1ebd497c5548fe..480c525fca9daf2f84b1d283440cfce574ec8997 100644
 --- a/dlls/qasf/asfreader.c
 +++ b/dlls/qasf/asfreader.c
-@@ -527,7 +527,10 @@ static HRESULT asf_reader_init_stream(struct strmbase_filter *iface)
+@@ -503,4 +503,6 @@ static HRESULT asf_reader_init_stream(struct strmbase_filter *iface)
+     IWMReaderAdvanced *reader_advanced;
+     UINT preferred_audio_output = UINT_MAX;
+     HRESULT hr = S_OK;
++    BOOL value;
++    IWMReaderAdvanced2 *reader_advanced2;
+     int i;
+@@ -529,4 +531,20 @@ static HRESULT asf_reader_init_stream(struct strmbase_filter *iface)
          if (!stream->source.pin.peer)
              continue;
  
--        value = IMemInputPin_ReceiveCanBlock(stream->source.pMemInputPin) == S_OK;
 +        /* WMReader already paces async samples. Deliver qasf outputs from the
 +         * callback thread so audio and video callbacks stay in timestamp order
 +         * instead of drifting on separate delivery threads. */
 +        value = FALSE;
-         if (FAILED(hr = IWMReaderAdvanced2_SetOutputSetting(reader_advanced, i, L"DedicatedDeliveryThread",
-                 WMT_TYPE_BOOL, (BYTE *)&value, sizeof(value))))
-         {
++        if (FAILED(hr = IWMReader_QueryInterface(filter->reader, &IID_IWMReaderAdvanced2,
++                (void **)&reader_advanced2)))
++            break;
++        if (FAILED(hr = IWMReaderAdvanced2_SetOutputSetting(reader_advanced2, i, L"DedicatedDeliveryThread",
++                WMT_TYPE_BOOL, (BYTE *)&value, sizeof(value))))
++        {
++            WARN("Failed to set DedicatedDeliveryThread for stream %u, hr %#lx.\n", i, hr);
++            IWMReaderAdvanced2_Release(reader_advanced2);
++            break;
++        }
++        IWMReaderAdvanced2_Release(reader_advanced2);
++
+         if (FAILED(hr = IMemAllocator_Commit(stream->source.pAllocator)))
 diff --git a/dlls/winedmo/unix_transform.c b/dlls/winedmo/unix_transform.c
 index e885952784f58a7d3faa481355eec4833083cffe..7b4d65d63f13de647eae6caf791e7842703b70a9 100644
 --- a/dlls/winedmo/unix_transform.c
@@ -324,11 +340,13 @@ index ff0d4805fa73412d6a7f5b7d4209bfed684f552e..d05f90135e4840deba8bd5c5ca2b3d10
      TRACE("Found first stream %u with pts %I64d.\n", first_stream->number, first_sample->pts);
      *out_sample = first_sample;
      *out_stream = first_stream;
-@@ -693,7 +759,6 @@ static DWORD WINAPI async_reader_callback_thread(void *arg)
+@@ -690,9 +756,8 @@ static DWORD WINAPI async_reader_callback_thread(void *arg)
+                     if (SUCCEEDED(hr) && !reader->clock_start)
                      {
                          reader->active_start = op->u.start.start;
                          reader->active_duration = op->u.start.duration;
 -                        reader->clock_start = get_current_time(reader);
+                     }
  
                          if (FAILED(hr = async_reader_open_all_streams(reader)))
                          {

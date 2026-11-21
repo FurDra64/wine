@@ -12,8 +12,10 @@ diff --git a/dlls/winedmo/quartz_transform.c b/dlls/winedmo/quartz_transform.c
 index 0d72f95d..63d15a1f 100644
 --- a/dlls/winedmo/quartz_transform.c
 +++ b/dlls/winedmo/quartz_transform.c
-@@ -624,12 +624,25 @@ static HRESULT transform_sink_begin_flush(struct strmbase_sink *pin)
-     return hr;
+@@ -660,8 +660,20 @@ static HRESULT transform_sink_begin_flush(struct strmbase_sink *pin)
+     LeaveCriticalSection(&filter->receive_cs);
+ 
+     return status ? E_FAIL : S_OK;
  }
  
 +static HRESULT transform_sink_end_flush(struct strmbase_sink *pin)
@@ -28,13 +30,12 @@ index 0d72f95d..63d15a1f 100644
 +    return S_OK;
 +}
 +
- static const struct strmbase_sink_ops sink_ops =
+ static HRESULT transform_sink_eos(struct strmbase_sink *pin)
  {
-     .base.pin_query_accept = transform_sink_query_accept,
-     .base.pin_query_interface = transform_sink_query_interface,
+     struct transform *filter = impl_from_strmbase_filter(pin->pin.filter);
+@@ -700,4 +711,5 @@ static const struct strmbase_sink_ops sink_ops =
      .pfnReceive = transform_sink_receive,
+     .sink_eos = transform_sink_eos,
      .sink_begin_flush = transform_sink_begin_flush,
 +    .sink_end_flush = transform_sink_end_flush,
  };
- 
- static HRESULT transform_source_query_accept(struct strmbase_pin *pin, const AM_MEDIA_TYPE *mt)

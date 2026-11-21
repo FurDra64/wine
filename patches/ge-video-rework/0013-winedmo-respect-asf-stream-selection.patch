@@ -147,8 +147,10 @@ index 39544124..1b25747b 100644
              continue;
  
          EnterCriticalSection(&pin->queue_cs);
-@@ -1042,7 +1089,7 @@ static DWORD CALLBACK dmo_demux_thread(void *arg)
-         pin = filter->sources[stream_idx];
+@@ -1088,11 +1135,11 @@ static DWORD CALLBACK dmo_demux_thread(void *arg)
+         }
+ 
+         IMediaBuffer_SetLength(&sbuf->IMediaBuffer_iface, needed_size);
  
          /* Only queue if the pin is connected. */
 -        if (!pin->pin.pin.peer)
@@ -156,6 +158,8 @@ index 39544124..1b25747b 100644
          {
              IMediaBuffer_Release(&sbuf->IMediaBuffer_iface);
              continue;
+         }
+ 
 @@ -1119,7 +1166,7 @@ static void dmo_parser_begin_downstream_flush(struct dmo_parser *filter)
      {
          struct dmo_parser_source *pin = filter->sources[i];

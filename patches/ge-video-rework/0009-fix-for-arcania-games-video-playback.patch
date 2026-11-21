@@ -1801,38 +1801,40 @@ index cec97f42eab8cdba657ea45949f670989724fc42..279258be98b38a6ea50b5d98388ed1a7
  };
  
  struct allocator
-@@ -662,10 +665,29 @@ static DWORD WINAPI async_reader_callback_thread(void *arg)
-                case ASYNC_OP_START:
-                {
-                    reader->context = op->u.start.context;
--                   if (SUCCEEDED(hr))
-+                   if (SUCCEEDED(hr) && reader->clock_start
-+                           && reader->active_start == op->u.start.start
-+                           && reader->active_duration == op->u.start.duration)
-+                   {
-+                       TRACE("Ignoring duplicate start for active range %s, duration %s.\n",
-+                               debugstr_time(op->u.start.start), debugstr_time(op->u.start.duration));
-+                   }
-+                   else if (SUCCEEDED(hr))
-+                   {
-+                       if (reader->clock_start)
-+                       {
-+                           LeaveCriticalSection(&reader->callback_cs);
-+                           async_reader_close_all_streams(reader);
-+                           EnterCriticalSection(&reader->callback_cs);
-+                           reader->clock_start = 0;
-+                       }
+@@ -662,10 +665,31 @@ static DWORD WINAPI async_reader_callback_thread(void *arg)
+                 case ASYNC_OP_START:
+                 {
+                     reader->context = op->u.start.context;
+-                    if (SUCCEEDED(hr))
++                    if (SUCCEEDED(hr) && reader->clock_start
++                            && reader->active_start == op->u.start.start
++                            && reader->active_duration == op->u.start.duration)
++                    {
++                        TRACE("Ignoring duplicate start for active range %s, duration %s.\n",
++                                debugstr_time(op->u.start.start), debugstr_time(op->u.start.duration));
++                    }
++                    else if (SUCCEEDED(hr))
++                    {
++                        if (reader->clock_start)
++                        {
++                            LeaveCriticalSection(&reader->callback_cs);
++                            async_reader_close_all_streams(reader);
++                            EnterCriticalSection(&reader->callback_cs);
++                            reader->clock_start = 0;
++                        }
 +
-                        hr = IWMSyncReader2_SetRange(reader->reader, op->u.start.start, op->u.start.duration);
--                   if (SUCCEEDED(hr))
-+                   }
-+                   if (SUCCEEDED(hr) && !reader->clock_start)
-                    {
-+                       reader->active_start = op->u.start.start;
-+                       reader->active_duration = op->u.start.duration;
-                        reader->clock_start = get_current_time(reader);
+                         hr = IWMSyncReader2_SetRange(reader->reader, op->u.start.start, op->u.start.duration);
+-                    if (SUCCEEDED(hr))
+                     {
++                    }
++                    if (SUCCEEDED(hr) && !reader->clock_start)
++                    {
++                        reader->active_start = op->u.start.start;
++                        reader->active_duration = op->u.start.duration;
+                         reader->clock_start = get_current_time(reader);
++                    }
  
-                        if (FAILED(hr = async_reader_open_all_streams(reader)))
+                         if (FAILED(hr = async_reader_open_all_streams(reader)))
 @@ -1141,16 +1163,31 @@ static HRESULT WINAPI WMReaderAdvanced_DeliverTime(IWMReaderAdvanced6 *iface, QW
  
  static HRESULT WINAPI WMReaderAdvanced_SetManualStreamSelection(IWMReaderAdvanced6 *iface, BOOL selection)

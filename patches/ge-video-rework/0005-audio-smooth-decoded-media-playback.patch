@@ -47,7 +47,7 @@ index ef13a1ed..a58e05bd 100644
 +#include <time.h>
  #include <math.h>
  #include <poll.h>
-  
+
 @@ -113,8 +113,10 @@ struct pulse_stream
      struct list packet_filled_head;
      struct list period_entry;
@@ -59,29 +59,6 @@ index ef13a1ed..a58e05bd 100644
  typedef struct _ACPacket
  {
      struct list entry;
-@@ -139,6 +143,22 @@ static int pulse_cond_wait(void)
-     return pthread_cond_wait(&pulse_cond, &pulse_mutex);
- }
- 
-+static int pulse_cond_timedwait_ms(unsigned int timeout_ms)
-+{
-+    struct timespec ts;
-+
-+    clock_gettime(CLOCK_REALTIME, &ts);
-+    ts.tv_sec += timeout_ms / 1000;
-+    ts.tv_nsec += (timeout_ms % 1000) * 1000000;
-+    if (ts.tv_nsec >= 1000000000)
-+    {
-+        ts.tv_sec++;
-+        ts.tv_nsec -= 1000000000;
-+    }
-+
-+    return pthread_cond_timedwait(&pulse_cond, &pulse_mutex, &ts);
-+}
-+
- static void pulse_broadcast(void)
- {
-     pthread_cond_broadcast(&pulse_cond);
 @@ -383,14 +403,32 @@ static void pulse_contextcallback(pa_context *c, void *userdata)
  
  static void pulse_stream_state(pa_stream *s, void *user)
@@ -117,18 +94,6 @@ index ef13a1ed..a58e05bd 100644
      dump_attr(attr);
  }
  
-@@ -423,6 +461,11 @@ static BOOL pulse_stream_valid(struct pulse_stream *stream)
-     return pa_stream_get_state(stream->stream) == PA_STREAM_READY;
- }
- 
-+static BOOL pulse_stream_ready(struct pulse_stream *stream)
-+{
-+    return pulse_stream_valid(stream);
-+}
-+
- static HRESULT pulse_connect(const char *name)
- {
-     pa_context_state_t state;
 @@ -1159,6 +1202,7 @@ static NTSTATUS pulse_create_stream(void *args)
          return STATUS_SUCCESS;
      }
@@ -138,7 +103,7 @@ index ef13a1ed..a58e05bd 100644
      {
          pulse_unlock();
 @@ -1198,7 +1242,7 @@ static NTSTATUS pulse_create_stream(void *args)
-     hr = pulse_stream_connect(stream, params->device, stream->period_bytes);
+         hr = pulse_stream_connect(stream, connect_device, haptic_target, stream->period_bytes);
      if (SUCCEEDED(hr)) {
          UINT32 unalign;
 -        const pa_buffer_attr *attr = pa_stream_get_buffer_attr(stream->stream);

@@ -55,16 +55,15 @@ index d06699599f816b539d07c1142f42182dfd527042..dacfccf54abfc4dbf6ae53b7fa1ebd49
      LeaveCriticalSection(&filter->filter.filter_cs);
  
      return pin;
-@@ -487,6 +498,7 @@ static HRESULT asf_reader_init_stream(struct strmbase_filter *iface)
+@@ -487,5 +498,6 @@ static HRESULT asf_reader_init_stream(struct strmbase_filter *iface)
      WMT_STREAM_SELECTION selections[ARRAY_SIZE(filter->streams)];
      WORD stream_numbers[ARRAY_SIZE(filter->streams)];
-     IWMReaderAdvanced2 *reader_advanced;
+     IWMReaderAdvanced *reader_advanced;
 +    UINT preferred_audio_output = UINT_MAX;
      HRESULT hr = S_OK;
-     BOOL value;
      int i;
 @@ -496,6 +508,14 @@ static HRESULT asf_reader_init_stream(struct strmbase_filter *iface)
-     if (FAILED(hr = IWMReader_QueryInterface(filter->reader, &IID_IWMReaderAdvanced2, (void **)&reader_advanced)))
+     if (FAILED(hr = IWMReader_QueryInterface(filter->reader, &IID_IWMReaderAdvanced, (void **)&reader_advanced)))
          return hr;
  
 +    for (i = 0; i < filter->stream_count; ++i)
@@ -90,7 +89,7 @@ index d06699599f816b539d07c1142f42182dfd527042..dacfccf54abfc4dbf6ae53b7fa1ebd49
 +    if (preferred_audio_output != UINT_MAX)
 +        selections[preferred_audio_output] = WMT_ON;
 +
-     if (SUCCEEDED(hr) && FAILED(hr = IWMReaderAdvanced2_SetStreamsSelected(reader_advanced,
+     if (SUCCEEDED(hr) && FAILED(hr = IWMReaderAdvanced_SetStreamsSelected(reader_advanced,
              filter->stream_count, stream_numbers, selections)))
          WARN("Failed to set reader %p stream selection, hr %#lx\n", filter->reader, hr);
 @@ -822,6 +846,7 @@ static HRESULT WINAPI reader_callback_OnStatus(IWMReaderCallback *iface, WMT_STA
@@ -101,7 +100,7 @@ index d06699599f816b539d07c1142f42182dfd527042..dacfccf54abfc4dbf6ae53b7fa1ebd49
      WCHAR name[MAX_PATH];
      QWORD duration;
      HRESULT hr;
-@@ -857,13 +882,43 @@ static HRESULT WINAPI reader_callback_OnStatus(IWMReaderCallback *iface, WMT_STA
+@@ -839,10 +864,41 @@ static HRESULT WINAPI reader_callback_OnStatus(IWMReaderCallback *iface, WMT_STA
                  IWMHeaderInfo_Release(header_info);
              }
  
@@ -123,37 +122,33 @@ index d06699599f816b539d07c1142f42182dfd527042..dacfccf54abfc4dbf6ae53b7fa1ebd49
              for (i = 0; i < stream_count; ++i)
              {
                  struct asf_stream *stream = filter->streams + i;
-                 const char *sgi = getenv("SteamGameId");
-+                WMT_STREAM_SELECTION selection = WMT_ON;
-+                IWMReaderAdvanced2 *reader_advanced;
  
                  if (FAILED(hr = asf_stream_get_media_type(&stream->source.pin, 0, &stream_media_type)))
-                     WARN("Failed to get stream media type, hr %#lx.\n", hr);
++                WMT_STREAM_SELECTION selection = WMT_ON;
++                IWMReaderAdvanced *reader_advanced;
++
 +                stream->hidden = FALSE;
 +                if (IsEqualGUID(&stream_media_type.majortype, &MEDIATYPE_Audio)
-+                        && SUCCEEDED(IWMReader_QueryInterface(filter->reader, &IID_IWMReaderAdvanced2,
++                        && SUCCEEDED(IWMReader_QueryInterface(filter->reader, &IID_IWMReaderAdvanced,
 +                        (void **)&reader_advanced)))
 +                {
-+                    if (SUCCEEDED(IWMReaderAdvanced2_GetStreamSelected(reader_advanced, i + 1, &selection))
++                    if (SUCCEEDED(IWMReaderAdvanced_GetStreamSelected(reader_advanced, i + 1, &selection))
 +                            && selection == WMT_OFF)
 +                        stream->hidden = TRUE;
-+                    IWMReaderAdvanced2_Release(reader_advanced);
++                    IWMReaderAdvanced_Release(reader_advanced);
 +                }
 +                if (IsEqualGUID(&stream_media_type.majortype, &MEDIATYPE_Audio)
 +                        && audio_output_count > 1 && i != preferred_audio_output)
 +                    stream->hidden = TRUE;
+                     WARN("Failed to get stream media type, hr %#lx.\n", hr);
                  if (IsEqualGUID(&stream_media_type.majortype, &MEDIATYPE_Video))
-                 {
-                     /* King of Fighters XIII requests the WMV decoder filter pins by name
-@@ -876,6 +931,8 @@ static HRESULT WINAPI reader_callback_OnStatus(IWMReaderCallback *iface, WMT_STA
-                 }
+@@ -849,4 +899,6 @@ static HRESULT WINAPI reader_callback_OnStatus(IWMReaderCallback *iface, WMT_STA
+                     swprintf(name, ARRAY_SIZE(name), L"Raw Video %u", stream->index);
                  else
                      swprintf(name, ARRAY_SIZE(name), L"Raw Audio %u", stream->index);
 +                if (stream->hidden)
 +                    TRACE("Hiding deselected ASF audio stream %lu.\n", i);
                  FreeMediaType(&stream_media_type);
- 
-                 strmbase_source_init(&stream->source, &filter->filter, name, &source_ops);
 diff --git a/dlls/winedmo/quartz_parser.c b/dlls/winedmo/quartz_parser.c
 index 8301f93fa13075641293eee66e0811d21adfee95..e41c6e22abbe60f1c99eb1e5048966c308f6f094 100644
 --- a/dlls/winedmo/quartz_parser.c
