@@ -36,7 +36,7 @@ index d454381bd13..2312546514c 100644
  };
  
  typedef struct _ACPacket
-@@ -1544,100 +1557,111 @@ static void pulse_read(struct pulse_stream *stream)
+@@ -1544,100 +1557,109 @@ static void pulse_read(struct pulse_stream *stream)
  
  static void pulse_timer_loop(void *args)
  {
@@ -56,7 +56,6 @@ index d454381bd13..2312546514c 100644
 -        pa_usec_t now, adv_usec = 0;
 -        int err;
 +    /* Stream's data are read and written from the main loop timer callback. */
-+    return STATUS_SUCCESS;
 +}
  
 -        NtDelayExecution(FALSE, &delay);
@@ -221,7 +220,6 @@ index d454381bd13..2312546514c 100644
 +    api = pa_mainloop_get_api(pulse_ml);
 +    api->time_set_destroy(period->time_event, pa_streams_timer_cb_destroy);
 +    TRACE("Created period %p.\n", period);
-+>>>>>>> e4848caf5c3 (winepulse.drv: Process streams timer updates from PA main loop.)
  }
  
  static NTSTATUS pulse_release_stream(void *args)
