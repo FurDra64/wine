@@ -1,0 +1,5 @@
+Feature: valve-misc-22
+Description: Valve misc ports (4 of 8 Valve commits 133caa0db14..ce0012323dc): wow64 BT-provided suspend routine (Wow64SuspendLocalThread, retargeted to HEAD syscall.c decl/GET_PTR layout), wow64 GetContextThread suspend-under-emulation, HACK x86 mono/gecko on aarch64 (retargeted to HEAD MONO arm64 branch layout), msv1_0 ntlm_auth missing-message downgrade to WARN. Skips with evidence: b130f25d (configure arm64x enables) absorbed — vcruntime140_1 configure.ac line + spec -arch flag already carried by valve-build/valve-kernel monoliths, dpnsvr default anchor removed upstream; a7d2b7a2e0f (PE build-id default) absorbed — upstream original 7cb0a1fe4c2 is ancestor of HEAD; a98b4d5e8e7 (FEX dll names) FEX-specific — HEAD still ships xtajit, no libwow64fex/libarm64ecfex provider in tree; 626cd7ace63 (FEX AVX arm64ec) FEX/ARM64EC-specific — HEAD carries upstream CPUID-based init_xstate_features, lacks CONTEXT_ARM64_FEX_YMMSTATE.
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: valve-graphics-wsi
