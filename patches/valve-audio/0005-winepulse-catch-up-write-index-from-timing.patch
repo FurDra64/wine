@@ -1,5 +1,5 @@
 diff --git a/dlls/winepulse.drv/pulse.c b/dlls/winepulse.drv/pulse.c
-index 8f33d41..33583fc 100644
+index 7924ff9..7f1ebb8 100644
 --- a/dlls/winepulse.drv/pulse.c
 +++ b/dlls/winepulse.drv/pulse.c
 @@ -69,8 +69,11 @@ struct pulse_period
@@ -116,8 +116,8 @@ index 8f33d41..33583fc 100644
          }
  
          stream->just_underran = FALSE;
-@@ -1648,20 +1701,117 @@ static void pulse_timer_loop(void *args)
-     return STATUS_SUCCESS;
+@@ -1647,20 +1700,117 @@ static void pulse_timer_loop(void *args)
+     /* Stream's data are read and written from the main loop timer callback. */
  }
  
 +#define TIMER_ADJUST_DELAY (5 * PA_USEC_PER_SEC)
@@ -237,7 +237,7 @@ index 8f33d41..33583fc 100644
              if (stream->dataflow == eRender)
              {
                  pulse_write(stream);
-@@ -1680,7 +1830,18 @@ static void pa_streams_timer_cb(pa_mainloop_api *api, pa_time_event *e, const st
+@@ -1679,7 +1829,18 @@ static void pa_streams_timer_cb(pa_mainloop_api *api, pa_time_event *e, const st
          if (stream->event)
              NtSetEvent(stream->event, NULL);
      }
@@ -257,7 +257,7 @@ index 8f33d41..33583fc 100644
  }
  
  static void pa_streams_timer_cb_destroy(pa_mainloop_api *api, pa_time_event *e, void *userdata)
-@@ -1698,6 +1859,9 @@ static void remove_stream_from_period(struct pulse_stream *stream)
+@@ -1697,6 +1858,9 @@ static void remove_stream_from_period(struct pulse_stream *stream)
      if (!stream->period)
          return;
  
@@ -267,7 +267,7 @@ index 8f33d41..33583fc 100644
      list_remove(&stream->period_entry);
      if (list_empty(&stream->period->streams) && pulse_ml)
      {
-@@ -1742,8 +1906,8 @@ static void pulse_add_stream_to_period(struct pulse_stream *stream)
+@@ -1741,8 +1905,8 @@ static void pulse_add_stream_to_period(struct pulse_stream *stream)
      stream->period = period;
      list_add_tail(&period->streams, &stream->period_entry);
      list_add_tail(&active_periods, &period->entry);
@@ -278,7 +278,7 @@ index 8f33d41..33583fc 100644
              pa_streams_timer_cb, period);
      api = pa_mainloop_get_api(pulse_ml);
      api->time_set_destroy(period->time_event, pa_streams_timer_cb_destroy);
-@@ -1867,7 +2031,12 @@ static NTSTATUS pulse_stop(void *args)
+@@ -1865,7 +2029,12 @@ static NTSTATUS pulse_stop(void *args)
              params->result = E_FAIL;
      }
      if (SUCCEEDED(params->result))
