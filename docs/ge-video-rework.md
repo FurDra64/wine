@@ -88,9 +88,13 @@ An exact forward/reverse replay alone does not prove source parity.
   FFmpeg's custom IO cast by its read callback. Install Quartz flush logic by
   replacing the existing function. Reanchor `0009`'s discontinuity flag to
   the restored `0001` timestamps.
-- **`0010`:** GE's `VFW_E_WRONG_STATE` differs from Wine `7c48881f4fe`, which
-  releases the wait and asserts `VFW_E_NOT_COMMITTED` in the Windows comparison
-  test. The HRESULTs are not equivalent.
+- **`0010`:** Keep Wine `7c48881f4fe` for the committed allocator during flush;
+  do not port GE's `VFW_E_WRONG_STATE` override. The unchanged Windows comparison
+  assertion (`dlls/amstream/tests/amstream.c:9196`, after commit and BeginFlush)
+  passed with Wine's `VFW_E_NOT_COMMITTED` and failed with GE's `VFW_E_WRONG_STATE`
+  (`0x80040227`) in a targeted A/B run. Both broader runs later timed out. Keep
+  the Quartz fix for Trails in the Sky: drop the `receive_cs` acquisition in
+  BeginFlush and forward `IPin_BeginFlush` downstream before taking `stream_cs`.
 - **`0014`–`0017`, `0061`:** Keep WM stream selection, qasf pacing and initial
   samples. `mediaconv_demuxer_close` handles custom AVIO cleanup and closes direct
   input with `avformat_close_input`. Logging moved to `unixlib.c`; the resolver's
