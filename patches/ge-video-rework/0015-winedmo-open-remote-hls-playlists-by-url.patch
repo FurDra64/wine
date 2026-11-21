@@ -38,10 +38,10 @@ debug channel.
  7 files changed, 536 insertions(+), 61 deletions(-)
 
 diff --git a/dlls/mf/session.c b/dlls/mf/session.c
-index 73b6e4ef5e27a1131e6ee846a5ff3e25b7a71ddb..6975c99d37422bc70198bf67566af96d205a2ded 100644
+index 696fc4ca875..acdc6e1ffdc 100644
 --- a/dlls/mf/session.c
 +++ b/dlls/mf/session.c
-@@ -3973,8 +3973,12 @@ static HRESULT session_handle_format_change(struct media_session *session, struc
+@@ -4013,8 +4013,12 @@ static HRESULT session_handle_format_change(struct media_session *session, struc
               * Satisfactory is known to use the sink frame size. */
              if (FAILED(hr = topology_node_get_type_handler(topo_node->node, 0, FALSE, &handler)))
                  WARN("Failed to get type handler, hr %#lx.\n", hr);
@@ -57,7 +57,7 @@ index 73b6e4ef5e27a1131e6ee846a5ff3e25b7a71ddb..6975c99d37422bc70198bf67566af96d
              if (SUCCEEDED(hr) && topo_node->u.sink.allocator)
              {
 diff --git a/dlls/mfmediaengine/main.c b/dlls/mfmediaengine/main.c
-index 63241f1ad026e9e933cb83ade991ce7378cf4f14..c48f2589d12d4d23ae39a3d6233113a675838778 100644
+index 33bbd9d04db..334b91e4883 100644
 --- a/dlls/mfmediaengine/main.c
 +++ b/dlls/mfmediaengine/main.c
 @@ -101,6 +101,9 @@ enum media_engine_flags
@@ -89,7 +89,7 @@ index 63241f1ad026e9e933cb83ade991ce7378cf4f14..c48f2589d12d4d23ae39a3d6233113a6
      MF_MEDIA_ENGINE_NETWORK network_state;
      MF_MEDIA_ENGINE_ERR error_code;
      HRESULT extended_code;
-@@ -979,13 +993,31 @@ static HRESULT media_engine_set_rate(struct media_engine *engine, BOOL thin, dou
+@@ -991,13 +1005,31 @@ static HRESULT media_engine_set_rate(struct media_engine *engine, BOOL thin, dou
  }
  
  static HRESULT media_engine_set_current_time(struct media_engine *engine, double seektime);
@@ -122,7 +122,7 @@ index 63241f1ad026e9e933cb83ade991ce7378cf4f14..c48f2589d12d4d23ae39a3d6233113a6
      IMFMediaEvent *event = NULL;
      MediaEventType event_type;
      PROPVARIANT rate;
-@@ -1049,11 +1081,20 @@ static HRESULT WINAPI media_engine_session_events_Invoke(IMFAsyncCallback *iface
+@@ -1074,11 +1106,20 @@ static HRESULT WINAPI media_engine_session_events_Invoke(IMFAsyncCallback *iface
              EnterCriticalSection(&engine->cs);
              if (engine->flags & FLAGS_ENGINE_SEEKING)
              {
@@ -145,7 +145,7 @@ index 63241f1ad026e9e933cb83ade991ce7378cf4f14..c48f2589d12d4d23ae39a3d6233113a6
              }
  
              playing_event = !(engine->flags & (FLAGS_ENGINE_SCRUBBING | FLAGS_ENGINE_PAUSE_PENDING | FLAGS_ENGINE_PAUSED));
-@@ -1063,23 +1104,26 @@ static HRESULT WINAPI media_engine_session_events_Invoke(IMFAsyncCallback *iface
+@@ -1088,23 +1129,26 @@ static HRESULT WINAPI media_engine_session_events_Invoke(IMFAsyncCallback *iface
                  if (!(engine->flags & FLAGS_ENGINE_PAUSE_PENDING))
                      media_engine_set_flag(engine, FLAGS_ENGINE_PLAY_PENDING, FALSE);
              }
@@ -183,7 +183,7 @@ index 63241f1ad026e9e933cb83ade991ce7378cf4f14..c48f2589d12d4d23ae39a3d6233113a6
              LeaveCriticalSection(&engine->cs);
              if (ended_event)
                  IMFMediaEngineNotify_EventNotify(engine->callback, MF_MEDIA_ENGINE_EVENT_ENDED, 0, 0);
-@@ -1786,8 +1830,11 @@ static HRESULT WINAPI media_engine_SetSourceElements(IMFMediaEngineEx *iface, IM
+@@ -1794,8 +1838,11 @@ static HRESULT WINAPI media_engine_SetSourceElements(IMFMediaEngineEx *iface, IM
  static HRESULT media_engine_set_source(struct media_engine *engine, IMFByteStream *bytestream, BSTR url)
  {
      IPropertyStore *props = NULL;
@@ -195,7 +195,7 @@ index 63241f1ad026e9e933cb83ade991ce7378cf4f14..c48f2589d12d4d23ae39a3d6233113a6
  
      SysFreeString(engine->current_source);
      engine->current_source = NULL;
-@@ -1798,7 +1845,41 @@ static HRESULT media_engine_set_source(struct media_engine *engine, IMFByteStrea
+@@ -1806,7 +1853,41 @@ static HRESULT media_engine_set_source(struct media_engine *engine, IMFByteStrea
  
      IMFMediaEngineNotify_EventNotify(engine->callback, MF_MEDIA_ENGINE_EVENT_PURGEQUEUEDEVENTS, 0, 0);
  
@@ -237,7 +237,7 @@ index 63241f1ad026e9e933cb83ade991ce7378cf4f14..c48f2589d12d4d23ae39a3d6233113a6
  
      if (url || bytestream)
      {
-@@ -1958,20 +2039,76 @@ static HRESULT WINAPI media_engine_Load(IMFMediaEngineEx *iface)
+@@ -1966,20 +2047,76 @@ static HRESULT WINAPI media_engine_Load(IMFMediaEngineEx *iface)
      return hr;
  }
  
@@ -316,7 +316,7 @@ index 63241f1ad026e9e933cb83ade991ce7378cf4f14..c48f2589d12d4d23ae39a3d6233113a6
  
          if (engine->extension)
               hr = IMFMediaEngineExtension_CanPlayType(engine->extension, !!(engine->flags & MF_MEDIA_ENGINE_AUDIOONLY),
-@@ -1998,9 +2135,15 @@ static USHORT WINAPI media_engine_GetReadyState(IMFMediaEngineEx *iface)
+@@ -2006,9 +2143,15 @@ static USHORT WINAPI media_engine_GetReadyState(IMFMediaEngineEx *iface)
  
  static BOOL WINAPI media_engine_IsSeeking(IMFMediaEngineEx *iface)
  {
@@ -334,7 +334,7 @@ index 63241f1ad026e9e933cb83ade991ce7378cf4f14..c48f2589d12d4d23ae39a3d6233113a6
  }
  
  static double WINAPI media_engine_GetCurrentTime(IMFMediaEngineEx *iface)
-@@ -2010,7 +2153,18 @@ static double WINAPI media_engine_GetCurrentTime(IMFMediaEngineEx *iface)
+@@ -2018,7 +2161,18 @@ static double WINAPI media_engine_GetCurrentTime(IMFMediaEngineEx *iface)
      MFTIME clocktime;
  
      EnterCriticalSection(&engine->cs);
@@ -354,7 +354,7 @@ index 63241f1ad026e9e933cb83ade991ce7378cf4f14..c48f2589d12d4d23ae39a3d6233113a6
      {
          ret = engine->duration;
      }
-@@ -2018,6 +2172,26 @@ static double WINAPI media_engine_GetCurrentTime(IMFMediaEngineEx *iface)
+@@ -2026,6 +2180,26 @@ static double WINAPI media_engine_GetCurrentTime(IMFMediaEngineEx *iface)
      {
          ret = (double)engine->presentation.start_position.hVal.QuadPart / 10000000;
      }
@@ -381,7 +381,7 @@ index 63241f1ad026e9e933cb83ade991ce7378cf4f14..c48f2589d12d4d23ae39a3d6233113a6
      else if (SUCCEEDED(IMFPresentationClock_GetTime(engine->clock, &clocktime)))
      {
          ret = mftime_to_seconds(clocktime);
-@@ -2037,12 +2211,35 @@ static HRESULT media_engine_set_current_time(struct media_engine *engine, double
+@@ -2045,12 +2219,35 @@ static HRESULT media_engine_set_current_time(struct media_engine *engine, double
      DWORD caps;
      HRESULT hr;
  
@@ -417,7 +417,7 @@ index 63241f1ad026e9e933cb83ade991ce7378cf4f14..c48f2589d12d4d23ae39a3d6233113a6
          engine->next_seek = seektime;
          return S_OK;
      }
-@@ -2050,11 +2247,20 @@ static HRESULT media_engine_set_current_time(struct media_engine *engine, double
+@@ -2058,11 +2255,20 @@ static HRESULT media_engine_set_current_time(struct media_engine *engine, double
      engine->next_seek = NAN;
  
      position.vt = VT_I8;
@@ -439,7 +439,7 @@ index 63241f1ad026e9e933cb83ade991ce7378cf4f14..c48f2589d12d4d23ae39a3d6233113a6
          IMFMediaEngineNotify_EventNotify(engine->callback, MF_MEDIA_ENGINE_EVENT_SEEKING, 0, 0);
          IMFMediaEngineNotify_EventNotify(engine->callback, MF_MEDIA_ENGINE_EVENT_SEEKED, 0, 0);
          IMFMediaEngineNotify_EventNotify(engine->callback, MF_MEDIA_ENGINE_EVENT_TIMEUPDATE, 0, 0);
-@@ -2063,6 +2269,11 @@ static HRESULT media_engine_set_current_time(struct media_engine *engine, double
+@@ -2071,6 +2277,11 @@ static HRESULT media_engine_set_current_time(struct media_engine *engine, double
  
      if (SUCCEEDED(hr = IMFMediaSession_Start(engine->session, &GUID_NULL, &position)))
      {
@@ -451,7 +451,7 @@ index 63241f1ad026e9e933cb83ade991ce7378cf4f14..c48f2589d12d4d23ae39a3d6233113a6
          media_engine_set_flag(engine, FLAGS_ENGINE_SEEKING, TRUE);
          IMFMediaEngineNotify_EventNotify(engine->callback, MF_MEDIA_ENGINE_EVENT_SEEKING, 0, 0);
      }
-@@ -2070,6 +2281,80 @@ static HRESULT media_engine_set_current_time(struct media_engine *engine, double
+@@ -2078,6 +2289,80 @@ static HRESULT media_engine_set_current_time(struct media_engine *engine, double
      return hr;
  }
  
@@ -532,7 +532,7 @@ index 63241f1ad026e9e933cb83ade991ce7378cf4f14..c48f2589d12d4d23ae39a3d6233113a6
  static HRESULT WINAPI media_engine_SetCurrentTime(IMFMediaEngineEx *iface, double time)
  {
      struct media_engine *engine = impl_from_IMFMediaEngineEx(iface);
-@@ -2331,7 +2616,11 @@ static HRESULT WINAPI media_engine_Play(IMFMediaEngineEx *iface)
+@@ -2339,7 +2624,11 @@ static HRESULT WINAPI media_engine_Play(IMFMediaEngineEx *iface)
              media_engine_set_flag(engine, FLAGS_ENGINE_PAUSED | FLAGS_ENGINE_IS_ENDED, FALSE);
              IMFMediaEngineNotify_EventNotify(engine->callback, MF_MEDIA_ENGINE_EVENT_PLAY, 0, 0);
  
@@ -545,7 +545,7 @@ index 63241f1ad026e9e933cb83ade991ce7378cf4f14..c48f2589d12d4d23ae39a3d6233113a6
                  media_engine_set_flag(engine, FLAGS_ENGINE_PLAY_PENDING, TRUE);
              else if (!(engine->flags & (FLAGS_ENGINE_SOURCE_PENDING | FLAGS_ENGINE_SCRUBBING)))
                  media_engine_start_playback(engine);
-@@ -3080,7 +3369,52 @@ static HRESULT WINAPI media_engine_OnVideoStreamTick(IMFMediaEngineEx *iface, LO
+@@ -3065,7 +3354,52 @@ static HRESULT WINAPI media_engine_OnVideoStreamTick(IMFMediaEngineEx *iface, LO
          MFTIME clocktime;
          *pts = MINLONGLONG;
          if (SUCCEEDED(IMFPresentationClock_GetTime(engine->clock, &clocktime)))
@@ -599,7 +599,7 @@ index 63241f1ad026e9e933cb83ade991ce7378cf4f14..c48f2589d12d4d23ae39a3d6233113a6
          else
              hr = S_FALSE;
      }
-@@ -3544,7 +3878,7 @@ static HRESULT WINAPI media_engine_SetCurrentTimeEx(IMFMediaEngineEx *iface, dou
+@@ -3529,7 +3863,7 @@ static HRESULT WINAPI media_engine_SetCurrentTimeEx(IMFMediaEngineEx *iface, dou
      if (engine->flags & FLAGS_ENGINE_SHUT_DOWN)
          hr = MF_E_SHUTDOWN;
      else
@@ -608,7 +608,7 @@ index 63241f1ad026e9e933cb83ade991ce7378cf4f14..c48f2589d12d4d23ae39a3d6233113a6
  
      LeaveCriticalSection(&engine->cs);
  
-@@ -3722,6 +4056,15 @@ static HRESULT init_media_engine(DWORD flags, IMFAttributes *attributes, struct
+@@ -3707,6 +4041,15 @@ static HRESULT init_media_engine(DWORD flags, IMFAttributes *attributes, struct
      engine->playback_rate = 1.0;
      engine->volume = 1.0;
      engine->duration = NAN;
@@ -624,7 +624,7 @@ index 63241f1ad026e9e933cb83ade991ce7378cf4f14..c48f2589d12d4d23ae39a3d6233113a6
      engine->next_seek = NAN;
      engine->video_frame.pts = MINLONGLONG;
      InitializeCriticalSection(&engine->cs);
-@@ -3841,9 +4184,12 @@ static HRESULT WINAPI media_engine_factory_CreateMediaKeys(IMFMediaEngineClassFa
+@@ -3826,9 +4169,12 @@ static HRESULT WINAPI media_engine_factory_CreateMediaKeys(IMFMediaEngineClassFa
  
  static HRESULT WINAPI media_engine_factory_IsTypeSupported(IMFMediaEngineClassFactoryEx *iface, BSTR type, BSTR key_system, BOOL *is_supported)
  {
@@ -640,7 +640,7 @@ index 63241f1ad026e9e933cb83ade991ce7378cf4f14..c48f2589d12d4d23ae39a3d6233113a6
  }
  
 diff --git a/dlls/mfmediaengine/mediaengine_private.h b/dlls/mfmediaengine/mediaengine_private.h
-index 3b280a6d1eef907736bac489297482e246f6adff..e77b76157bff4b33c8d15b07491a0727d3bed4de 100644
+index 3b280a6d1ee..e77b76157bf 100644
 --- a/dlls/mfmediaengine/mediaengine_private.h
 +++ b/dlls/mfmediaengine/mediaengine_private.h
 @@ -26,4 +26,7 @@ HRESULT video_frame_sink_query_iface(struct video_frame_sink *object, REFIID rii
@@ -652,7 +652,7 @@ index 3b280a6d1eef907736bac489297482e246f6adff..e77b76157bff4b33c8d15b07491a0727
 +void video_frame_sink_reset(struct video_frame_sink *sink);
  void video_frame_sink_notify_end_of_presentation_segment(struct video_frame_sink *sink);
 diff --git a/dlls/mfmediaengine/video_frame_sink.c b/dlls/mfmediaengine/video_frame_sink.c
-index 11e3a0a15119273b590550f040bf09c537c1dde2..bebbd54d620a6cdb65c81b5db1539117aa0a7f5d 100644
+index 11e3a0a1511..bebbd54d620 100644
 --- a/dlls/mfmediaengine/video_frame_sink.c
 +++ b/dlls/mfmediaengine/video_frame_sink.c
 @@ -167,16 +167,26 @@ static void video_frame_sink_sample_queue_flush(struct video_frame_sink *sink)
@@ -820,10 +820,10 @@ index 11e3a0a15119273b590550f040bf09c537c1dde2..bebbd54d620a6cdb65c81b5db1539117
  {
      sink->eos = TRUE;
 diff --git a/dlls/winedmo/media_source.c b/dlls/winedmo/media_source.c
-index 85cc9b6359a2e4f87a7344339156cc37c2e12c18..6d7a602e10a16cdfded2d870a8bfce919d12f010 100644
+index 55a9b483165..e87e639ed77 100644
 --- a/dlls/winedmo/media_source.c
 +++ b/dlls/winedmo/media_source.c
-@@ -330,6 +330,7 @@ struct media_source
+@@ -333,6 +333,7 @@ struct media_source
      IMFAsyncResult *shutdown_result;
  
      CRITICAL_SECTION cs;
@@ -831,7 +831,7 @@ index 85cc9b6359a2e4f87a7344339156cc37c2e12c18..6d7a602e10a16cdfded2d870a8bfce91
  
      UINT64 file_size;
      UINT64 duration;
-@@ -913,7 +914,9 @@ static HRESULT media_source_start(struct media_source *source, IMFPresentationDe
+@@ -920,7 +921,9 @@ static HRESULT media_source_start(struct media_source *source, IMFPresentationDe
          }
  
          WARN("MF media source seek to %s.\n", debugstr_time(position->hVal.QuadPart));
@@ -841,7 +841,7 @@ index 85cc9b6359a2e4f87a7344339156cc37c2e12c18..6d7a602e10a16cdfded2d870a8bfce91
  
          source->flushing = FALSE;
          source->read_flushing = FALSE;
-@@ -1180,7 +1183,9 @@ static DWORD CALLBACK source_demux_thread(void *arg)
+@@ -1187,7 +1190,9 @@ static DWORD CALLBACK source_demux_thread(void *arg)
          stream_idx = 0;
          needed_size = buffer_size;
  
@@ -851,7 +851,7 @@ index 85cc9b6359a2e4f87a7344339156cc37c2e12c18..6d7a602e10a16cdfded2d870a8bfce91
  
          if (status == STATUS_BUFFER_TOO_SMALL)
          {
-@@ -1892,6 +1897,8 @@ static ULONG WINAPI media_source_Release(IMFMediaSource *iface)
+@@ -1899,6 +1904,8 @@ static ULONG WINAPI media_source_Release(IMFMediaSource *iface)
          IMFMediaSource_Shutdown(iface);
          IMFMediaEventQueue_Release(source->event_queue);
          IMFByteStream_Release(source->byte_stream);
@@ -860,7 +860,7 @@ index 85cc9b6359a2e4f87a7344339156cc37c2e12c18..6d7a602e10a16cdfded2d870a8bfce91
          source->cs.DebugInfo->Spare[0] = 0;
          DeleteCriticalSection(&source->cs);
          free(source);
-@@ -2201,6 +2208,8 @@ static HRESULT media_source_create(struct object_context *context, IMFMediaSourc
+@@ -2211,6 +2218,8 @@ static HRESULT media_source_create(struct object_context *context, IMFMediaSourc
      object->rate = 1.0f;
      InitializeCriticalSectionEx(&object->cs, 0, RTL_CRITICAL_SECTION_FLAG_FORCE_DEBUG_INFO);
      object->cs.DebugInfo->Spare[0] = (DWORD_PTR)(__FILE__ ": cs");
@@ -869,7 +869,7 @@ index 85cc9b6359a2e4f87a7344339156cc37c2e12c18..6d7a602e10a16cdfded2d870a8bfce91
  
      if (FAILED(hr = MFCreateEventQueue(&object->event_queue)))
          goto fail;
-@@ -2328,6 +2337,8 @@ fail:
+@@ -2361,6 +2370,8 @@ fail:
      if (object->event_queue)
          IMFMediaEventQueue_Release(object->event_queue);
      IMFByteStream_Release(object->byte_stream);
@@ -879,17 +879,18 @@ index 85cc9b6359a2e4f87a7344339156cc37c2e12c18..6d7a602e10a16cdfded2d870a8bfce91
      DeleteCriticalSection(&object->cs);
      free(object);
 diff --git a/dlls/winedmo/unix_demuxer.c b/dlls/winedmo/unix_demuxer.c
-index 12c1a297312c000cd362bf916cc411030f33cbed..7c121942a6f587b1ed40c66f7a344462dea5e486 100644
+index 8f681210fd7..0238db547f6 100644
 --- a/dlls/winedmo/unix_demuxer.c
 +++ b/dlls/winedmo/unix_demuxer.c
-@@ -53,5 +53,6 @@ struct demuxer
-     AVFormatContext *ctx;
-     struct stream *streams;
+@@ -55,6 +55,7 @@ struct demuxer
+     struct stream_context *stream_context;
+     BOOL mediaconv;
      INT64 duration;
 +    BOOL direct_url;
  
      AVPacket *last_packet; /* last read packet */
-@@ -649,6 +649,26 @@
+     struct stream *last_stream; /* last read packet stream */
+@@ -666,6 +667,13 @@ static NTSTATUS demuxer_create_streams( struct demuxer *demuxer )
      return STATUS_SUCCESS;
  }
  
@@ -900,34 +901,18 @@ index 12c1a297312c000cd362bf916cc411030f33cbed..7c121942a6f587b1ed40c66f7a344462
 +    return !!strstr( url, ".m3u8" ) || !!strstr( url, "/hls_playlist/" );
 +}
 +
-+static void demuxer_free_context( struct demuxer *demuxer )
-+{
-+    if (!demuxer->ctx) return;
-+
-+    if (demuxer->direct_url) avformat_close_input( &demuxer->ctx );
-+    else
-+    {
-+        avio_context_free( &demuxer->ctx->pb );
-+        avformat_free_context( demuxer->ctx );
-+        demuxer->ctx = NULL;
-+    }
-+}
-+
- NTSTATUS demuxer_create( void *arg )
+ static void demuxer_free_context( struct demuxer *demuxer )
  {
-     struct demuxer_create_params *params = arg;
-@@ -684,10 +684,28 @@ NTSTATUS demuxer_create( void *arg )
+     mediaconv_demuxer_close( &demuxer->ctx );
+@@ -713,10 +721,28 @@ NTSTATUS demuxer_create( void *arg )
+ 
+     if (!(demuxer = calloc( 1, sizeof(*demuxer) ))) return STATUS_NO_MEMORY;
      if (!(demuxer->ctx = avformat_alloc_context())) goto failed;
--    if (!(demuxer->ctx->pb = avio_alloc_context( NULL, 0, 0, params->context, unix_read_callback, NULL,
--                                                 params->context->length == (UINT64)-1 ? NULL : unix_seek_callback ))) goto failed;
--
--    if ((ret = avformat_open_input( &demuxer->ctx, NULL, NULL, NULL )) < 0)
--    {
+-    if ((ret = demuxer_open_bytestream( demuxer, params->context )) < 0)
++    if (is_http_hls_url( params->url ))
+     {
 -        ERR( "Failed to open input, error %s.\n", debugstr_averr(ret) );
 -        goto failed;
--    }
-+    if (is_http_hls_url( params->url ))
-+    {
 +        const AVInputFormat *hls = av_find_input_format( "hls" );
 +
 +        /* HLS playlists need the source URL as their base URI so relative
@@ -943,17 +928,15 @@ index 12c1a297312c000cd362bf916cc411030f33cbed..7c121942a6f587b1ed40c66f7a344462
 +    }
 +    else
 +    {
-+        if (!(demuxer->ctx->pb = avio_alloc_context( NULL, 0, 0, params->context, unix_read_callback, NULL,
-+                                                 params->context->length == (UINT64)-1 ? NULL : unix_seek_callback ))) goto failed;
-+
-+        if ((ret = avformat_open_input( &demuxer->ctx, NULL, NULL, NULL )) < 0)
++        if ((ret = demuxer_open_bytestream( demuxer, params->context )) < 0)
 +        {
 +            ERR( "Failed to open input, error %s.\n", debugstr_averr(ret) );
 +            goto failed;
 +        }
-+    }
+     }
      format = demuxer->ctx->iformat;
-@@ -811,6 +850,7 @@ NTSTATUS demuxer_create( void *arg )
+ 
+@@ -759,6 +785,7 @@ NTSTATUS demuxer_create( void *arg )
      if (strstr( format->name, "mp4" )) strcpy( params->mime_type, "video/mp4" );
      else if (strstr( format->name, "avi" )) strcpy( params->mime_type, "video/avi" );
      else if (strstr( format->name, "mpeg" )) strcpy( params->mime_type, "video/mpeg" );
@@ -961,30 +944,8 @@ index 12c1a297312c000cd362bf916cc411030f33cbed..7c121942a6f587b1ed40c66f7a344462
      else if (strstr( format->name, "mp3" )) strcpy( params->mime_type, "audio/mp3" );
      else if (strstr( format->name, "wav" )) strcpy( params->mime_type, "audio/wav" );
      else if (strstr( format->name, "asf" ))
-@@ -732,8 +772,4 @@ NTSTATUS demuxer_create( void *arg )
-     free( demuxer->streams );
--    if (demuxer->ctx)
--    {
--        avio_context_free( &demuxer->ctx->pb );
--        avformat_free_context( demuxer->ctx );
--    }
-+    demuxer_free_context( demuxer );
-     free( demuxer );
-     return STATUS_UNSUCCESSFUL;
-@@ -777,9 +813,8 @@ NTSTATUS demuxer_destroy( void *arg )
-     for (i = 0; i < demuxer->ctx->nb_streams; i++)
-     {
-         av_bsf_free( &demuxer->streams[i].filter );
-     }
-     free( demuxer->streams );
-     params->context = demuxer->ctx->pb->opaque;
--    avio_context_free( &demuxer->ctx->pb );
--    avformat_free_context( demuxer->ctx );
-+    demuxer_free_context( demuxer );
-     free( demuxer );
- 
-     return STATUS_SUCCESS; b/dlls/winedmo/unixlib.c
-index 39a4ed35fa15c7ae501bfad13c2df1ed841388f8..29dfba72c90fefc67507a734dffc97b936220eab 100644
+diff --git a/dlls/winedmo/unixlib.c b/dlls/winedmo/unixlib.c
+index 8ad227dc06f..c362690b917 100644
 --- a/dlls/winedmo/unixlib.c
 +++ b/dlls/winedmo/unixlib.c
 @@ -109,9 +109,19 @@ int unix_read_callback( void *opaque, uint8_t *buffer, int size )

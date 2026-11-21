@@ -32,11 +32,10 @@ This version intentionally does not reintroduce DualSense mono/haptic reconnect 
 
 
 diff --git a/dlls/winepulse.drv/pulse.c b/dlls/winepulse.drv/pulse.c
-index 04da7f3854cf2a8a4a892639acaced661f07e9fb..abaf1d31abd0dd7b5359643ba2d8c7c022d25151 100644
+index 0773ec44aa0..ef5d7313530 100644
 --- a/dlls/winepulse.drv/pulse.c
 +++ b/dlls/winepulse.drv/pulse.c
-@@ -26,8 +26,10 @@
- #include "config.h"
+@@ -27,7 +27,9 @@
  #include <stdarg.h>
  #include <stdlib.h>
  #include <stdint.h>
@@ -46,7 +45,7 @@ index 04da7f3854cf2a8a4a892639acaced661f07e9fb..abaf1d31abd0dd7b5359643ba2d8c7c0
  #include <math.h>
  #include <poll.h>
  
-@@ -119,6 +121,8 @@ struct pulse_stream
+@@ -123,6 +125,8 @@ struct pulse_stream
      struct pulse_period *period;
  };
  
@@ -55,7 +54,7 @@ index 04da7f3854cf2a8a4a892639acaced661f07e9fb..abaf1d31abd0dd7b5359643ba2d8c7c0
  typedef struct _ACPacket
  {
      struct list entry;
-@@ -403,14 +423,32 @@ static void pulse_contextcallback(pa_context *c, void *userdata)
+@@ -823,14 +827,32 @@ done:
  
  static void pulse_stream_state(pa_stream *s, void *user)
  {
@@ -88,7 +87,7 @@ index 04da7f3854cf2a8a4a892639acaced661f07e9fb..abaf1d31abd0dd7b5359643ba2d8c7c0
      dump_attr(attr);
  }
  
-@@ -2079,8 +2101,9 @@ static HRESULT pulse_stream_connect_timeout(struct pulse_stream *stream, const ch
+@@ -2069,6 +2091,7 @@ static HRESULT pulse_stream_connect_timeout(struct pulse_stream *stream, const c
      attr.tlength = period_bytes * 3;
      attr.maxlength = stream->bufsize_frames * pa_frame_size(&stream->ss);
      attr.prebuf = pa_frame_size(&stream->ss);
@@ -96,9 +95,7 @@ index 04da7f3854cf2a8a4a892639acaced661f07e9fb..abaf1d31abd0dd7b5359643ba2d8c7c0
      dump_attr(&attr);
  
      /* If specific device was requested, use it exactly. For PipeWire raw
-      * haptic targets, keep the public DualSense sink as the Pulse device and
-      * let target.object select the hidden split ALSA node. */
-@@ -2758,7 +2781,7 @@ static NTSTATUS pulse_create_stream(void *args)
+@@ -2770,7 +2793,7 @@ static NTSTATUS pulse_create_stream(void *args)
          hr = pulse_stream_connect(stream, connect_device, haptic_target, stream->period_bytes);
      if (SUCCEEDED(hr)) {
          UINT32 unalign;
@@ -107,20 +104,25 @@ index 04da7f3854cf2a8a4a892639acaced661f07e9fb..abaf1d31abd0dd7b5359643ba2d8c7c0
          SIZE_T size;
  
          stream->attr = *attr;
-@@ -3266,4 +3266,4 @@ static void pa_streams_timer_cb(pa_mainloop_api *api, pa_time_event *e, const st
+@@ -3243,7 +3266,7 @@ static void pulse_update_timing_cb(pa_stream *s, int success, void *user)
+ static void pa_streams_timer_cb(pa_mainloop_api *api, pa_time_event *e, const struct timeval *tv, void *userdata)
  {
      struct pulse_period *period = userdata;
 -    struct pulse_stream *stream;
 +    struct pulse_stream *stream, *next;
      BOOL reset_timeline = FALSE;
-@@ -3129,5 +3152,5 @@ static void pa_streams_timer_cb(pa_mainloop_api *api, pa_time_event *e, const st
+     pa_usec_t next_timer;
+     int64_t adjust = 0;
+@@ -3261,7 +3284,7 @@ static void pa_streams_timer_cb(pa_mainloop_api *api, pa_time_event *e, const st
+         reset_timeline = TRUE;
+     }
  
 -    LIST_FOR_EACH_ENTRY(stream, &period->streams, struct pulse_stream, period_entry)
 +    LIST_FOR_EACH_ENTRY_SAFE(stream, next, &period->streams, struct pulse_stream, period_entry)
      {
          if (stream->started)
          {
-@@ -2516,7 +2567,7 @@ static NTSTATUS pulse_get_latency(void *args)
+@@ -4027,7 +4050,7 @@ static NTSTATUS pulse_get_latency(void *args)
          params->result = AUDCLNT_E_DEVICE_INVALIDATED;
          return STATUS_SUCCESS;
      }
@@ -129,7 +131,7 @@ index 04da7f3854cf2a8a4a892639acaced661f07e9fb..abaf1d31abd0dd7b5359643ba2d8c7c0
      if (stream->dataflow == eRender)
          lat = attr->minreq / pa_frame_size(&stream->ss);
      else
-@@ -2683,15 +2734,18 @@ static NTSTATUS pulse_set_sample_rate(void *args)
+@@ -4194,15 +4217,18 @@ static NTSTATUS pulse_set_sample_rate(void *args)
      new_ss = stream->ss;
      new_ss.rate = params->rate;
  
@@ -154,4 +156,3 @@ index 04da7f3854cf2a8a4a892639acaced661f07e9fb..abaf1d31abd0dd7b5359643ba2d8c7c0
          wait_pa_operation_complete(pa_stream_flush(stream->stream, pulse_op_cb, &success));
  
      stream->clock_lastpos = stream->clock_written = 0;
-

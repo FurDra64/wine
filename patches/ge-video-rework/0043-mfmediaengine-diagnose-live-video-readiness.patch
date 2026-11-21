@@ -13,9 +13,10 @@ run without the timing changes caused by the full mfplat trace channel.
  3 files changed, 23 insertions(+)
 
 diff --git a/dlls/mfmediaengine/main.c b/dlls/mfmediaengine/main.c
+index 84d1ca48d88..796db0aa7e4 100644
 --- a/dlls/mfmediaengine/main.c
 +++ b/dlls/mfmediaengine/main.c
-@@ -1249,6 +1249,9 @@ static HRESULT WINAPI media_engine_sink_events_Invoke(IMFAsyncCallback *iface,
+@@ -1263,6 +1263,9 @@ static HRESULT WINAPI media_engine_sink_events_Invoke(IMFAsyncCallback *iface, I
  
      EnterCriticalSection(&engine->cs);
  
@@ -25,7 +26,7 @@ diff --git a/dlls/mfmediaengine/main.c b/dlls/mfmediaengine/main.c
      switch (event)
      {
          case MF_MEDIA_ENGINE_EVENT_FIRSTFRAMEREADY:
-@@ -2188,6 +2191,7 @@ static double WINAPI media_engine_GetCurrentTime(IMFMediaEngineEx *iface)
+@@ -2181,6 +2184,7 @@ static double WINAPI media_engine_GetCurrentTime(IMFMediaEngineEx *iface)
  {
      struct media_engine *engine = impl_from_IMFMediaEngineEx(iface);
      double ret = 0.0;
@@ -33,7 +34,8 @@ diff --git a/dlls/mfmediaengine/main.c b/dlls/mfmediaengine/main.c
      MFTIME clocktime;
  
      EnterCriticalSection(&engine->cs);
-@@ -2230,5 +2234,13 @@ static double WINAPI media_engine_GetCurrentTime(IMFMediaEngineEx *iface)
+@@ -2231,6 +2235,14 @@ static double WINAPI media_engine_GetCurrentTime(IMFMediaEngineEx *iface)
+             engine->presentation.start_position.vt,
              wine_dbgstr_longlong(engine->presentation.start_position.vt == VT_I8
                      ? engine->presentation.start_position.hVal.QuadPart : 0));
 +    if (isinf(engine->duration))
@@ -48,9 +50,10 @@ diff --git a/dlls/mfmediaengine/main.c b/dlls/mfmediaengine/main.c
  
      return ret;
 diff --git a/dlls/mfmediaengine/video_frame_sink.c b/dlls/mfmediaengine/video_frame_sink.c
+index bebbd54d620..5fca4eba6c0 100644
 --- a/dlls/mfmediaengine/video_frame_sink.c
 +++ b/dlls/mfmediaengine/video_frame_sink.c
-@@ -420,6 +420,8 @@ static HRESULT WINAPI video_frame_sink_stream_ProcessSample(IMFStreamSink *ifac
+@@ -422,6 +422,8 @@ static HRESULT WINAPI video_frame_sink_stream_ProcessSample(IMFStreamSink *iface
          {
              if (!(sink->flags & FLAGS_FIRST_FRAME))
              {
@@ -60,10 +63,10 @@ diff --git a/dlls/mfmediaengine/video_frame_sink.c b/dlls/mfmediaengine/video_fr
                  video_frame_sink_set_flag(sink, FLAGS_FIRST_FRAME, TRUE);
                  first_frame = TRUE;
 diff --git a/dlls/winedmo/unix_demuxer.c b/dlls/winedmo/unix_demuxer.c
-index ebe2eb78..2e7cf28e 100644
+index 57b534e2733..13522ff6c12 100644
 --- a/dlls/winedmo/unix_demuxer.c
 +++ b/dlls/winedmo/unix_demuxer.c
-@@ -931,6 +931,15 @@ NTSTATUS demuxer_stream_type( void *arg )
+@@ -1094,6 +1094,15 @@ NTSTATUS demuxer_stream_type( void *arg )
      TRACE( "demuxer %p, stream %u, stream %p, index %u\n", demuxer, params->stream, stream, stream->index );
  
      if (!sar.den || !sar.num) sar = stream->codecpar->sample_aspect_ratio;
@@ -76,6 +79,6 @@ index ebe2eb78..2e7cf28e 100644
 +                stream->avg_frame_rate.num, stream->avg_frame_rate.den, guessed.num, guessed.den,
 +                stream->r_frame_rate.num, stream->r_frame_rate.den, stream->time_base.num, stream->time_base.den );
 +    }
-     return media_type_from_codec_params( par, &sar, &stream->avg_frame_rate, 0, &params->media_type );
- }
- 
+     if (par->codec_type == AVMEDIA_TYPE_VIDEO)
+         fps = get_video_display_frame_rate( demuxer->ctx, stream );
+     else

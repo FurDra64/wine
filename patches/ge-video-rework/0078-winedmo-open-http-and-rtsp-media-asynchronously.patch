@@ -38,184 +38,8 @@ Reference: https://learn.microsoft.com/en-us/windows/win32/medfound/supported-pr
 Reference: https://ffmpeg.org/ffmpeg-protocols.html#rtsp
 Reference: https://github.com/SpookySkeletons/proton-rtsp/blob/rtsp/10-33-24/patches/wine-gst/0005-winegstreamer-Add-more-RTSP-based-URI-schemes-to-GSt.patch
 ---
-diff --git a/dlls/winedmo/media_source.c b/dlls/winedmo/media_source.c
---- a/dlls/winedmo/media_source.c
-+++ b/dlls/winedmo/media_source.c
-@@ -26,7 +26,6 @@
- 
- #include "mfapi.h"
- #include "mferror.h"
--#include "urlmon.h"
- 
- #include "wine/list.h"
- 
-diff --git a/dlls/winedmo/unix_demuxer.c b/dlls/winedmo/unix_demuxer.c
---- a/dlls/winedmo/unix_demuxer.c
-+++ b/dlls/winedmo/unix_demuxer.c
-@@ -27,6 +27,8 @@
- 
- #ifdef HAVE_FFMPEG
- 
-+#include <libavutil/avstring.h>
-+
- WINE_DEFAULT_DEBUG_CHANNEL(dmo);
- 
- static inline const char *debugstr_averr( int err )
-@@ -120,7 +122,7 @@
-         0xa1, 0xdc, 0xab, 0x8c, 0x47, 0xa9, 0xcf, 0x11,
-         0x8e, 0xe4, 0x00, 0xc0, 0x0c, 0x20, 0x53, 0x65
-     };
--    struct stream_context *context = ctx->pb ? ctx->pb->opaque : NULL;
-+    struct stream_context *context = ctx->pb && ctx->pb->read_packet == unix_read_callback ? ctx->pb->opaque : NULL;
-     BYTE header[30], object[104];
-     UINT64 header_size, offset;
-     UINT32 object_count, i;
-@@ -205,7 +207,7 @@
-         sample->dts = max( 0, sample->dts - stream->timestamp_base );
- }
- 
--static void normalize_live_hls_timestamps( const struct demuxer *demuxer, struct sample *sample )
-+static void normalize_live_timestamps( const struct demuxer *demuxer, struct sample *sample )
- {
-     if (demuxer->live_timestamp_base == AV_NOPTS_VALUE)
-         return;
-@@ -428,7 +430,7 @@
- 
- static INT64 get_raw_mpegvideo_duration( const AVFormatContext *ctx )
- {
--    struct stream_context *context = ctx->pb ? ctx->pb->opaque : NULL;
-+    struct stream_context *context = ctx->pb && ctx->pb->read_packet == unix_read_callback ? ctx->pb->opaque : NULL;
-     const UINT32 buffer_size = 64 * 1024;
-     UINT64 offset, length;
-     AVStream *video = NULL;
-@@ -707,23 +709,33 @@
-         avcodec_parameters_copy( stream->filter->par_out, demuxer->ctx->streams[i]->codecpar );
-     }
- 
-     return STATUS_SUCCESS;
- }
- 
--static BOOL is_http_hls_url( const char *url )
-+static BOOL is_http_url( const char *url )
- {
--    if (!url || (strncmp( url, "http://", 7 ) && strncmp( url, "https://", 8 ))) return FALSE;
-+    return url && (av_stristart( url, "http://", NULL ) || av_stristart( url, "https://", NULL ));
-+}
- 
-+static BOOL is_http_hls_url( const char *url )
-+{
-+    if (!is_http_url( url )) return FALSE;
-     return !!strstr( url, ".m3u8" ) || !!strstr( url, "/hls_playlist/" );
- }
- 
- static BOOL is_http_progressive_url( const char *url )
- {
--    if (!url || (strncmp( url, "http://", 7 ) && strncmp( url, "https://", 8 ))) return FALSE;
-+    if (!is_http_url( url )) return FALSE;
- 
-     return !!strstr( url, ".googlevideo.com/videoplayback" ) || !!strstr( url, ".mp4" );
- }
- 
-+static BOOL is_rtsp_url( const char *url )
-+{
-+    return url && (av_stristart( url, "rtsp://", NULL ) || av_stristart( url, "rtspt://", NULL )
-+            || av_stristart( url, "rtspu://", NULL ));
-+}
-+
- static void demuxer_free_context( struct demuxer *demuxer )
- {
-     if (!demuxer->ctx) return;
-@@ -851,16 +863,27 @@
-     demuxer->live_timestamp_base = AV_NOPTS_VALUE;
- 
-     if (!(demuxer->ctx = avformat_alloc_context())) goto failed;
--    if (is_http_hls_url( params->url ) || is_http_progressive_url( params->url ))
-+    if (is_http_url( params->url ) || is_rtsp_url( params->url ))
-     {
-+        BOOL hls = is_http_hls_url( params->url ), rtsp = is_rtsp_url( params->url );
-         BOOL progressive = is_http_progressive_url( params->url );
-         AVDictionary *options = NULL;
--        const AVInputFormat *format = progressive ? NULL : av_find_input_format( "hls" );
-+        const AVInputFormat *input_format = hls ? av_find_input_format( "hls" ) : NULL;
-+        char *url, *p;
- 
--        /* HLS playlists need the source URL as their base URI, while URLMon
--         * can expose progressive streams as non-seekable or incomplete streams.
--         * Let FFmpeg handle both remote source forms directly. */
-+        /* Keep the URL as the base for playlists and let FFmpeg probe HTTP
-+         * media regardless of its extension, without waiting for HTTP EOF. */
-         demuxer->direct_url = TRUE;
-+        if (!(url = strdup( params->url ))) goto failed;
-+        for (p = url; *p && *p != ':'; ++p) *p = av_tolower( *p );
-+        if (!strncmp( url, "rtspt://", 8 ) || !strncmp( url, "rtspu://", 8 ))
-+        {
-+            av_dict_set( &options, "rtsp_transport", url[4] == 't' ? "tcp" : "udp", 0 );
-+            /* FFmpeg accepts rtsp:// plus an explicit transport option. */
-+            memmove( url + 4, url + 5, strlen( url + 5 ) + 1 );
-+        }
-+        if (rtsp) av_dict_set( &options, "timeout", "15000000", 0 );
-+        else if (!hls) av_dict_set( &options, "rw_timeout", "15000000", 0 );
-         if (progressive)
-         {
-             /* Replayed byte-range requests can be reset before media EOF. */
-@@ -870,7 +893,8 @@
-             av_dict_set( &options, "reconnect_delay_max", "5", 0 );
-         }
- 
--        ret = avformat_open_input( &demuxer->ctx, params->url, format, &options );
-+        ret = avformat_open_input( &demuxer->ctx, url, input_format, &options );
-+        free( url );
-         av_dict_free( &options );
-         if (ret < 0)
-         {
-@@ -881,6 +905,10 @@
-                 !(demuxer->ctx->pb->seekable & AVIO_SEEKABLE_NORMAL) ||
-                 demuxer->ctx->duration == AV_NOPTS_VALUE))
-             demuxer->nonseekable = TRUE;
-+        else if (!hls && get_context_duration( demuxer->ctx ) == AV_NOPTS_VALUE && (rtsp ||
-+                (demuxer->ctx->pb && !(demuxer->ctx->pb->seekable & AVIO_SEEKABLE_NORMAL)
-+                && avio_size( demuxer->ctx->pb ) < 0)))
-+            demuxer->nonseekable = TRUE;
-     }
-     else
-     {
-@@ -911,7 +939,7 @@
-     if (demuxer->nonseekable) params->duration = AV_NOPTS_VALUE;
-     demuxer->duration = params->duration;
-     if (demuxer->duration == AV_NOPTS_VALUE && demuxer->ctx->start_time != AV_NOPTS_VALUE &&
--        strstr( format->name, "hls" ))
-+        (strstr( format->name, "hls" ) || demuxer->nonseekable))
-     {
-         demuxer->live_timestamp_base = get_user_time( demuxer->ctx->start_time, AV_TIME_BASE_Q );
-     }
-@@ -1077,7 +1105,7 @@
-     sample->pts = get_stream_time( stream, packet->pts );
-     sample->dts = get_stream_time( stream, packet->dts );
-     sample->duration = get_stream_time( stream, packet->duration );
--    normalize_live_hls_timestamps( demuxer, sample );
-+    normalize_live_timestamps( demuxer, sample );
-     fixup_asf_mpeg4_timestamps( demuxer->ctx, stream, demuxer_stream, sample );
-     if (demuxer->ctx->iformat && strstr( demuxer->ctx->iformat->name, "asf" ))
-         normalize_stream_timestamps( demuxer_stream, sample );
-diff --git a/dlls/winedmo/winedmo.rgs b/dlls/winedmo/winedmo.rgs
---- a/dlls/winedmo/winedmo.rgs
-+++ b/dlls/winedmo/winedmo.rgs
-@@ -62,6 +62,14 @@
-                     {
-                         val '{587eeb6a-7336-4ebd-a4f2-91c948de622c}' = s 'winedmo Scheme Handler'
-                     }
-+                    'rtspt:'
-+                    {
-+                        val '{587eeb6a-7336-4ebd-a4f2-91c948de622c}' = s 'winedmo Scheme Handler'
-+                    }
-+                    'rtspu:'
-+                    {
-+                        val '{587eeb6a-7336-4ebd-a4f2-91c948de622c}' = s 'winedmo Scheme Handler'
-+                    }
-                 }
-             }
-         }
 diff --git a/dlls/mfplat/tests/Makefile.in b/dlls/mfplat/tests/Makefile.in
+index 6caf83ab971..24ea37193d3 100644
 --- a/dlls/mfplat/tests/Makefile.in
 +++ b/dlls/mfplat/tests/Makefile.in
 @@ -1,6 +1,7 @@
@@ -229,6 +53,7 @@ diff --git a/dlls/mfplat/tests/Makefile.in b/dlls/mfplat/tests/Makefile.in
  	resource.rc
 diff --git a/dlls/mfplat/tests/network.c b/dlls/mfplat/tests/network.c
 new file mode 100644
+index 00000000000..2142e1e3259
 --- /dev/null
 +++ b/dlls/mfplat/tests/network.c
 @@ -0,0 +1,246 @@
@@ -478,3 +303,162 @@ new file mode 100644
 +    if (!ret) WSACleanup();
 +    CoUninitialize();
 +}
+diff --git a/dlls/winedmo/media_source.c b/dlls/winedmo/media_source.c
+index a606994a2f5..1d4a3605ea9 100644
+--- a/dlls/winedmo/media_source.c
++++ b/dlls/winedmo/media_source.c
+@@ -29,7 +29,6 @@
+ 
+ #include "mfapi.h"
+ #include "mferror.h"
+-#include "urlmon.h"
+ 
+ #include "wine/list.h"
+ 
+diff --git a/dlls/winedmo/unix_demuxer.c b/dlls/winedmo/unix_demuxer.c
+index 73e4fb030f5..c3ddd72eaa8 100644
+--- a/dlls/winedmo/unix_demuxer.c
++++ b/dlls/winedmo/unix_demuxer.c
+@@ -27,6 +27,8 @@
+ 
+ #ifdef HAVE_FFMPEG
+ 
++#include <libavutil/avstring.h>
++
+ WINE_DEFAULT_DEBUG_CHANNEL(dmo);
+ 
+ static inline const char *debugstr_averr( int err )
+@@ -204,7 +206,7 @@ static void normalize_stream_timestamps( struct stream *stream, struct sample *s
+         sample->dts = max( 0, sample->dts - stream->timestamp_base );
+ }
+ 
+-static void normalize_live_hls_timestamps( const struct demuxer *demuxer, struct sample *sample )
++static void normalize_live_timestamps( const struct demuxer *demuxer, struct sample *sample )
+ {
+     if (demuxer->live_timestamp_base == AV_NOPTS_VALUE)
+         return;
+@@ -707,20 +709,30 @@ static NTSTATUS demuxer_create_streams( struct demuxer *demuxer )
+     return STATUS_SUCCESS;
+ }
+ 
+-static BOOL is_http_hls_url( const char *url )
++static BOOL is_http_url( const char *url )
+ {
+-    if (!url || (strncmp( url, "http://", 7 ) && strncmp( url, "https://", 8 ))) return FALSE;
++    return url && (av_stristart( url, "http://", NULL ) || av_stristart( url, "https://", NULL ));
++}
+ 
++static BOOL is_http_hls_url( const char *url )
++{
++    if (!is_http_url( url )) return FALSE;
+     return !!strstr( url, ".m3u8" ) || !!strstr( url, "/hls_playlist/" );
+ }
+ 
+ static BOOL is_http_progressive_url( const char *url )
+ {
+-    if (!url || (strncmp( url, "http://", 7 ) && strncmp( url, "https://", 8 ))) return FALSE;
++    if (!is_http_url( url )) return FALSE;
+ 
+     return !!strstr( url, ".googlevideo.com/videoplayback" ) || !!strstr( url, ".mp4" );
+ }
+ 
++static BOOL is_rtsp_url( const char *url )
++{
++    return url && (av_stristart( url, "rtsp://", NULL ) || av_stristart( url, "rtspt://", NULL )
++            || av_stristart( url, "rtspu://", NULL ));
++}
++
+ static void demuxer_free_context( struct demuxer *demuxer )
+ {
+     mediaconv_demuxer_close( &demuxer->ctx );
+@@ -754,16 +766,27 @@ NTSTATUS demuxer_create( void *arg )
+     demuxer->live_timestamp_base = AV_NOPTS_VALUE;
+ 
+     if (!(demuxer->ctx = avformat_alloc_context())) goto failed;
+-    if (is_http_hls_url( params->url ) || is_http_progressive_url( params->url ))
++    if (is_http_url( params->url ) || is_rtsp_url( params->url ))
+     {
++        BOOL hls = is_http_hls_url( params->url ), rtsp = is_rtsp_url( params->url );
+         BOOL progressive = is_http_progressive_url( params->url );
+         AVDictionary *options = NULL;
+-        const AVInputFormat *format = progressive ? NULL : av_find_input_format( "hls" );
++        const AVInputFormat *input_format = hls ? av_find_input_format( "hls" ) : NULL;
++        char *url, *p;
+ 
+-        /* HLS playlists need the source URL as their base URI, while URLMon
+-         * can expose progressive streams as non-seekable or incomplete streams.
+-         * Let FFmpeg handle both remote source forms directly. */
++        /* Keep the URL as the base for playlists and let FFmpeg probe HTTP
++         * media regardless of its extension, without waiting for HTTP EOF. */
+         demuxer->direct_url = TRUE;
++        if (!(url = strdup( params->url ))) goto failed;
++        for (p = url; *p && *p != ':'; ++p) *p = av_tolower( *p );
++        if (!strncmp( url, "rtspt://", 8 ) || !strncmp( url, "rtspu://", 8 ))
++        {
++            av_dict_set( &options, "rtsp_transport", url[4] == 't' ? "tcp" : "udp", 0 );
++            /* FFmpeg accepts rtsp:// plus an explicit transport option. */
++            memmove( url + 4, url + 5, strlen( url + 5 ) + 1 );
++        }
++        if (rtsp) av_dict_set( &options, "timeout", "15000000", 0 );
++        else if (!hls) av_dict_set( &options, "rw_timeout", "15000000", 0 );
+         if (progressive)
+         {
+             /* Replayed byte-range requests can be reset before media EOF. */
+@@ -773,7 +796,8 @@ NTSTATUS demuxer_create( void *arg )
+             av_dict_set( &options, "reconnect_delay_max", "5", 0 );
+         }
+ 
+-        ret = avformat_open_input( &demuxer->ctx, params->url, format, &options );
++        ret = avformat_open_input( &demuxer->ctx, url, input_format, &options );
++        free( url );
+         av_dict_free( &options );
+         if (ret < 0)
+         {
+@@ -784,6 +808,10 @@ NTSTATUS demuxer_create( void *arg )
+                 !(demuxer->ctx->pb->seekable & AVIO_SEEKABLE_NORMAL) ||
+                 demuxer->ctx->duration == AV_NOPTS_VALUE))
+             demuxer->nonseekable = TRUE;
++        else if (!hls && get_context_duration( demuxer->ctx ) == AV_NOPTS_VALUE && (rtsp ||
++                (demuxer->ctx->pb && !(demuxer->ctx->pb->seekable & AVIO_SEEKABLE_NORMAL)
++                && avio_size( demuxer->ctx->pb ) < 0)))
++            demuxer->nonseekable = TRUE;
+     }
+     else
+     {
+@@ -836,7 +864,7 @@ NTSTATUS demuxer_create( void *arg )
+     if (demuxer->nonseekable) params->duration = AV_NOPTS_VALUE;
+     demuxer->duration = params->duration;
+     if (demuxer->duration == AV_NOPTS_VALUE && demuxer->ctx->start_time != AV_NOPTS_VALUE &&
+-        strstr( format->name, "hls" ))
++        (strstr( format->name, "hls" ) || demuxer->nonseekable))
+     {
+         demuxer->live_timestamp_base = get_user_time( demuxer->ctx->start_time, AV_TIME_BASE_Q );
+     }
+@@ -993,7 +1021,7 @@ NTSTATUS demuxer_read( void *arg )
+     sample->pts = get_stream_time( stream, packet->pts );
+     sample->dts = get_stream_time( stream, packet->dts );
+     sample->duration = get_stream_time( stream, packet->duration );
+-    normalize_live_hls_timestamps( demuxer, sample );
++    normalize_live_timestamps( demuxer, sample );
+     fixup_asf_mpeg4_timestamps( demuxer->ctx, stream, demuxer_stream, sample );
+     if (demuxer->ctx->iformat && strstr( demuxer->ctx->iformat->name, "asf" ))
+         normalize_stream_timestamps( demuxer_stream, sample );
+diff --git a/dlls/winedmo/winedmo.rgs b/dlls/winedmo/winedmo.rgs
+index a2675322800..3a7b365c4fb 100644
+--- a/dlls/winedmo/winedmo.rgs
++++ b/dlls/winedmo/winedmo.rgs
+@@ -62,6 +62,14 @@ HKLM
+                     {
+                         val '{587eeb6a-7336-4ebd-a4f2-91c948de622c}' = s 'winedmo Scheme Handler'
+                     }
++                    'rtspt:'
++                    {
++                        val '{587eeb6a-7336-4ebd-a4f2-91c948de622c}' = s 'winedmo Scheme Handler'
++                    }
++                    'rtspu:'
++                    {
++                        val '{587eeb6a-7336-4ebd-a4f2-91c948de622c}' = s 'winedmo Scheme Handler'
++                    }
+                 }
+             }
+         }

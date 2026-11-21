@@ -54,17 +54,19 @@ audio continues.
  4 files changed, 132 insertions(+), 10 deletions(-)
 
 diff --git a/dlls/qasf/asfreader.c b/dlls/qasf/asfreader.c
-index dacfccf54abfc4dbf6ae53b7fa1ebd497c5548fe..480c525fca9daf2f84b1d283440cfce574ec8997 100644
+index c75fa615e80..8857d508501 100644
 --- a/dlls/qasf/asfreader.c
 +++ b/dlls/qasf/asfreader.c
-@@ -503,4 +503,6 @@ static HRESULT asf_reader_init_stream(struct strmbase_filter *iface)
+@@ -503,6 +503,8 @@ static HRESULT asf_reader_init_stream(struct strmbase_filter *iface)
      IWMReaderAdvanced *reader_advanced;
      UINT preferred_audio_output = UINT_MAX;
      HRESULT hr = S_OK;
 +    BOOL value;
 +    IWMReaderAdvanced2 *reader_advanced2;
      int i;
-@@ -529,4 +531,20 @@ static HRESULT asf_reader_init_stream(struct strmbase_filter *iface)
+ 
+     TRACE("iface %p\n", iface);
+@@ -529,6 +531,22 @@ static HRESULT asf_reader_init_stream(struct strmbase_filter *iface)
          if (!stream->source.pin.peer)
              continue;
  
@@ -85,8 +87,10 @@ index dacfccf54abfc4dbf6ae53b7fa1ebd497c5548fe..480c525fca9daf2f84b1d283440cfce5
 +        IWMReaderAdvanced2_Release(reader_advanced2);
 +
          if (FAILED(hr = IMemAllocator_Commit(stream->source.pAllocator)))
+         {
+             WARN("Failed to commit stream %u allocator, hr %#lx\n", i, hr);
 diff --git a/dlls/winedmo/unix_transform.c b/dlls/winedmo/unix_transform.c
-index e885952784f58a7d3faa481355eec4833083cffe..7b4d65d63f13de647eae6caf791e7842703b70a9 100644
+index e885952784f..7b4d65d63f1 100644
 --- a/dlls/winedmo/unix_transform.c
 +++ b/dlls/winedmo/unix_transform.c
 @@ -100,6 +100,9 @@ struct unix_transform
@@ -209,10 +213,10 @@ index e885952784f58a7d3faa481355eec4833083cffe..7b4d65d63f13de647eae6caf791e7842
      t->video_pts_offset   = INT64_MIN;
      t->cumulative_samples = 0;
 diff --git a/dlls/winedmo/wm_reader.c b/dlls/winedmo/wm_reader.c
-index bcc9ed0ac93add18d8fbe8606026a6d2c07a6fed..26e4fc71e68b7a7bb93abf4ba5b18a1b0c44b08b 100644
+index 40da4c64bec..010164869c4 100644
 --- a/dlls/winedmo/wm_reader.c
 +++ b/dlls/winedmo/wm_reader.c
-@@ -1024,9 +1024,11 @@ static BOOL wm_stream_wait_queue_space(struct wm_reader *reader, struct wm_strea
+@@ -1027,9 +1027,11 @@ static BOOL wm_stream_wait_queue_space(struct wm_reader *reader, struct wm_strea
  {
      if (!IsEqualGUID(&stream->major_type, &MFMediaType_Video))
          return TRUE;
@@ -227,7 +231,7 @@ index bcc9ed0ac93add18d8fbe8606026a6d2c07a6fed..26e4fc71e68b7a7bb93abf4ba5b18a1b
      while (!reader->demux_shutdown && !stream->queue_flushing
              && stream->selection != WMT_OFF && stream->queued_packets >= 256)
 diff --git a/dlls/wmvcore/async_reader.c b/dlls/wmvcore/async_reader.c
-index ff0d4805fa73412d6a7f5b7d4209bfed684f552e..d05f90135e4840deba8bd5c5ca2b3d104ddb38bd 100644
+index 71e8ad0b456..b03bbbb98d3 100644
 --- a/dlls/wmvcore/async_reader.c
 +++ b/dlls/wmvcore/async_reader.c
 @@ -83,6 +83,9 @@ struct stream
@@ -258,7 +262,7 @@ index ff0d4805fa73412d6a7f5b7d4209bfed684f552e..d05f90135e4840deba8bd5c5ca2b3d10
      TRACE("Callback returned %#lx.\n", hr);
  
      list_remove(&sample->entry);
-@@ -537,6 +544,44 @@ static HRESULT async_reader_open_all_streams(struct async_reader *reader)
+@@ -534,6 +541,44 @@ static HRESULT async_reader_open_all_streams(struct async_reader *reader)
      return S_OK;
  }
  
@@ -303,7 +307,7 @@ index ff0d4805fa73412d6a7f5b7d4209bfed684f552e..d05f90135e4840deba8bd5c5ca2b3d10
  static HRESULT async_reader_get_next_sample(struct async_reader *reader,
          struct stream **out_stream, struct sample **out_sample)
  {
-@@ -559,7 +604,7 @@ static HRESULT async_reader_get_next_sample(struct async_reader *reader,
+@@ -556,7 +601,7 @@ static HRESULT async_reader_get_next_sample(struct async_reader *reader,
          if (!(entry = list_head(&stream->read_samples)))
          {
              if (stream->read_result == E_PENDING)
@@ -312,7 +316,7 @@ index ff0d4805fa73412d6a7f5b7d4209bfed684f552e..d05f90135e4840deba8bd5c5ca2b3d10
              continue;
          }
  
-@@ -574,6 +619,27 @@ static HRESULT async_reader_get_next_sample(struct async_reader *reader,
+@@ -571,6 +616,27 @@ static HRESULT async_reader_get_next_sample(struct async_reader *reader,
      if (!first_sample)
          return pending ? E_PENDING : NS_E_NO_MORE_SAMPLES;
  
@@ -340,8 +344,7 @@ index ff0d4805fa73412d6a7f5b7d4209bfed684f552e..d05f90135e4840deba8bd5c5ca2b3d10
      TRACE("Found first stream %u with pts %I64d.\n", first_stream->number, first_sample->pts);
      *out_sample = first_sample;
      *out_stream = first_stream;
-@@ -690,9 +756,8 @@ static DWORD WINAPI async_reader_callback_thread(void *arg)
-                     if (SUCCEEDED(hr) && !reader->clock_start)
+@@ -691,7 +757,6 @@ static DWORD WINAPI async_reader_callback_thread(void *arg)
                      {
                          reader->active_start = op->u.start.start;
                          reader->active_duration = op->u.start.duration;
@@ -349,8 +352,7 @@ index ff0d4805fa73412d6a7f5b7d4209bfed684f552e..d05f90135e4840deba8bd5c5ca2b3d10
                      }
  
                          if (FAILED(hr = async_reader_open_all_streams(reader)))
-                         {
-@@ -705,6 +770,11 @@ static DWORD WINAPI async_reader_callback_thread(void *arg)
+@@ -704,6 +769,11 @@ static DWORD WINAPI async_reader_callback_thread(void *arg)
                              EnterCriticalSection(&reader->callback_cs);
                              reader->running = false;
                          }

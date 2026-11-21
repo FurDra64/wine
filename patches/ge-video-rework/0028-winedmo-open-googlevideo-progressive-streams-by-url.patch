@@ -26,6 +26,18 @@ demuxer can run.
  dlls/winedmo/unix_demuxer.c | 35 +++++++++++++++++++++++++++--------
  2 files changed, 35 insertions(+), 9 deletions(-)
 
+diff --git a/dlls/mf/Makefile.in b/dlls/mf/Makefile.in
+--- a/dlls/mf/Makefile.in
++++ b/dlls/mf/Makefile.in
+@@ -1,7 +1,7 @@
+ MODULE    = mf.dll
+ IMPORTLIB = mf
+ IMPORTS   = advapi32 mfplat ole32 uuid mfuuid strmiids kernelbase
+-DELAYIMPORTS = evr urlmon user32
++DELAYIMPORTS = evr urlmon user32 shcore
+ 
+ EXTRADLLFLAGS = -Wb,--prefer-native
+ 
 diff --git a/dlls/mf/scheme_handler.c b/dlls/mf/scheme_handler.c
 --- a/dlls/mf/scheme_handler.c
 +++ b/dlls/mf/scheme_handler.c
@@ -62,7 +74,7 @@ diff --git a/dlls/winedmo/unix_demuxer.c b/dlls/winedmo/unix_demuxer.c
 +
  static void demuxer_free_context( struct demuxer *demuxer )
  {
-     if (!demuxer->ctx) return;
+     mediaconv_demuxer_close( &demuxer->ctx );
 @@ -705,19 +712,31 @@ NTSTATUS demuxer_create( void *arg )
      if (!(demuxer = calloc( 1, sizeof(*demuxer) ))) return STATUS_NO_MEMORY;
      if (!(demuxer->ctx = avformat_alloc_context())) goto failed;

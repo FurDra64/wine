@@ -23,9 +23,11 @@ Tested with Cooper's 9: its MP42 movies play through the WMVideo
 Decoder DMO in RGB24 (its WMV9 movies already did).
 ---
 
+diff --git a/dlls/mf/tests/transform.c b/dlls/mf/tests/transform.c
+index 5ac632bce1d..68724b29f6f 100644
 --- a/dlls/mf/tests/transform.c
 +++ b/dlls/mf/tests/transform.c
-@@ -61,6 +61,8 @@
+@@ -68,6 +68,8 @@ DEFINE_MEDIATYPE_GUID(MFVideoFormat_A2B10G10R10, D3DFMT_A2R10G10B10);
  DEFINE_MEDIATYPE_GUID(MFVideoFormat_P208,MAKEFOURCC('P','2','0','8'));
  DEFINE_MEDIATYPE_GUID(MFVideoFormat_VC1S,MAKEFOURCC('V','C','1','S'));
  DEFINE_MEDIATYPE_GUID(MFVideoFormat_mp43,MAKEFOURCC('m','p','4','3'));
@@ -34,7 +36,7 @@ Decoder DMO in RGB24 (its WMV9 movies already did).
  
  DEFINE_GUID(mft_output_sample_incomplete,0xffffff,0xffff,0xffff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff);
  
-@@ -6396,7 +6398,7 @@
+@@ -6779,7 +6781,7 @@ static void test_audio_convert_timestamps(void)
  
  static void test_mp43_decoder(void)
  {
@@ -43,7 +45,7 @@ Decoder DMO in RGB24 (its WMV9 movies already did).
      const struct attribute_desc input_desc[] =
      {
          ATTR_GUID(MF_MT_MAJOR_TYPE, MFMediaType_Video),
-@@ -6447,7 +6449,7 @@
+@@ -6830,7 +6832,7 @@ static void test_mp43_decoder(void)
          hr = MFTEnumEx(MFT_CATEGORY_VIDEO_DECODER, MFT_ENUM_FLAG_SYNCMFT,
                  &input_filter, &output_filter, &activates, &count);
          ok(hr == S_OK, "MFTEnumEx returned %#lx.\n", hr);
@@ -52,10 +54,12 @@ Decoder DMO in RGB24 (its WMV9 movies already did).
          if (SUCCEEDED(hr) && count)
          {
              hr = IMFActivate_ActivateObject(activates[0], &IID_IMFTransform, (void **)&transform);
+diff --git a/dlls/winedmo/video_decoder.c b/dlls/winedmo/video_decoder.c
+index 2ea6d5c0d62..204e5cfba45 100644
 --- a/dlls/winedmo/video_decoder.c
 +++ b/dlls/winedmo/video_decoder.c
-@@ -2521,6 +2521,10 @@
- extern const GUID MEDIASUBTYPE_WMV_Unknown;
+@@ -2569,10 +2569,16 @@ extern const GUID MEDIASUBTYPE_WMV_Unknown;
+ extern const GUID MFVideoFormat_theora;
  static const GUID MFVideoFormat_mp43 = {MAKEFOURCC('m','p','4','3'), 0x0000, 0x0010,
          {0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71}};
 +static const GUID MFVideoFormat_MP42 = {MAKEFOURCC('M','P','4','2'), 0x0000, 0x0010,
@@ -64,19 +68,18 @@ Decoder DMO in RGB24 (its WMV9 movies already did).
 +        {0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71}};
  static const GUID *const wmv_decoder_input_types[] =
  {
-     &MEDIASUBTYPE_WMV1,
-@@ -2537,7 +2541,9 @@
-     &MFVideoFormat_VP90,
      &MFVideoFormat_MP43,
      &MFVideoFormat_mp43,
 +    &MFVideoFormat_MP42,
 +    &MFVideoFormat_mp42,
- };
- static const GUID *const wmv_decoder_output_types[] =
- {
+     &MEDIASUBTYPE_WMV1,
+     &MEDIASUBTYPE_WMV2,
+     &MEDIASUBTYPE_WMVA,
+diff --git a/dlls/wmvdecod/wmvdecod.c b/dlls/wmvdecod/wmvdecod.c
+index 74dbe720e4d..5e6f1d8d07b 100644
 --- a/dlls/wmvdecod/wmvdecod.c
 +++ b/dlls/wmvdecod/wmvdecod.c
-@@ -37,6 +37,8 @@
+@@ -37,6 +37,8 @@ DEFINE_GUID(DMOVideoFormat_RGB565,D3DFMT_R5G6B5,0x524f,0x11ce,0x9f,0x53,0x00,0x2
  DEFINE_GUID(DMOVideoFormat_RGB555,D3DFMT_X1R5G5B5,0x524f,0x11ce,0x9f,0x53,0x00,0x20,0xaf,0x0b,0xa7,0x70);
  DEFINE_GUID(DMOVideoFormat_RGB8,D3DFMT_P8,0x524f,0x11ce,0x9f,0x53,0x00,0x20,0xaf,0x0b,0xa7,0x70);
  DEFINE_MEDIATYPE_GUID(MFVideoFormat_mp43,MAKEFOURCC('m','p','4','3'));
@@ -85,21 +88,21 @@ Decoder DMO in RGB24 (its WMV9 movies already did).
  
  /***********************************************************************
   *              DllGetClassObject (wmvdecod.@)
-@@ -72,6 +74,8 @@
-         {MFMediaType_Video, MFVideoFormat_VP90},
+@@ -60,6 +62,8 @@ HRESULT WINAPI DllRegisterServer(void)
+     {
          {MFMediaType_Video, MFVideoFormat_MP43},
          {MFMediaType_Video, MFVideoFormat_mp43},
 +        {MFMediaType_Video, MFVideoFormat_MP42},
 +        {MFMediaType_Video, MFVideoFormat_mp42},
-     };
-     MFT_REGISTER_TYPE_INFO wmv_decoder_mft_outputs[] =
+         {MFMediaType_Video, MFVideoFormat_WMV1},
+         {MFMediaType_Video, MFVideoFormat_WMV2},
+         {MFMediaType_Video, MFVideoFormat_WMV3},
+@@ -104,6 +108,8 @@ HRESULT WINAPI DllRegisterServer(void)
      {
-@@ -116,7 +120,9 @@
-         {.type = MEDIATYPE_Video, .subtype = MFVideoFormat_VP90},
          {.type = MEDIATYPE_Video, .subtype = MFVideoFormat_MP43},
          {.type = MEDIATYPE_Video, .subtype = MFVideoFormat_mp43},
 +        {.type = MEDIATYPE_Video, .subtype = MFVideoFormat_MP42},
 +        {.type = MEDIATYPE_Video, .subtype = MFVideoFormat_mp42},
-     };
-     HRESULT hr;
- 
+         {.type = MEDIATYPE_Video, .subtype = MEDIASUBTYPE_WMV1},
+         {.type = MEDIATYPE_Video, .subtype = MEDIASUBTYPE_WMV2},
+         {.type = MEDIATYPE_Video, .subtype = MEDIASUBTYPE_WMV3},

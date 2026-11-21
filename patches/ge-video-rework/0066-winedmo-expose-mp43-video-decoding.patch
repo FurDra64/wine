@@ -31,16 +31,18 @@ Remi Bernon's Wine/CodeWeavers implementation.
 Bug: https://github.com/GloriousEggroll/proton-ge-custom/issues/659
 Reference: https://learn.microsoft.com/en-us/windows/win32/medfound/windowsmediampeg4v3decoder
 diff --git a/dlls/mf/tests/transform.c b/dlls/mf/tests/transform.c
+index 33d3af6aef0..003bde1b5cf 100644
 --- a/dlls/mf/tests/transform.c
 +++ b/dlls/mf/tests/transform.c
-@@ -67,5 +67,6 @@
+@@ -67,6 +67,7 @@ DEFINE_MEDIATYPE_GUID(MFVideoFormat_ARGB4444, D3DFMT_A4R4G4B4);
  DEFINE_MEDIATYPE_GUID(MFVideoFormat_A2B10G10R10, D3DFMT_A2R10G10B10);
  DEFINE_MEDIATYPE_GUID(MFVideoFormat_P208,MAKEFOURCC('P','2','0','8'));
  DEFINE_MEDIATYPE_GUID(MFVideoFormat_VC1S,MAKEFOURCC('V','C','1','S'));
 +DEFINE_MEDIATYPE_GUID(MFVideoFormat_mp43,MAKEFOURCC('m','p','4','3'));
  
  DEFINE_GUID(mft_output_sample_incomplete,0xffffff,0xffff,0xffff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff);
-@@ -6514,6 +6515,101 @@
+ 
+@@ -6520,6 +6521,101 @@ failed:
      CoUninitialize();
  }
  
@@ -142,7 +144,7 @@ diff --git a/dlls/mf/tests/transform.c b/dlls/mf/tests/transform.c
  const GUID *wmv_decoder_output_subtypes[] =
  {
      &MEDIASUBTYPE_NV12,
-@@ -13060,4 +13156,5 @@
+@@ -13066,6 +13162,7 @@ START_TEST(transform)
      test_wmv_decoder_dmo_output_type();
      test_wmv_decoder_dmo_get_size_info();
      test_wmv_decoder_media_object();
@@ -150,34 +152,28 @@ diff --git a/dlls/mf/tests/transform.c b/dlls/mf/tests/transform.c
      test_audio_convert();
      test_color_convert(FALSE);
      test_color_convert(TRUE);
-
 diff --git a/dlls/winedmo/video_decoder.c b/dlls/winedmo/video_decoder.c
-index c360f2cc..ba445c0f 100644
+index 6922c659265..03fe08e35aa 100644
 --- a/dlls/winedmo/video_decoder.c
 +++ b/dlls/winedmo/video_decoder.c
-@@ -2248,6 +2248,8 @@ HRESULT WINAPI winedmo_create_video_decoder(IMFTransform **out)
- 
+@@ -2522,8 +2522,12 @@ HRESULT WINAPI winedmo_create_video_decoder(IMFTransform **out)
  extern const GUID MEDIASUBTYPE_VC1S;
  extern const GUID MEDIASUBTYPE_WMV_Unknown;
+ extern const GUID MFVideoFormat_theora;
 +static const GUID MFVideoFormat_mp43 = {MAKEFOURCC('m','p','4','3'), 0x0000, 0x0010,
 +        {0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71}};
  static const GUID *const wmv_decoder_input_types[] =
  {
-     &MEDIASUBTYPE_WMV1,
-@@ -2262,6 +2264,8 @@ static const GUID *const wmv_decoder_input_types[] =
- };
- static const GUID *const wmv_decoder_output_types[] =
- {
 +    &MFVideoFormat_MP43,
 +    &MFVideoFormat_mp43,
-     &MFVideoFormat_NV12,
-     &MFVideoFormat_YV12,
-     &MFVideoFormat_IYUV,
+     &MEDIASUBTYPE_WMV1,
+     &MEDIASUBTYPE_WMV2,
+     &MEDIASUBTYPE_WMVA,
 diff --git a/dlls/wmvdecod/wmvdecod.c b/dlls/wmvdecod/wmvdecod.c
-index 3a4e49b8..795a85b1 100644
+index 94ad04219bc..74dbe720e4d 100644
 --- a/dlls/wmvdecod/wmvdecod.c
 +++ b/dlls/wmvdecod/wmvdecod.c
-@@ -35,6 +35,7 @@ DEFINE_GUID(DMOVideoFormat_RGB24,D3DFMT_R8G8B8,0x524f,0x11ce,0x9f,0x53,0x00,0x20
+@@ -36,6 +36,7 @@ DEFINE_GUID(DMOVideoFormat_RGB24,D3DFMT_R8G8B8,0x524f,0x11ce,0x9f,0x53,0x00,0x20
  DEFINE_GUID(DMOVideoFormat_RGB565,D3DFMT_R5G6B5,0x524f,0x11ce,0x9f,0x53,0x00,0x20,0xaf,0x0b,0xa7,0x70);
  DEFINE_GUID(DMOVideoFormat_RGB555,D3DFMT_X1R5G5B5,0x524f,0x11ce,0x9f,0x53,0x00,0x20,0xaf,0x0b,0xa7,0x70);
  DEFINE_GUID(DMOVideoFormat_RGB8,D3DFMT_P8,0x524f,0x11ce,0x9f,0x53,0x00,0x20,0xaf,0x0b,0xa7,0x70);
@@ -185,21 +181,21 @@ index 3a4e49b8..795a85b1 100644
  
  /***********************************************************************
   *              DllGetClassObject (wmvdecod.@)
-@@ -68,6 +69,8 @@ HRESULT WINAPI DllRegisterServer(void)
-     };
-     MFT_REGISTER_TYPE_INFO wmv_decoder_mft_outputs[] =
+@@ -57,6 +58,8 @@ HRESULT WINAPI DllRegisterServer(void)
+ {
+     MFT_REGISTER_TYPE_INFO wmv_decoder_mft_inputs[] =
      {
 +        {MFMediaType_Video, MFVideoFormat_MP43},
 +        {MFMediaType_Video, MFVideoFormat_mp43},
-         {MFMediaType_Video, MFVideoFormat_YV12},
-         {MFMediaType_Video, MFVideoFormat_YUY2},
-         {MFMediaType_Video, MFVideoFormat_UYVY},
-@@ -110,6 +113,8 @@ HRESULT WINAPI DllRegisterServer(void)
-     TRACE("\n");
- 
-     if (FAILED(hr = __wine_register_resources()))
+         {MFMediaType_Video, MFVideoFormat_WMV1},
+         {MFMediaType_Video, MFVideoFormat_WMV2},
+         {MFMediaType_Video, MFVideoFormat_WMV3},
+@@ -99,6 +102,8 @@ HRESULT WINAPI DllRegisterServer(void)
+     };
+     DMO_PARTIAL_MEDIATYPE wmv_decoder_dmo_inputs[] =
+     {
 +        {.type = MEDIATYPE_Video, .subtype = MFVideoFormat_MP43},
 +        {.type = MEDIATYPE_Video, .subtype = MFVideoFormat_mp43},
-         return hr;
-     if (FAILED(hr = MFTRegister(CLSID_WMVDecoderMFT, MFT_CATEGORY_VIDEO_DECODER,
-             (WCHAR *)L"WMVideo Decoder MFT", MFT_ENUM_FLAG_SYNCMFT,
+         {.type = MEDIATYPE_Video, .subtype = MEDIASUBTYPE_WMV1},
+         {.type = MEDIATYPE_Video, .subtype = MEDIASUBTYPE_WMV2},
+         {.type = MEDIATYPE_Video, .subtype = MEDIASUBTYPE_WMV3},

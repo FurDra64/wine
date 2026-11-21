@@ -145,7 +145,7 @@ diff --git a/dlls/qasf/asfreader.c b/dlls/qasf/asfreader.c
              continue;
  
 +        stream->allocator_layout_valid = FALSE;
-+        if (FAILED(hr = IWMReaderAdvanced2_SetReceiveStreamSamples(reader_advanced, stream->number, compressed)))
++        if (FAILED(hr = IWMReaderAdvanced_SetReceiveStreamSamples(reader_advanced, stream->number, compressed)))
 +        {
 +            WARN("Failed to set compressed delivery for stream %u, hr %#lx\n", i, hr);
 +            break;
@@ -159,8 +159,8 @@ diff --git a/dlls/qasf/asfreader.c b/dlls/qasf/asfreader.c
          }
  
 -        if (!IsEqualGUID(&stream->source.pin.mt.majortype, &MEDIATYPE_Video)
--                && FAILED(hr = IWMReaderAdvanced2_SetAllocateForOutput(reader_advanced, i, TRUE)))
-+        if (FAILED(hr = IWMReaderAdvanced2_SetAllocateForOutput(reader_advanced, i,
+-                && FAILED(hr = IWMReaderAdvanced_SetAllocateForOutput(reader_advanced, i, TRUE)))
++        if (FAILED(hr = IWMReaderAdvanced_SetAllocateForOutput(reader_advanced, i,
 +                !compressed && !IsEqualGUID(&stream->source.pin.mt.majortype, &MEDIATYPE_Video))))
          {
              WARN("Failed to enable allocation for stream %u, hr %#lx\n", i, hr);
@@ -198,7 +198,7 @@ diff --git a/dlls/qasf/asfreader.c b/dlls/qasf/asfreader.c
 +            }
          }
  
-         if (FAILED(hr = IPin_NewSegment(stream->source.pin.peer, stream->seek.llCurrent, stream->seek.llStop, stream->seek.dRate)))
+         if (FAILED(hr = IPin_NewSegment(stream->source.pin.peer, 0, 0, 1)))
 @@ -650,12 +724,26 @@
          IMemAllocator *allocator, ALLOCATOR_PROPERTIES *req_props)
  {

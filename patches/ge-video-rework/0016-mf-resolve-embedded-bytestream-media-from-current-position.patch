@@ -19,10 +19,10 @@ absolute byte-stream offsets.
  1 file changed, 13 insertions(+), 3 deletions(-)
 
 diff --git a/dlls/winedmo/media_source.c b/dlls/winedmo/media_source.c
-index 1807d70..2e9ff8a 100644
+index 2f86e4cca86..e7ac092ffca 100644
 --- a/dlls/winedmo/media_source.c
 +++ b/dlls/winedmo/media_source.c
-@@ -44,6 +44,7 @@ struct object_context
+@@ -47,6 +47,7 @@ struct object_context
      IMFAsyncResult *result;
      IMFByteStream *stream;
      UINT64 file_size;
@@ -30,7 +30,7 @@ index 1807d70..2e9ff8a 100644
      WCHAR *url;
  };
  
-@@ -104,7 +105,7 @@ static const IUnknownVtbl object_context_vtbl =
+@@ -107,7 +108,7 @@ static const IUnknownVtbl object_context_vtbl =
  };
  
  static HRESULT object_context_create(DWORD flags, IMFByteStream *stream, const WCHAR *url,
@@ -39,7 +39,7 @@ index 1807d70..2e9ff8a 100644
  {
      WCHAR *tmp_url = url ? wcsdup(url) : NULL;
      struct object_context *context;
-@@ -120,6 +121,7 @@ static HRESULT object_context_create(DWORD flags, IMFByteStream *stream, const W
+@@ -123,6 +124,7 @@ static HRESULT object_context_create(DWORD flags, IMFByteStream *stream, const W
      context->stream = stream;
      IMFByteStream_AddRef(context->stream);
      context->file_size = file_size;
@@ -47,7 +47,7 @@ index 1807d70..2e9ff8a 100644
      context->url = tmp_url;
      context->result = result;
      IMFAsyncResult_AddRef(context->result);
-@@ -333,6 +335,7 @@ struct media_source
+@@ -336,6 +338,7 @@ struct media_source
      CRITICAL_SECTION demuxer_cs;
  
      UINT64 file_size;
@@ -55,7 +55,7 @@ index 1807d70..2e9ff8a 100644
      UINT64 duration;
      bool has_duration;
  
-@@ -748,7 +751,8 @@ static NTSTATUS CDECL source_stream_read_cb(struct winedmo_stream *stream, BYTE
+@@ -751,7 +754,8 @@ static NTSTATUS CDECL source_stream_read_cb(struct winedmo_stream *stream, BYTE
      if (!*size)
          return STATUS_SUCCESS;
  
@@ -65,7 +65,7 @@ index 1807d70..2e9ff8a 100644
          hr = winedmo_bytestream_read(source->byte_stream, buffer, *size, &ret_size);
  
      if (FAILED(hr))
-@@ -2211,7 +2215,9 @@ static HRESULT media_source_create(struct object_context *context, IMFMediaSourc
+@@ -2214,7 +2218,9 @@ static HRESULT media_source_create(struct object_context *context, IMFMediaSourc
      object->ref = 1;
      object->byte_stream = context->stream;
      IMFByteStream_AddRef(context->stream);
@@ -76,7 +76,7 @@ index 1807d70..2e9ff8a 100644
      object->rate = 1.0f;
      InitializeCriticalSectionEx(&object->cs, 0, RTL_CRITICAL_SECTION_FLAG_FORCE_DEBUG_INFO);
      object->cs.DebugInfo->Spare[0] = (DWORD_PTR)(__FILE__ ": cs");
-@@ -2483,7 +2489,7 @@ static HRESULT WINAPI stream_handler_BeginCreateObject(IMFByteStreamHandler *ifa
+@@ -2509,7 +2515,7 @@ static HRESULT WINAPI stream_handler_BeginCreateObject(IMFByteStreamHandler *ifa
      struct stream_handler *handler = impl_from_IMFByteStreamHandler(iface);
      IMFAsyncResult *result;
      IUnknown *context;
@@ -85,7 +85,7 @@ index 1807d70..2e9ff8a 100644
      HRESULT hr;
      DWORD caps;
  
-@@ -2509,10 +2515,15 @@ static HRESULT WINAPI stream_handler_BeginCreateObject(IMFByteStreamHandler *ifa
+@@ -2535,10 +2541,15 @@ static HRESULT WINAPI stream_handler_BeginCreateObject(IMFByteStreamHandler *ifa
          FIXME("Failed to get byte stream length, hr %#lx.\n", hr);
          return hr;
      }
@@ -102,5 +102,12 @@ index 1807d70..2e9ff8a 100644
      {
          IMFAsyncResult_Release(result);
          return hr;
--- 
-2.51.0
+@@ -2821,7 +2832,7 @@ static HRESULT WINAPI scheme_handler_BeginCreateObject(IMFSchemeHandler *iface,
+ 
+     if (FAILED(hr = MFCreateAsyncResult(NULL, callback, state, &result)))
+         return hr;
+-    if (FAILED(hr = object_context_create(flags, bytestream, url, -1, result, &context)))
++    if (FAILED(hr = object_context_create(flags, bytestream, url, -1, 0, result, &context)))
+     {
+         IMFAsyncResult_Release(result);
+         return hr;

@@ -20,10 +20,10 @@ does not affect finite HLS media or other unknown-duration source types.
  1 file changed, 19 insertions(+), 8 deletions(-)
 
 diff --git a/dlls/mfmediaengine/main.c b/dlls/mfmediaengine/main.c
-index afbb6d1a..dfa6cc0b 100644
+index 855d40d5167d24a3a9899aedd80fa7b3e284fcfe..9369e6e4b69f9fcff370101ed661fd91e4d9cb5c 100644
 --- a/dlls/mfmediaengine/main.c
 +++ b/dlls/mfmediaengine/main.c
-@@ -209,6 +209,14 @@ struct media_engine
+@@ -223,6 +223,14 @@ struct media_engine
      CRITICAL_SECTION cs;
  };
  
@@ -38,7 +38,7 @@ index afbb6d1a..dfa6cc0b 100644
  static HRESULT media_engine_notify_live_event(struct media_engine *engine,
          MF_MEDIA_ENGINE_EVENT event, DWORD_PTR param1, DWORD param2)
  {
-@@ -1974,7 +1982,7 @@ static HRESULT WINAPI media_engine_GetBuffered(IMFMediaEngineEx *iface, IMFMedia
+@@ -2093,7 +2101,7 @@ static HRESULT WINAPI media_engine_GetBuffered(IMFMediaEngineEx *iface, IMFMedia
      struct media_engine *engine = impl_from_IMFMediaEngineEx(iface);
      static LONG live_buffered_count;
      unsigned int flags;
@@ -47,7 +47,7 @@ index afbb6d1a..dfa6cc0b 100644
      HRESULT hr;
  
      TRACE("%p, %p.\n", iface, range);
-@@ -1984,12 +1992,13 @@ static HRESULT WINAPI media_engine_GetBuffered(IMFMediaEngineEx *iface, IMFMedia
+@@ -2103,12 +2111,13 @@ static HRESULT WINAPI media_engine_GetBuffered(IMFMediaEngineEx *iface, IMFMedia
  
      EnterCriticalSection(&engine->cs);
  
@@ -62,9 +62,9 @@ index afbb6d1a..dfa6cc0b 100644
  
 -    duration = engine->duration;
      flags = engine->flags;
- 
-     LeaveCriticalSection(&engine->cs);
-@@ -2172,21 +2181,23 @@ static double WINAPI media_engine_GetDuration(IMFMediaEngineEx *iface)
+     if (isinf(duration))
+         impl_from_IMFMediaTimeRange(*range)->trace_live_buffered = TRUE;
+@@ -2527,21 +2536,23 @@ static double WINAPI media_engine_GetDuration(IMFMediaEngineEx *iface)
      struct media_engine *engine = impl_from_IMFMediaEngineEx(iface);
      static LONG live_duration_count;
      unsigned int flags;
