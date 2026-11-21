@@ -1,0 +1,5 @@
+Feature: valve-misc-6
+Description: Valve misc delta (wmvcore async-reader thread framework + wm_reader/wmvdceod/msauddecmft codecs). Ports 8 commits from ValveSoftware/wine proton_11.0 in file-chain dependency order (6968b29bd93 read-thread framework -> 53b4202f9ab DedicatedDeliveryThread -> d604f9a2f93 OP_START/OP_STOP thread control; c43ce30584b theora -> 7e37da5aba1 AV1; d96440f340d vorbis decoder -> 3315734a72e Opus; ed0f2cc6a91 wm_reader stream order), retargeted onto WineHQ base: 0001/0003 hunks re-anchored for the base CoInitializeEx lines in async_reader_callback_thread, rest verbatim. No monolith duplication (theora GUID here is wmvdecod-local; winegstreamer theora in valve-hack-winegstreamer is a different TU).
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: valve-graphics-wsi
