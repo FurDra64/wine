@@ -22,6 +22,22 @@ fragmented live MP4 playback to continue from FFmpeg's current position.
  dlls/winedmo/unix_demuxer.c | 28 ++++++++++++++++++++--------
  2 files changed, 26 insertions(+), 10 deletions(-)
 
+diff --git a/dlls/mf/scheme_handler.c b/dlls/mf/scheme_handler.c
+index d622cb9..94f5993 100644
+--- a/dlls/mf/scheme_handler.c
++++ b/dlls/mf/scheme_handler.c
+@@ -500,9 +500,9 @@ static HRESULT urlmon_stream_create(const WCHAR *url, DWORD flags, IMFByteStream
+         return E_INVALIDARG;
+ 
+     if ((!StrCmpNIW(url, L"http://", 7) || !StrCmpNIW(url, L"https://", 8))
+-            && StrStrW(url, L".googlevideo.com/videoplayback"))
++            && (StrStrW(url, L".googlevideo.com/videoplayback") || StrStrW(url, L".mp4")))
+     {
+-        /* The demuxer opens signed Googlevideo URLs directly through FFmpeg. */
++        /* The demuxer opens progressive HTTP media directly through FFmpeg. */
+         if (!(stream = SHCreateMemStream(NULL, 0)))
+             return E_OUTOFMEMORY;
+     }
 diff --git a/dlls/winedmo/media_source.c b/dlls/winedmo/media_source.c
 index edc311f..294d81a 100644
 --- a/dlls/winedmo/media_source.c

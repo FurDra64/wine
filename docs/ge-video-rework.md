@@ -66,3 +66,62 @@ These targets linked with x86-64 MinGW and system FFmpeg. Use `nm` on
 `winedmo.so` to confirm `fozdb_tag_head`, `discard_transcoded_streams`, and
 `mediaconv_demuxer_open`; `readelf -d` confirms no GStreamer dependency. Linking
 Wine's test binaries does not run the tests or validate playback in a game.
+
+## Review follow-up: source parity and ownership test
+
+Compare the 108 patch basenames with Proton `750f21ec35190c7a79165d592b019f6346f27c00`.
+For the 51 nonidentical patch files, compare signed changed lines by target
+path, then inspect the differing hunks at their cumulative pre/post images.
+An exact forward/reverse replay alone does not prove source parity.
+
+- **`0001`:** Restore negative-PTS clamping, DTS/PTS selection for DMO buffer
+  time, and the Opus/Vorbis 16-bit fallback. Keep the rb-tree FFmpeg converter
+  port. Local class names differ; the same registration GUIDs select winedmo
+  factories. WMA uses the retained implementation with a matching export and
+  three-argument caller.
+- **`0002`:** Preserve upstream `5fc7c7958be` asynchronous read-error
+  notification for virtual stream IDs. Select the queued error by ID without
+  indexing the physical stream array. Keep the current allocator helper
+  (`8946e6df7ed`) and EOS fallback. `93aa62fbee8` separately validates nonzero
+  IMF stream IDs in `mfsrcsnk`.
+- **`0004`, `0007`, `0009`:** Include ARGB32 in both vidreszr tables. Guard
+  FFmpeg's custom IO cast by its read callback. Install Quartz flush logic by
+  replacing the existing function. Reanchor `0009`'s discontinuity flag to
+  the restored `0001` timestamps.
+- **`0010`:** GE's `VFW_E_WRONG_STATE` differs from Wine `7c48881f4fe`, which
+  releases the wait and asserts `VFW_E_NOT_COMMITTED` in the Windows comparison
+  test. The HRESULTs are not equivalent.
+- **`0014`–`0017`, `0061`:** Keep WM stream selection, qasf pacing and initial
+  samples. `mediaconv_demuxer_close` handles custom AVIO cleanup and closes direct
+  input with `avformat_close_input`. Logging moved to `unixlib.c`; the resolver's
+  initial position is explicit in the revised object context.
+- **`0028`, `0040`, `0043`, `0059`, `0078`, `0102`:** Carry the Shcore delay
+  import, H.264 probe and display-FPS diagnostic, embedded test-sink interface,
+  and MP42 registrations. `0078` relies on the earlier custom-IO callback guard.
+- **`0006`, `0062` (progressive MP4), `0063`:** Remove the live GStreamer
+  latency override while leaving adjacent app hacks unchanged. Restore the
+  `.mp4` URLMon bypass for HTTP(S), not just Googlevideo. Drop only delivered
+  audio history; caller references, timestamps and pending transform drain stay
+  in place.
+
+The ownership test is in `dlls/mfreadwrite/tests/mfplat.c`, at
+`check_source_reader_sample_lifetime()`. Build and run it in the test runtime:
+
+```sh
+make dlls/mfreadwrite/x86_64-windows/mfreadwrite.dll \
+  dlls/mfreadwrite/tests/x86_64-windows/mfreadwrite_test.exe
+xvfb-run -a wine dlls/mfreadwrite/tests/x86_64-windows/mfreadwrite_test.exe mfplat
+```
+
+Check both `MF_SOURCE_READER_FIRST_AUDIO_STREAM` and
+`MF_SOURCE_READER_ANY_STREAM` results; success requires both refcount assertions
+actually to execute, not merely that the test launches.
+
+For a selective test with the system Wine runtime, load the locally compiled
+`mfreadwrite` from a disposable prefix; verify the actual module path with
+`WINEDEBUG=+loaddll`. The focused ownership harness reuses the same assertion
+and mock media source, after one warm-up read. It distinguishes exit 2 before
+0063 (both samples still have refcount 2) from exit 0 after the fix (730 checks,
+no failures or skips). The full `mfplat` test binary was also run with the
+candidate reader in the mixed host runtime; unrelated failures and a timeout
+prevent treating the full suite as green.

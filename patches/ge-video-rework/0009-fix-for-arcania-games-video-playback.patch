@@ -264,7 +264,7 @@ index eeb5bab24a9..c04ebe4446a 100644
 --- a/dlls/winedmo/main.c
 +++ b/dlls/winedmo/main.c
 @@ -300,6 +300,7 @@ static void buffer_unlock( DMO_OUTPUT_DATA_BUFFER *buffer, struct sample *sample
-     if ((buffer->rtTimestamp = sample->pts) != INT64_MIN) buffer->dwStatus |= DMO_OUTPUT_DATA_BUFFERF_TIME;
+     if ((buffer->rtTimestamp = buffer_time) != INT64_MIN) buffer->dwStatus |= DMO_OUTPUT_DATA_BUFFERF_TIME;
      if ((buffer->rtTimelength = sample->duration) != INT64_MIN) buffer->dwStatus |= DMO_OUTPUT_DATA_BUFFERF_TIMELENGTH;
      if (sample->flags & SAMPLE_FLAG_SYNC_POINT) buffer->dwStatus |= DMO_OUTPUT_DATA_BUFFERF_SYNCPOINT;
 +    if (sample->flags & SAMPLE_FLAG_DISCONTINUITY) buffer->dwStatus |= DMO_OUTPUT_DATA_BUFFERF_DISCONTINUITY;

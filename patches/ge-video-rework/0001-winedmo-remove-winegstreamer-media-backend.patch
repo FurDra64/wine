@@ -1827,7 +1827,7 @@ index 00000000000..09c7e9515a0
 +    return hr;
 +}
 diff --git a/dlls/winedmo/main.c b/dlls/winedmo/main.c
-index 671e632b16d..889376128d8 100644
+index 671e632b16d..5359fee29b7 100644
 --- a/dlls/winedmo/main.c
 +++ b/dlls/winedmo/main.c
 @@ -1,4 +1,7 @@
@@ -2022,7 +2022,23 @@ index 671e632b16d..889376128d8 100644
  
      if (FAILED(hr = IMediaBuffer_SetLength( buffer->pBuffer, status ? 0 : sample->size )))
          ERR( "Failed to update buffer length, hr %#lx\n", hr );
-@@ -159,6 +304,125 @@ static void buffer_unlock( DMO_OUTPUT_DATA_BUFFER *buffer, struct sample *sample
+@@ -145,20 +290,139 @@ static void buffer_unlock( DMO_OUTPUT_DATA_BUFFER *buffer, struct sample *sample
+     if (SUCCEEDED(hr = IMediaBuffer_QueryInterface( buffer->pBuffer, &IID_IMFSample, (void **)&object )))
+     {
+         if (sample->dts != INT64_MIN) IMFSample_SetUINT64( object, &MFSampleExtension_DecodeTimestamp, sample->dts );
+-        if (sample->pts != INT64_MIN) IMFSample_SetSampleTime( object, sample->pts );
++        if (sample_time != INT64_MIN) IMFSample_SetSampleTime( object, sample_time );
+         else if (sample->dts != INT64_MIN) IMFSample_SetSampleTime( object, sample->dts );
+         if (sample->duration != INT64_MIN) IMFSample_SetSampleDuration( object, sample->duration );
+         if (sample->flags & SAMPLE_FLAG_SYNC_POINT) IMFSample_SetUINT32( object, &MFSampleExtension_CleanPoint, 1 );
+         IMFSample_Release( object );
+     }
+ 
+-    if ((buffer->rtTimestamp = sample->pts) != INT64_MIN) buffer->dwStatus |= DMO_OUTPUT_DATA_BUFFERF_TIME;
++    if ((buffer->rtTimestamp = buffer_time) != INT64_MIN) buffer->dwStatus |= DMO_OUTPUT_DATA_BUFFERF_TIME;
+     if ((buffer->rtTimelength = sample->duration) != INT64_MIN) buffer->dwStatus |= DMO_OUTPUT_DATA_BUFFERF_TIMELENGTH;
+     if (sample->flags & SAMPLE_FLAG_SYNC_POINT) buffer->dwStatus |= DMO_OUTPUT_DATA_BUFFERF_SYNCPOINT;
+     if (sample->flags & SAMPLE_FLAG_INCOMPLETE) buffer->dwStatus |= DMO_OUTPUT_DATA_BUFFERF_INCOMPLETE;
  }
  
  
@@ -10265,10 +10281,18 @@ index 00000000000..fb983ee39da
 +
 +#endif /* HAVE_FFMPEG */
 diff --git a/dlls/winedmo/unix_media_type.c b/dlls/winedmo/unix_media_type.c
-index fe3060eaea7..33eb37dfd43 100644
 --- a/dlls/winedmo/unix_media_type.c
 +++ b/dlls/winedmo/unix_media_type.c
-@@ -227,9 +227,121 @@ static UINT video_format_tag_from_codec_id( enum AVCodecID id )
+@@ -86,6 +86,8 @@ static void wave_format_ex_init( const AVCodecParameters *params, WAVEFORMATEX *
+     format->nSamplesPerSec = params->sample_rate;
+     format->wBitsPerSample = av_get_bits_per_sample( params->codec_id );
+     if (!format->wBitsPerSample) format->wBitsPerSample = params->bits_per_coded_sample;
++    if (!format->wBitsPerSample && (params->codec_id == AV_CODEC_ID_OPUS || params->codec_id == AV_CODEC_ID_VORBIS))
++        format->wBitsPerSample = 16;
+     if (!(format->nBlockAlign = params->block_align)) format->nBlockAlign = format->wBitsPerSample * format->nChannels / 8;
+     if (!(format->nAvgBytesPerSec = params->bit_rate / 8)) format->nAvgBytesPerSec = format->nSamplesPerSec * format->nBlockAlign;
+ }
+@@ -227,9 +229,121 @@ static UINT video_format_tag_from_codec_id( enum AVCodecID id )
      return av_codec_get_tag( table, id );
  }
  

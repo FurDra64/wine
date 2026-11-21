@@ -66,16 +66,18 @@ diff --git a/dlls/winedmo/unix_demuxer.c b/dlls/winedmo/unix_demuxer.c
 index 57b534e2733..13522ff6c12 100644
 --- a/dlls/winedmo/unix_demuxer.c
 +++ b/dlls/winedmo/unix_demuxer.c
-@@ -1094,6 +1094,15 @@ NTSTATUS demuxer_stream_type( void *arg )
+@@ -1094,6 +1094,17 @@ NTSTATUS demuxer_stream_type( void *arg )
      TRACE( "demuxer %p, stream %u, stream %p, index %u\n", demuxer, params->stream, stream, stream->index );
  
      if (!sar.den || !sar.num) sar = stream->codecpar->sample_aspect_ratio;
 +    if (par->codec_type == AVMEDIA_TYPE_VIDEO && demuxer->duration == AV_NOPTS_VALUE)
 +    {
 +        AVRational guessed = av_guess_frame_rate( demuxer->ctx, stream, NULL );
++        AVRational display = get_video_display_frame_rate( demuxer->ctx, stream );
 +
-+        WARN( "Live video type: format %s, size %dx%d, avg %d/%d, guessed %d/%d, r %d/%d, time base %d/%d.\n",
++        WARN( "Live video type: format %s, size %dx%d, fps %d/%d, avg %d/%d, guessed %d/%d, r %d/%d, time base %d/%d.\n",
 +                demuxer->ctx->iformat ? demuxer->ctx->iformat->name : "(null)", par->width, par->height,
++                display.num, display.den,
 +                stream->avg_frame_rate.num, stream->avg_frame_rate.den, guessed.num, guessed.den,
 +                stream->r_frame_rate.num, stream->r_frame_rate.den, stream->time_base.num, stream->time_base.den );
 +    }
