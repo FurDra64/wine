@@ -22,6 +22,22 @@ fragmented live MP4 playback to continue from FFmpeg's current position.
  dlls/winedmo/unix_demuxer.c | 28 ++++++++++++++++++++--------
  2 files changed, 26 insertions(+), 10 deletions(-)
 
+diff --git a/dlls/mf/scheme_handler.c b/dlls/mf/scheme_handler.c
+index d622cb9..94f5993 100644
+--- a/dlls/mf/scheme_handler.c
++++ b/dlls/mf/scheme_handler.c
+@@ -500,9 +500,9 @@ static HRESULT urlmon_stream_create(const WCHAR *url, DWORD flags, IMFByteStream
+         return E_INVALIDARG;
+ 
+     if ((!StrCmpNIW(url, L"http://", 7) || !StrCmpNIW(url, L"https://", 8))
+-            && StrStrW(url, L".googlevideo.com/videoplayback"))
++            && (StrStrW(url, L".googlevideo.com/videoplayback") || StrStrW(url, L".mp4")))
+     {
+-        /* The demuxer opens signed Googlevideo URLs directly through FFmpeg. */
++        /* The demuxer opens progressive HTTP media directly through FFmpeg. */
+         if (!(stream = SHCreateMemStream(NULL, 0)))
+             return E_OUTOFMEMORY;
+     }
 diff --git a/dlls/winedmo/media_source.c b/dlls/winedmo/media_source.c
 index edc311f..294d81a 100644
 --- a/dlls/winedmo/media_source.c
@@ -38,18 +54,6 @@ index edc311f..294d81a 100644
      if (!(descriptors = calloc(source->stream_count, sizeof(*descriptors))))
          return E_OUTOFMEMORY;
  
-@@ -2797,9 +2801,9 @@ static HRESULT WINAPI scheme_handler_BeginCreateObject(IMFSchemeHandler *iface,
-         *cancel_cookie = NULL;
- 
-     if ((!wcsnicmp(url, L"http://", 7) || !wcsnicmp(url, L"https://", 8))
--            && wcsstr(url, L".googlevideo.com/videoplayback"))
-+            && (wcsstr(url, L".googlevideo.com/videoplayback") || wcsstr(url, L".mp4")))
-     {
--        /* The demuxer opens signed Googlevideo URLs directly through FFmpeg. */
-+        /* The demuxer opens progressive HTTP media directly through FFmpeg. */
-         if (FAILED(hr = CreateStreamOnHGlobal(0, TRUE, &stream)))
-             return hr;
-     }
 diff --git a/dlls/winedmo/unix_demuxer.c b/dlls/winedmo/unix_demuxer.c
 index aa8fe07..606e484 100644
 --- a/dlls/winedmo/unix_demuxer.c
@@ -111,10 +115,9 @@ index aa8fe07..606e484 100644
      }
      else
      {
-@@ -896,6 +901,7 @@ NTSTATUS demuxer_create( void *arg )
-         }
-         params->duration = get_context_duration( demuxer->ctx );
-     }
+@@ -818,5 +823,6 @@ NTSTATUS demuxer_create( void *arg )
+     if (params->duration == AV_NOPTS_VALUE) params->duration = get_context_duration( demuxer->ctx );
+ 
 +    if (demuxer->nonseekable) params->duration = AV_NOPTS_VALUE;
      demuxer->duration = params->duration;
      if (demuxer->duration == AV_NOPTS_VALUE && demuxer->ctx->start_time != AV_NOPTS_VALUE &&

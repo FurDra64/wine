@@ -26,10 +26,9 @@ orders, preservation of exact names, renaming real duplicates, and decoder
 lookup after removing the reader. The production change is unchanged.
 ---
 diff --git a/dlls/quartz/filtergraph.c b/dlls/quartz/filtergraph.c
-index 25a698c2..90ac51f7 100644
 --- a/dlls/quartz/filtergraph.c
 +++ b/dlls/quartz/filtergraph.c
-@@ -535,7 +535,7 @@ static ULONG WINAPI FilterGraph2_Release(IFilterGraph2 *iface)
+@@ -549,19 +549,39 @@
      return IUnknown_Release(graph->outer_unk);
  }
  
@@ -38,7 +37,12 @@ index 25a698c2..90ac51f7 100644
  {
      struct filter *filter;
  
-@@ -548,6 +548,26 @@ static IBaseFilter *find_filter_by_name(struct filter_graph *graph, const WCHAR
+     LIST_FOR_EACH_ENTRY(filter, &graph->filters, struct filter, entry)
+     {
+         if (!wcscmp(filter->name, name))
+             return filter->filter;
+     }
+ 
      return NULL;
  }
  
@@ -65,7 +69,7 @@ index 25a698c2..90ac51f7 100644
  static BOOL has_output_pins(IBaseFilter *filter)
  {
      IEnumPins *enumpins;
-@@ -645,7 +665,7 @@ static HRESULT WINAPI FilterGraph2_AddFilter(IFilterGraph2 *iface,
+@@ -662,7 +682,7 @@
          return E_OUTOFMEMORY;
      }
  
@@ -74,7 +78,7 @@ index 25a698c2..90ac51f7 100644
          duplicate_name = TRUE;
  
      if (!name || duplicate_name)
-@@ -659,7 +679,7 @@ static HRESULT WINAPI FilterGraph2_AddFilter(IFilterGraph2 *iface,
+@@ -676,7 +696,7 @@
  
              graph->name_index = (graph->name_index + 1) % 10000;
  
@@ -83,11 +87,11 @@ index 25a698c2..90ac51f7 100644
                  break;
          }
  
+
 diff --git a/dlls/quartz/tests/filtergraph.c b/dlls/quartz/tests/filtergraph.c
-index 2f49d1bf..df7cca7a 100644
 --- a/dlls/quartz/tests/filtergraph.c
 +++ b/dlls/quartz/tests/filtergraph.c
-@@ -3106,6 +3106,66 @@ static void test_add_remove_filter(void)
+@@ -3091,6 +3091,66 @@
      ok(filter.ref == 1, "Got outstanding refcount %ld.\n", filter.ref);
  }
  
@@ -154,7 +158,7 @@ index 2f49d1bf..df7cca7a 100644
  static HRESULT WINAPI test_connect_direct_Connect(IPin *iface, IPin *peer, const AM_MEDIA_TYPE *mt)
  {
      struct testpin *pin = impl_from_IPin(iface);
-@@ -7604,6 +7664,8 @@ START_TEST(filtergraph)
+@@ -7390,6 +7450,8 @@
      test_aggregation();
      test_control_delegation();
      test_add_remove_filter();

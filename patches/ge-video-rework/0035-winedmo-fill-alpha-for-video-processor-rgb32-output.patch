@@ -1,0 +1,61 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Proton GE Team <proton-ge@example.com>
+Date: Thu, 20 Aug 2026 00:15:00 -0600
+Subject: [PATCH] winedmo: Fill alpha for video processor RGB32 output.
+
+Media Engine inserts the video processor when decoded HLS video is converted
+from NV12 to ARGB32.  The decoder's opaque-alpha normalization therefore does
+not see the final frame.  The raw video transform can leave the high byte
+unset, causing an otherwise valid live-stream frame to be sampled as fully
+transparent.
+
+Normalize RGB32 and ARGB32 output produced by the video processor before it is
+copied or uploaded to the destination sample.
+---
+ dlls/msvproc/video_processor.c | 25 +++++++++++++++++++++++--
+ 1 file changed, 23 insertions(+), 2 deletions(-)
+
+diff --git a/dlls/msvproc/video_processor.c b/dlls/msvproc/video_processor.c
+--- a/dlls/msvproc/video_processor.c
++++ b/dlls/msvproc/video_processor.c
+@@ -338,6 +338,23 @@ struct video_processor
+     IMFVideoSampleAllocatorEx *allocator;
+ };
+ 
++static void fill_rgb32_output_alpha(AVFrame *frame)
++{
++    UINT x, y;
++
++    /* swscale leaves the high byte of packed RGB32 output unset. Texture renderers
++     * commonly interpret it as alpha, so normalize it to opaque. */
++    if (frame->format != AV_PIX_FMT_BGR0 && frame->format != AV_PIX_FMT_BGRA)
++        return;
++
++    for (y = 0; y < (UINT)frame->height; ++y)
++    {
++        uint8_t *row = frame->data[0] + (size_t)y * frame->linesize[0];
++        for (x = 0; x < (UINT)frame->width; ++x)
++            row[4 * x + 3] = 0xff;
++    }
++}
++
+ static HRESULT video_processor_process_frame(struct video_processor *impl, AVFrame *input_frame,
+         DMO_OUTPUT_DATA_BUFFER *output)
+ {
+@@ -357,8 +374,12 @@ static HRESULT video_processor_process_frame(struct video_processor *impl, AVFra
+ 
+     if ((ret = sws_scale_frame(impl->context, &output_frame, input_frame)) < 0)
+         ERR("error ret %d (%s)\n", -ret, av_err2str(ret));
+-    else if ((ret = size) < 0)
+-        ret = video_frame_copy_to_buffer(&output_frame, impl->output_format, buffer, pitch);
++    else
++    {
++        fill_rgb32_output_alpha(&output_frame);
++        if ((ret = size) < 0)
++            ret = video_frame_copy_to_buffer(&output_frame, impl->output_format, buffer, pitch);
++    }
+ 
+     av_buffer_unref(&buffer);
+ 
+-- 
+2.52.0

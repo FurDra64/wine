@@ -30,10 +30,9 @@ queue draining or another stream becoming empty between inspection and
 sleep, including single-stream playback and shutdown. No polling is needed.
 ---
 diff --git a/dlls/winedmo/winedmo_quartz_parser.c b/dlls/winedmo/winedmo_quartz_parser.c
-index db77d2bf..829d52f7 100644
 --- a/dlls/winedmo/winedmo_quartz_parser.c
 +++ b/dlls/winedmo/winedmo_quartz_parser.c
-@@ -166,6 +166,8 @@ static void dmo_packet_queue_flush(struct list *queue)
+@@ -167,6 +167,8 @@
  struct dmo_parser;
  
  #define DMO_PARSER_MAX_QUEUED_PACKETS 64
@@ -42,7 +41,7 @@ index db77d2bf..829d52f7 100644
  
  struct dmo_parser_source
  {
-@@ -178,9 +180,9 @@ struct dmo_parser_source
+@@ -179,9 +181,9 @@
  
      struct list packet_queue;
      unsigned int queued_packets;
@@ -53,7 +52,7 @@ index db77d2bf..829d52f7 100644
  
      /* held during IMemInputPin_Receive; seeking acquires to serialize */
      CRITICAL_SECTION flushing_cs;
-@@ -220,6 +222,8 @@ struct dmo_parser
+@@ -222,6 +224,8 @@
  
      CRITICAL_SECTION streaming_cs;
      CONDITION_VARIABLE flushing_cv;
@@ -62,7 +61,7 @@ index db77d2bf..829d52f7 100644
      bool streaming;
      bool sink_connected;
      bool flushing;
-@@ -235,11 +239,22 @@ struct dmo_parser
+@@ -237,11 +241,22 @@
      HRESULT (*source_get_media_type)(struct dmo_parser_source *pin, unsigned int index, AM_MEDIA_TYPE *mt);
  };
  
@@ -86,9 +85,9 @@ index db77d2bf..829d52f7 100644
  }
  
  /* ========================================================================
-@@ -552,14 +567,12 @@ static HRESULT WINAPI dmo_seeking_SetPositions(IMediaSeeking *iface,
-     filter->flushing = true;
+@@ -614,14 +629,12 @@
      filter->read_flushing = TRUE;
+     ++filter->read_flush_generation;
      LeaveCriticalSection(&filter->streaming_cs);
 +    dmo_parser_wake_demux_thread(filter);
      WakeAllConditionVariable(&filter->flushing_cv);
@@ -100,9 +99,9 @@ index db77d2bf..829d52f7 100644
 -        WakeConditionVariable(&filter->sources[i]->queue_space_cv);
 -    }
  
-     if (!(current_flags & AM_SEEKING_NoFlush))
-         dmo_parser_begin_downstream_flush(filter);
-@@ -603,7 +616,6 @@ static HRESULT WINAPI dmo_seeking_SetPositions(IMediaSeeking *iface,
+     /* Acquire per-pin flushing_cs to ensure no Receive is in progress. */
+     for (i = 0; i < filter->source_count; ++i)
+@@ -664,7 +677,6 @@
          {
              WakeConditionVariable(&filter->sources[i]->eos_cv);
              WakeConditionVariable(&filter->sources[i]->queue_cv);
@@ -110,7 +109,7 @@ index db77d2bf..829d52f7 100644
              LeaveCriticalSection(&filter->sources[i]->flushing_cs);
          }
      }
-@@ -612,6 +624,7 @@ static HRESULT WINAPI dmo_seeking_SetPositions(IMediaSeeking *iface,
+@@ -676,6 +688,7 @@
      filter->flushing = false;
      filter->read_flushing = FALSE;
      LeaveCriticalSection(&filter->streaming_cs);
@@ -118,7 +117,7 @@ index db77d2bf..829d52f7 100644
      WakeAllConditionVariable(&filter->flushing_cv);
  
      return S_OK;
-@@ -768,6 +781,7 @@ static HRESULT WINAPI dmo_stream_select_Enable(IAMStreamSelect *iface, LONG inde
+@@ -832,6 +845,7 @@
      if (!(flags & AMSTREAMSELECTENABLE_ENABLE))
      {
          pin->selected = false;
@@ -126,7 +125,7 @@ index db77d2bf..829d52f7 100644
          return S_OK;
      }
  
-@@ -782,6 +796,7 @@ static HRESULT WINAPI dmo_stream_select_Enable(IAMStreamSelect *iface, LONG inde
+@@ -846,6 +860,7 @@
      }
  
      pin->selected = true;
@@ -134,7 +133,7 @@ index db77d2bf..829d52f7 100644
      return S_OK;
  }
  
-@@ -924,7 +939,6 @@ static struct dmo_parser_source *create_dmo_pin(struct dmo_parser *filter,
+@@ -988,7 +1003,6 @@
      InitializeCriticalSectionEx(&pin->queue_cs, 0, RTL_CRITICAL_SECTION_FLAG_FORCE_DEBUG_INFO);
      pin->queue_cs.DebugInfo->Spare[0] = (DWORD_PTR)(__FILE__ ": pin.queue_cs");
      InitializeConditionVariable(&pin->queue_cv);
@@ -142,7 +141,7 @@ index db77d2bf..829d52f7 100644
  
      InitializeCriticalSectionEx(&pin->flushing_cs, 0, RTL_CRITICAL_SECTION_FLAG_FORCE_DEBUG_INFO);
      pin->flushing_cs.DebugInfo->Spare[0] = (DWORD_PTR)(__FILE__ ": pin.flushing_cs");
-@@ -954,29 +968,50 @@ static void dmo_parser_wait_for_seek_or_stop(struct dmo_parser *filter)
+@@ -1018,29 +1032,50 @@
  
  static void dmo_parser_wait_for_queue_space(struct dmo_parser *filter)
  {
@@ -170,7 +169,7 @@ index db77d2bf..829d52f7 100644
 +        LeaveCriticalSection(&filter->streaming_cs);
  
 -        EnterCriticalSection(&pin->queue_cs);
--        while (pin->queued_packets >= DMO_PARSER_MAX_QUEUED_PACKETS && !pin->eos)
+-        while (pin->queued_packets >= filter->max_queued_packets && !pin->eos)
 +        for (i = 0; i < filter->source_count; ++i)
          {
 -            bool wait;
@@ -189,7 +188,7 @@ index db77d2bf..829d52f7 100644
 +            if (!pin->eos)
 +            {
 +                starving |= !pin->queued_packets;
-+                if (pin->queued_packets >= DMO_PARSER_MAX_QUEUED_PACKETS)
++                if (pin->queued_packets >= filter->max_queued_packets)
 +                {
 +                    full = true;
 +                    limit_reached |= pin->queued_bytes >= DMO_PARSER_MAX_READAHEAD_BYTES;
@@ -209,7 +208,7 @@ index db77d2bf..829d52f7 100644
      }
  }
  
-@@ -1144,6 +1179,7 @@ static DWORD CALLBACK dmo_demux_thread(void *arg)
+@@ -1235,6 +1270,7 @@
          EnterCriticalSection(&pin->queue_cs);
          list_add_tail(&pin->packet_queue, &pkt->entry);
          ++pin->queued_packets;
@@ -217,7 +216,7 @@ index db77d2bf..829d52f7 100644
          LeaveCriticalSection(&pin->queue_cs);
          WakeConditionVariable(&pin->queue_cv);
      }
-@@ -1266,7 +1302,8 @@ static DWORD CALLBACK dmo_stream_thread(void *arg)
+@@ -1361,7 +1397,8 @@
          pkt = LIST_ENTRY(list_head(&pin->packet_queue), struct dmo_packet, entry);
          list_remove(&pkt->entry);
          --pin->queued_packets;
@@ -226,10 +225,10 @@ index db77d2bf..829d52f7 100644
 +        dmo_parser_wake_demux_thread(filter);
          LeaveCriticalSection(&pin->queue_cs);
  
-         /* Send the packet under flushing_cs (seeking blocks here). */
-@@ -1483,11 +1520,11 @@ static HRESULT dmo_parser_start_stream(struct strmbase_filter *iface, REFERENCE_
-     filter->flushing = false;
+         dmo_parser_source_wait_for_video_time(pin, pkt);
+@@ -1590,11 +1627,11 @@
      filter->read_flushing = FALSE;
+     filter->stream_start = start;
      LeaveCriticalSection(&filter->streaming_cs);
 +    dmo_parser_wake_demux_thread(filter);
  
@@ -240,15 +239,15 @@ index db77d2bf..829d52f7 100644
          WakeConditionVariable(&filter->sources[i]->eos_cv);
      }
      WakeAllConditionVariable(&filter->flushing_cv);
-@@ -1507,6 +1544,7 @@ static HRESULT dmo_parser_stop_stream(struct strmbase_filter *iface)
-     filter->flushing = true;
+@@ -1615,6 +1652,7 @@
      filter->read_flushing = TRUE;
+     ++filter->read_flush_generation;
      LeaveCriticalSection(&filter->streaming_cs);
 +    dmo_parser_wake_demux_thread(filter);
  
      dmo_parser_begin_downstream_flush(filter);
      WakeAllConditionVariable(&filter->flushing_cv);
-@@ -1514,7 +1552,6 @@ static HRESULT dmo_parser_stop_stream(struct strmbase_filter *iface)
+@@ -1622,7 +1660,6 @@
      for (i = 0; i < filter->source_count; ++i)
      {
          WakeConditionVariable(&filter->sources[i]->queue_cv);
@@ -256,15 +255,15 @@ index db77d2bf..829d52f7 100644
          WakeConditionVariable(&filter->sources[i]->eos_cv);
      }
  
-@@ -1547,6 +1584,7 @@ static HRESULT dmo_parser_cleanup_stream(struct strmbase_filter *iface)
-     filter->flushing = false;
+@@ -1656,6 +1693,7 @@
      filter->read_flushing = TRUE;
+     ++filter->read_flush_generation;
      LeaveCriticalSection(&filter->streaming_cs);
 +    dmo_parser_wake_demux_thread(filter);
      WakeAllConditionVariable(&filter->flushing_cv);
  
      /* Wake stream threads. */
-@@ -1554,7 +1592,6 @@ static HRESULT dmo_parser_cleanup_stream(struct strmbase_filter *iface)
+@@ -1663,7 +1701,6 @@
      {
          struct dmo_parser_source *pin = filter->sources[i];
          WakeConditionVariable(&pin->queue_cv);
@@ -272,7 +271,7 @@ index db77d2bf..829d52f7 100644
          WakeConditionVariable(&pin->eos_cv);
      }
  
-@@ -1577,7 +1614,6 @@ static HRESULT dmo_parser_cleanup_stream(struct strmbase_filter *iface)
+@@ -1686,7 +1723,6 @@
          {
              WakeConditionVariable(&pin->eos_cv);
              WakeConditionVariable(&pin->queue_cv);
@@ -280,7 +279,7 @@ index db77d2bf..829d52f7 100644
              WaitForSingleObject(pin->thread, INFINITE);
              CloseHandle(pin->thread);
              pin->thread = NULL;
-@@ -1741,6 +1777,7 @@ static HRESULT dmo_parser_alloc(struct dmo_parser **out)
+@@ -1851,6 +1887,7 @@
              RTL_CRITICAL_SECTION_FLAG_FORCE_DEBUG_INFO);
      filter->streaming_cs.DebugInfo->Spare[0] = (DWORD_PTR)(__FILE__ ": filter.streaming_cs");
      InitializeConditionVariable(&filter->flushing_cv);

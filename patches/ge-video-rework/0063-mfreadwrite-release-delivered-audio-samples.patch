@@ -25,8 +25,135 @@ References:
 https://github.com/GloriousEggroll/proton-ge-custom/issues/795
 https://learn.microsoft.com/en-us/windows/win32/api/mfreadwrite/nf-mfreadwrite-imfsourcereader-readsample
 
-Rebased 2026-10-30: drop reader.c hunks (already upstream).
+Retarget reader.c after 0057: retain transform draining and delivered timestamps.
 ---
+diff --git a/dlls/mfreadwrite/reader.c b/dlls/mfreadwrite/reader.c
+index eee5bbe..9e4608e 100644
+--- a/dlls/mfreadwrite/reader.c
++++ b/dlls/mfreadwrite/reader.c
+@@ -88,12 +88,6 @@ struct transform_entry
+     IMFMediaType *allocator_type;
+ };
+ 
+-struct retained_audio_sample
+-{
+-    struct list entry;
+-    IMFSample *sample;
+-};
+-
+ struct media_stream
+ {
+     IMFMediaStream *stream;
+@@ -118,7 +112,6 @@ struct media_stream
+     struct transform_entry *draining_transform;
+     struct transform_entry *draining_sample_transform;
+     IMFSample *draining_sample;
+-    struct list retained_audio_samples;
+     struct source_reader *reader;
+ };
+ 
+@@ -256,25 +249,12 @@ static void transform_entry_destroy(struct transform_entry *entry)
+     free(entry);
+ }
+ 
+-static void media_stream_release_retained_audio_samples(struct media_stream *stream)
+-{
+-    struct retained_audio_sample *sample, *next;
+-
+-    LIST_FOR_EACH_ENTRY_SAFE(sample, next, &stream->retained_audio_samples, struct retained_audio_sample, entry)
+-    {
+-        list_remove(&sample->entry);
+-        IMFSample_Release(sample->sample);
+-        free(sample);
+-    }
+-}
+-
+ static void media_stream_destroy(struct media_stream *stream)
+ {
+     struct transform_entry *entry, *next;
+ 
+     if (stream->draining_sample)
+         IMFSample_Release(stream->draining_sample);
+-    media_stream_release_retained_audio_samples(stream);
+ 
+     LIST_FOR_EACH_ENTRY_SAFE(entry, next, &stream->transforms, struct transform_entry, entry)
+     {
+@@ -522,7 +502,6 @@ static void source_reader_reset_stream_timing(struct media_stream *stream)
+     stream->timestamp_adjust = 0;
+     stream->have_sample_ts = FALSE;
+     stream->is_new_stream = TRUE;
+-    media_stream_release_retained_audio_samples(stream);
+ }
+ 
+ static void source_reader_adjust_queued_stream_timestamps(struct source_reader *reader, struct media_stream *stream,
+@@ -547,25 +526,6 @@ static void source_reader_adjust_queued_stream_timestamps(struct source_reader *
+ }
+ 
+ static BOOL source_reader_stream_is_video(struct media_stream *stream);
+-static BOOL source_reader_stream_is_audio(struct media_stream *stream);
+-
+-static void source_reader_retain_delivered_sample(struct media_stream *stream, IMFSample *sample)
+-{
+-    struct retained_audio_sample *retained_sample;
+-
+-    if (!sample || !source_reader_stream_is_audio(stream))
+-        return;
+-
+-    if (!(retained_sample = calloc(1, sizeof(*retained_sample))))
+-    {
+-        WARN("Failed to retain delivered audio sample.\n");
+-        return;
+-    }
+-
+-    retained_sample->sample = sample;
+-    IMFSample_AddRef(retained_sample->sample);
+-    list_add_tail(&stream->retained_audio_samples, &retained_sample->entry);
+-}
+ 
+ static void source_reader_copy_sample_buffer(IMFSample *src, IMFSample *dst)
+ {
+@@ -2347,11 +2307,7 @@ static BOOL source_reader_get_read_result(struct source_reader *reader, struct m
+         if (*sample)
+         {
+             IMFSample_AddRef(*sample);
+-        }
+-        if (*sample)
+-        {
+             stream->delivered_sample_ts = *timestamp;
+-            source_reader_retain_delivered_sample(stream, *sample);
+         }
+ 
+         if ((*stream_flags & MF_SOURCE_READERF_ENDOFSTREAM) && !*sample)
+@@ -2396,12 +2352,10 @@ static BOOL source_reader_get_read_result_any(struct source_reader *reader, DWOR
+         *stream_flags = response->stream_flags;
+         *timestamp = response->timestamp;
+         *sample = response->sample;
+-        if (*sample)
+-            IMFSample_AddRef(*sample);
+         if (*sample)
+         {
++            IMFSample_AddRef(*sample);
+             reader->streams[*stream_index].delivered_sample_ts = *timestamp;
+-            source_reader_retain_delivered_sample(&reader->streams[*stream_index], *sample);
+         }
+ 
+         if ((*stream_flags & MF_SOURCE_READERF_ENDOFSTREAM) && !*sample)
+@@ -2556,7 +2510,6 @@ static void source_reader_flush_stream(struct source_reader *reader, DWORD strea
+             WARN("Failed to drain pending samples, hr %#lx.\n", hr);
+     }
+ 
+-    media_stream_release_retained_audio_samples(stream);
+     stream->requests = 0;
+     stream->flags &= ~(STREAM_FLAG_SAMPLE_REQUESTED | STREAM_FLAG_EOS_REPORTED);
+ }
+@@ -4134,7 +4087,6 @@ static HRESULT create_source_reader_from_source(IMFMediaSource *source, IMFAttri
+         BOOL selected;
+ 
+         list_init(&object->streams[i].transforms);
+-        list_init(&object->streams[i].retained_audio_samples);
+ 
+         if (FAILED(hr = MFCreateMediaType(&object->streams[i].current)))
+             break;
 diff --git a/dlls/mfreadwrite/tests/mfplat.c b/dlls/mfreadwrite/tests/mfplat.c
 --- a/dlls/mfreadwrite/tests/mfplat.c
 +++ b/dlls/mfreadwrite/tests/mfplat.c

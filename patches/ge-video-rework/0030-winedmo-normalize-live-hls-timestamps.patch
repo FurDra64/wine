@@ -20,18 +20,18 @@ base preserves both monotonic playback and the audio/video offset.
  1 file changed, 19 insertions(+)
 
 diff --git a/dlls/winedmo/unix_demuxer.c b/dlls/winedmo/unix_demuxer.c
-index c12a80eaee3..b34bccf43cc 100644
+index c8bff89f76198aed44097e12bbb05411db8fa138..a330a1dcc7b0a5edadea7b30e8dd2df8832a9bae 100644
 --- a/dlls/winedmo/unix_demuxer.c
 +++ b/dlls/winedmo/unix_demuxer.c
-@@ -54,6 +54,7 @@ struct demuxer
+@@ -55,6 +55,7 @@ struct demuxer
      struct stream_context *stream_context;
-     struct stream *streams;
+     BOOL mediaconv;
      INT64 duration;
 +    INT64 live_timestamp_base;
      BOOL direct_url;
  
      AVPacket *last_packet; /* last read packet */
-@@ -203,6 +204,17 @@ static void normalize_stream_timestamps( struct stream *stream, struct sample *s
+@@ -204,6 +205,17 @@ static void normalize_stream_timestamps( struct stream *stream, struct sample *s
          sample->dts = max( 0, sample->dts - stream->timestamp_base );
  }
  
@@ -49,17 +49,18 @@ index c12a80eaee3..b34bccf43cc 100644
  static void fixup_asf_mpeg4_timestamps( const AVFormatContext *ctx, AVStream *avstream,
          struct stream *stream, struct sample *sample )
  {
-@@ -813,6 +825,7 @@ NTSTATUS demuxer_create( void *arg )
+@@ -727,6 +739,8 @@ NTSTATUS demuxer_create( void *arg )
+         ext = "";
  
      if (!(demuxer = calloc( 1, sizeof(*demuxer) ))) return STATUS_NO_MEMORY;
-     demuxer->stream_context = params->context;
 +    demuxer->live_timestamp_base = AV_NOPTS_VALUE;
- 
++
      if (!(demuxer->ctx = avformat_alloc_context())) goto failed;
      if (is_http_hls_url( params->url ) || is_googlevideo_url( params->url ))
-@@ -864,6 +877,11 @@ NTSTATUS demuxer_create( void *arg )
-         params->duration = get_context_duration( demuxer->ctx );
-     }
+     {
+@@ -796,6 +810,11 @@ NTSTATUS demuxer_create( void *arg )
+     if (params->duration == AV_NOPTS_VALUE) params->duration = get_context_duration( demuxer->ctx );
+ 
      demuxer->duration = params->duration;
 +    if (demuxer->duration == AV_NOPTS_VALUE && demuxer->ctx->start_time != AV_NOPTS_VALUE &&
 +        strstr( format->name, "hls" ))
@@ -69,7 +70,7 @@ index c12a80eaee3..b34bccf43cc 100644
      if (!(demuxer->streams = calloc( demuxer->ctx->nb_streams, sizeof(*demuxer->streams) ))) goto failed;
      if (demuxer_create_streams( demuxer )) goto failed;
  
-@@ -1003,6 +1021,7 @@ NTSTATUS demuxer_read( void *arg )
+@@ -942,6 +961,7 @@ NTSTATUS demuxer_read( void *arg )
      sample->pts = get_stream_time( stream, packet->pts );
      sample->dts = get_stream_time( stream, packet->dts );
      sample->duration = get_stream_time( stream, packet->duration );
@@ -77,5 +78,3 @@ index c12a80eaee3..b34bccf43cc 100644
      fixup_asf_mpeg4_timestamps( demuxer->ctx, stream, demuxer_stream, sample );
      if (demuxer->ctx->iformat && strstr( demuxer->ctx->iformat->name, "asf" ))
          normalize_stream_timestamps( demuxer_stream, sample );
--- 
-2.52.0

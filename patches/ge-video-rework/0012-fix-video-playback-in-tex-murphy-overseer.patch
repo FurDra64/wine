@@ -23,14 +23,15 @@ Subject: [PATCH] fix video playback in tex murphy: overseer
 diff --git a/dlls/quartz/Makefile.in b/dlls/quartz/Makefile.in
 --- a/dlls/quartz/Makefile.in
 +++ b/dlls/quartz/Makefile.in
-@@ -1,6 +1,6 @@
+@@ -1,7 +1,7 @@
  MODULE       = quartz.dll
  IMPORTLIB    = quartz
--IMPORTS      = strmiids dxguid strmbase uuid dsound msacm32 msvfw32 ole32 oleaut32 rpcrt4 user32 gdi32 advapi32 winmm msvcrt
-+IMPORTS      = strmiids dxguid strmbase dmoguids uuid dsound msacm32 msvfw32 ole32 oleaut32 rpcrt4 user32 gdi32 advapi32 winmm msvcrt
+-IMPORTS      = $(FFMPEG_PE_LIBS) strmiids dxguid strmbase uuid dsound msacm32 msvfw32 ole32 oleaut32 rpcrt4 user32 gdi32 advapi32 winmm
++IMPORTS      = $(FFMPEG_PE_LIBS) strmiids dxguid strmbase dmoguids uuid dsound msacm32 msvfw32 ole32 oleaut32 rpcrt4 user32 gdi32 advapi32 winmm
+ EXTRAINCL    = $(FFMPEG_PE_CFLAGS)
  DELAYIMPORTS = ddraw
  
- SOURCES = \
+ VER_PRODUCTVERSION  = 6,5,1,902
 diff --git a/dlls/quartz/dsoundrender.c b/dlls/quartz/dsoundrender.c
 index 75037a85aff..96eb5db6101 100644
 --- a/dlls/quartz/dsoundrender.c
@@ -976,30 +977,28 @@ diff --git a/dlls/winedmo/unix_media_type.c b/dlls/winedmo/unix_media_type.c
 index 913859c76e5..cd1b9223171 100644
 --- a/dlls/winedmo/unix_media_type.c
 +++ b/dlls/winedmo/unix_media_type.c
-@@ -187,6 +187,7 @@ static NTSTATUS audio_format_from_codec_params( const AVCodecParameters *params,
+@@ -184,10 +184,12 @@ static NTSTATUS audio_format_from_codec_params( const AVCodecParameters *params,
+ #endif
  
      format_tag = wave_format_tag_from_codec_id( params->codec_id );
-     if (params->codec_id == AV_CODEC_ID_OPUS) format_tag = WAVE_FORMAT_OPUS;
-+    else if (params->codec_id == AV_CODEC_ID_AC3) format_tag = WAVE_FORMAT_EXTENSIBLE;
-     /* Big-endian PCM in native Windows is given the usual WAVE_FORMAT_PCM tag. */
-     else if (params->codec_id == AV_CODEC_ID_PCM_S16BE) format_tag = WAVE_FORMAT_PCM;
- 
-@@ -196,6 +197,7 @@ static NTSTATUS audio_format_from_codec_params( const AVCodecParameters *params,
++    if (params->codec_id == AV_CODEC_ID_AC3) format_tag = WAVE_FORMAT_EXTENSIBLE;
+     if (format_tag == WAVE_FORMAT_EXTENSIBLE || format_tag >> 16 || (channels > 2 && channel_mask != 0))
+     {
          GUID subtype = MFAudioFormat_Base;
- 
-         if (params->codec_id == AV_CODEC_ID_VORBIS) subtype = MFAudioFormat_Vorbis;
-+        else if (params->codec_id == AV_CODEC_ID_AC3) subtype = MFAudioFormat_Dolby_AC3;
-         else subtype.Data1 = format_tag;
- 
+-        subtype.Data1 = format_tag;
++        if (params->codec_id == AV_CODEC_ID_AC3) subtype = MFAudioFormat_Dolby_AC3;
++        else subtype.Data1 = format_tag;
          wave_format_size += sizeof(WAVEFORMATEXTENSIBLE) - sizeof(WAVEFORMATEX);
-@@ -361,6 +363,7 @@ static void mf_video_format_init( const AVCodecParameters *params, MFVIDEOFORMAT
+         return wave_format_extensible_from_codec_params( params, format, format_size, wave_format_size,
+                                                          &subtype, channel_mask );
+@@ -239,6 +239,7 @@ static void mf_video_format_init( const AVCodecParameters *params, MFVIDEOFORMAT
      {
          format->guidFormat = MFVideoFormat_Base;
          if (params->codec_id == AV_CODEC_ID_MPEG1VIDEO) format->guidFormat = MEDIASUBTYPE_MPEG1Payload;
 +        else if (params->codec_id == AV_CODEC_ID_MPEG2VIDEO) format->guidFormat = MFVideoFormat_MPEG2;
          else if (params->codec_id == AV_CODEC_ID_H264) format->guidFormat.Data1 = MFVideoFormat_H264.Data1;
          else if (params->codec_id == AV_CODEC_ID_VP9) format->guidFormat.Data1 = MFVideoFormat_VP90.Data1;
-         else if (params->codec_id == AV_CODEC_ID_AV1) format->guidFormat.Data1 = MFVideoFormat_AV1.Data1;
+         else if (params->codec_tag) format->guidFormat.Data1 = params->codec_tag;
 diff --git a/dlls/winedmo/unix_transform.c b/dlls/winedmo/unix_transform.c
 index bfbc59761c2..c39f7dc94f7 100644
 --- a/dlls/winedmo/unix_transform.c

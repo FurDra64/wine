@@ -20,11 +20,11 @@ existing fast path.
  1 file changed, 24 insertions(+), 1 deletion(-)
 
 diff --git a/dlls/winedmo/unix_demuxer.c b/dlls/winedmo/unix_demuxer.c
-index d5b60b35..ebe2eb78 100644
+index f36b00c6f61..40fdec573e4 100644
 --- a/dlls/winedmo/unix_demuxer.c
 +++ b/dlls/winedmo/unix_demuxer.c
-@@ -327,6 +327,28 @@ static INT64 get_video_frame_duration( const AVFormatContext *ctx, AVStream *avs
-     return av_rescale_q( 1, av_inv_q( frame_rate ), (AVRational){1, 10000000} );
+@@ -402,6 +402,28 @@ static BOOL context_has_video_missing_frame_rate( const AVFormatContext *ctx )
+     return FALSE;
  }
  
 +static BOOL context_has_h264_codec_aligned_dimensions( const AVFormatContext *ctx )
@@ -51,8 +51,8 @@ index d5b60b35..ebe2eb78 100644
 +
  static INT64 get_raw_mpegvideo_duration( const AVFormatContext *ctx )
  {
-     struct stream_context *context = ctx->pb ? ctx->pb->opaque : NULL;
-@@ -638,6 +660,11 @@ NTSTATUS demuxer_create( void *arg )
+     struct stream_context *context = ctx->pb && ctx->pb->read_packet == unix_read_callback ? ctx->pb->opaque : NULL;
+@@ -786,6 +808,11 @@ NTSTATUS demuxer_create( void *arg )
          needs_find_stream_info = TRUE;
      }
  

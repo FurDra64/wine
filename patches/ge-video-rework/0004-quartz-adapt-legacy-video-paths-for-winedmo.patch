@@ -68,7 +68,7 @@ creation path introduced by Nello De Gregoris in Wine commit
  34 files changed, 865 insertions(+), 222 deletions(-)
 
 diff --git a/dlls/amstream/ddrawstream.c b/dlls/amstream/ddrawstream.c
-index 066ef72b..e1ad4367 100644
+index 066ef72b1f9..e1ad4367709 100644
 --- a/dlls/amstream/ddrawstream.c
 +++ b/dlls/amstream/ddrawstream.c
 @@ -751,6 +751,7 @@ static HRESULT WINAPI ddraw_IDirectDrawMediaStream_SetFormat(IDirectDrawMediaStr
@@ -130,7 +130,7 @@ index 066ef72b..e1ad4367 100644
          FreeMediaType(&new_mt);
      }
 diff --git a/dlls/ddraw/ddraw.c b/dlls/ddraw/ddraw.c
-index 8814c324..e82c19a1 100644
+index b7ed9cbe87b..95548bcc836 100644
 --- a/dlls/ddraw/ddraw.c
 +++ b/dlls/ddraw/ddraw.c
 @@ -2189,6 +2189,56 @@ static HRESULT WINAPI ddraw1_FlipToGDISurface(IDirectDraw *iface)
@@ -216,10 +216,10 @@ index 8814c324..e82c19a1 100644
  }
  
 diff --git a/dlls/ddraw/ddraw_private.h b/dlls/ddraw/ddraw_private.h
-index 2743ce8d..1de9f104 100644
+index 644ebb4eb57..63b53c42b6e 100644
 --- a/dlls/ddraw/ddraw_private.h
 +++ b/dlls/ddraw/ddraw_private.h
-@@ -110,6 +110,7 @@ struct ddraw
+@@ -113,6 +113,7 @@ struct ddraw
  
      /* DirectDraw things, which are not handled by WineD3D */
      DWORD                   cooperative_level;
@@ -228,10 +228,10 @@ index 2743ce8d..1de9f104 100644
      /* D3D things */
      HWND                    d3d_window;
 diff --git a/dlls/ddraw/surface.c b/dlls/ddraw/surface.c
-index b9300a98..d22e002f 100644
+index b0fd7026cd8..12e746ae9d8 100644
 --- a/dlls/ddraw/surface.c
 +++ b/dlls/ddraw/surface.c
-@@ -4609,14 +4609,14 @@ static HRESULT WINAPI DECLSPEC_HOTPATCH ddraw_surface7_BltFast(IDirectDrawSurfac
+@@ -4613,14 +4613,14 @@ static HRESULT WINAPI DECLSPEC_HOTPATCH ddraw_surface7_BltFast(IDirectDrawSurfac
          return DDERR_BLTFASTCANTCLIP;
      }
  
@@ -249,7 +249,7 @@ index b9300a98..d22e002f 100644
      wined3d_mutex_unlock();
  
 diff --git a/dlls/ir50_32/Makefile.in b/dlls/ir50_32/Makefile.in
-index b53d8d03..07d5697c 100644
+index b53d8d0353a..07d5697c59a 100644
 --- a/dlls/ir50_32/Makefile.in
 +++ b/dlls/ir50_32/Makefile.in
 @@ -1,5 +1,6 @@
@@ -261,7 +261,7 @@ index b53d8d03..07d5697c 100644
  SOURCES = \
  	ir50.c \
 diff --git a/dlls/ir50_32/ir50.c b/dlls/ir50_32/ir50.c
-index 4959fd6b..bce5d341 100644
+index 4959fd6b44f..bce5d341be5 100644
 --- a/dlls/ir50_32/ir50.c
 +++ b/dlls/ir50_32/ir50.c
 @@ -57,7 +57,7 @@ IV50_Open( const ICINFO *icinfo )
@@ -274,7 +274,7 @@ index 4959fd6b..bce5d341 100644
  
      return (LRESULT)decoder;
 diff --git a/dlls/ir50_32/ir50_private.h b/dlls/ir50_32/ir50_private.h
-index c0b96bc1..8baf7492 100644
+index c0b96bc17e4..8baf7492738 100644
 --- a/dlls/ir50_32/ir50_private.h
 +++ b/dlls/ir50_32/ir50_private.h
 @@ -31,6 +31,6 @@
@@ -286,7 +286,7 @@ index c0b96bc1..8baf7492 100644
  
  #endif /* __IR50_PRIVATE_H */
 diff --git a/dlls/msmpeg2vdec/Makefile.in b/dlls/msmpeg2vdec/Makefile.in
-index efbcb6aa..a6284aaf 100644
+index efbcb6aa238..a6284aaf5c6 100644
 --- a/dlls/msmpeg2vdec/Makefile.in
 +++ b/dlls/msmpeg2vdec/Makefile.in
 @@ -1,5 +1,5 @@
@@ -297,7 +297,7 @@ index efbcb6aa..a6284aaf 100644
  
  SOURCES = \
 diff --git a/dlls/msmpeg2vdec/msmpeg2vdec.c b/dlls/msmpeg2vdec/msmpeg2vdec.c
-index 2bb07296..814aeed4 100644
+index 2bb07296dbf..814aeed419c 100644
 --- a/dlls/msmpeg2vdec/msmpeg2vdec.c
 +++ b/dlls/msmpeg2vdec/msmpeg2vdec.c
 @@ -18,18 +18,25 @@
@@ -382,7 +382,7 @@ index 2bb07296..814aeed4 100644
      return S_OK;
  }
 diff --git a/dlls/msmpeg2vdec/msmpeg2vdec.idl b/dlls/msmpeg2vdec/msmpeg2vdec.idl
-index f2ddcdef..bc16e497 100644
+index f2ddcdef819..bc16e49773e 100644
 --- a/dlls/msmpeg2vdec/msmpeg2vdec.idl
 +++ b/dlls/msmpeg2vdec/msmpeg2vdec.idl
 @@ -23,3 +23,9 @@
@@ -396,7 +396,7 @@ index f2ddcdef..bc16e497 100644
 +]
 +coclass CMPEG4Part2DecoderMFT {}
 diff --git a/dlls/qasf/dmowrapper.c b/dlls/qasf/dmowrapper.c
-index f6e586d0..b2ed0a9c 100644
+index f6e586d0235..4c167f10e05 100644
 --- a/dlls/qasf/dmowrapper.c
 +++ b/dlls/qasf/dmowrapper.c
 @@ -32,14 +32,18 @@ struct buffer
@@ -479,21 +479,16 @@ index f6e586d0..b2ed0a9c 100644
          }
          else
              filter->buffers[i].pBuffer = NULL;
-@@ -271,26 +262,34 @@ static HRESULT process_output(struct dmo_wrapper *filter, IMediaObject *dmo)
- {
+@@ -272,25 +263,36 @@ static HRESULT process_output(struct dmo_wrapper *filter, IMediaObject *dmo)
      DMO_OUTPUT_DATA_BUFFER *buffers = filter->buffers;
      HRESULT hr = S_OK;
--    DWORD status = 0, i;
+     DWORD status = 0, i;
 -    BOOL more_data;
-+    DWORD status, i;
 +    BOOL got_output, audio_only;
- 
--    do
++
 +    audio_only = TRUE;
 +    for (i = 0; i < filter->source_count; ++i)
-     {
--        HRESULT process_hr;
--        more_data = FALSE;
++    {
 +        if (filter->sources[i].pin.pin.peer
 +                && !IsEqualGUID(&filter->sources[i].pin.pin.mt.majortype, &MEDIATYPE_Audio))
 +        {
@@ -502,18 +497,20 @@ index f6e586d0..b2ed0a9c 100644
 +        }
 +    }
  
+     do
+     {
+         HRESULT process_hr;
+-        more_data = FALSE;
+ 
 -        if (FAILED(hr = get_output_samples(filter, dmo)))
-+    do
-+    {
 +        if (FAILED(hr = get_output_samples(filter)))
              return hr;
  
--        process_hr = IMediaObject_ProcessOutput(dmo, DMO_PROCESS_OUTPUT_DISCARD_WHEN_NO_BUFFER,
-+        hr = IMediaObject_ProcessOutput(dmo, DMO_PROCESS_OUTPUT_DISCARD_WHEN_NO_BUFFER,
+         process_hr = IMediaObject_ProcessOutput(dmo, DMO_PROCESS_OUTPUT_DISCARD_WHEN_NO_BUFFER,
                  filter->source_count, buffers, &status);
--        TRACE("ProcessOutput() returned %#lx.\n", process_hr);
+         TRACE("ProcessOutput() returned %#lx.\n", process_hr);
 -        if (FAILED(process_hr))
-+        if (hr != S_OK)
++        if (process_hr != S_OK)
          {
              release_output_samples(filter);
              break;
@@ -523,7 +520,7 @@ index f6e586d0..b2ed0a9c 100644
          for (i = 0; i < filter->source_count; ++i)
          {
              IMediaSample *sample = filter->sources[i].buffer.sample;
-@@ -300,8 +299,8 @@ static HRESULT process_output(struct dmo_wrapper *filter, IMediaObject *dmo)
+@@ -300,8 +302,8 @@ static HRESULT process_output(struct dmo_wrapper *filter, IMediaObject *dmo)
  
              IMediaSample_SetActualDataLength(sample, filter->sources[i].buffer.len);
  
@@ -534,7 +531,7 @@ index f6e586d0..b2ed0a9c 100644
  
              if (buffers[i].dwStatus & DMO_OUTPUT_DATA_BUFFERF_TIME)
              {
-@@ -317,8 +316,17 @@ static HRESULT process_output(struct dmo_wrapper *filter, IMediaObject *dmo)
+@@ -317,8 +319,17 @@ static HRESULT process_output(struct dmo_wrapper *filter, IMediaObject *dmo)
              if (buffers[i].dwStatus & DMO_OUTPUT_DATA_BUFFERF_SYNCPOINT)
                  IMediaSample_SetSyncPoint(sample, TRUE);
  
@@ -552,7 +549,7 @@ index f6e586d0..b2ed0a9c 100644
                  if ((hr = IMemInputPin_Receive(filter->sources[i].pin.pMemInputPin, sample)) != S_OK)
                  {
                      WARN("Downstream sink returned %#lx.\n", hr);
-@@ -329,7 +337,10 @@ static HRESULT process_output(struct dmo_wrapper *filter, IMediaObject *dmo)
+@@ -329,7 +340,13 @@ static HRESULT process_output(struct dmo_wrapper *filter, IMediaObject *dmo)
          }
  
          release_output_samples(filter);
@@ -561,10 +558,13 @@ index f6e586d0..b2ed0a9c 100644
 +        if (audio_only && !got_output)
 +            break;
 +    } while (1);
++
++    if (hr == S_FALSE)
++        return S_OK;
  
      return hr;
  }
-@@ -419,6 +430,23 @@ static HRESULT dmo_wrapper_sink_eos(struct strmbase_sink *iface)
+@@ -419,6 +436,23 @@ static HRESULT dmo_wrapper_sink_eos(struct strmbase_sink *iface)
      return hr;
  }
  
@@ -588,7 +588,7 @@ index f6e586d0..b2ed0a9c 100644
  static HRESULT dmo_wrapper_end_flush(struct strmbase_sink *iface)
  {
      struct dmo_wrapper *filter = impl_from_strmbase_filter(iface->pin.filter);
-@@ -441,6 +469,30 @@ static HRESULT dmo_wrapper_end_flush(struct strmbase_sink *iface)
+@@ -441,6 +475,30 @@ static HRESULT dmo_wrapper_end_flush(struct strmbase_sink *iface)
      return hr;
  }
  
@@ -619,7 +619,7 @@ index f6e586d0..b2ed0a9c 100644
  static const struct strmbase_sink_ops sink_ops =
  {
      .base.pin_query_interface = dmo_wrapper_sink_query_interface,
-@@ -449,7 +501,9 @@ static const struct strmbase_sink_ops sink_ops =
+@@ -449,7 +507,9 @@ static const struct strmbase_sink_ops sink_ops =
      .sink_connect = dmo_wrapper_sink_connect,
      .sink_disconnect = dmo_wrapper_sink_disconnect,
      .sink_eos = dmo_wrapper_sink_eos,
@@ -629,7 +629,7 @@ index f6e586d0..b2ed0a9c 100644
      .pfnReceive = dmo_wrapper_sink_Receive,
  };
  
-@@ -458,6 +512,11 @@ static inline struct dmo_wrapper_source *impl_source_from_strmbase_pin(struct st
+@@ -458,6 +518,11 @@ static inline struct dmo_wrapper_source *impl_source_from_strmbase_pin(struct st
      return CONTAINING_RECORD(iface, struct dmo_wrapper_source, pin.pin);
  }
  
@@ -641,7 +641,7 @@ index f6e586d0..b2ed0a9c 100644
  static HRESULT dmo_wrapper_source_query_interface(struct strmbase_pin *iface, REFIID iid, void **out)
  {
      struct dmo_wrapper_source *pin = impl_source_from_strmbase_pin(iface);
-@@ -466,6 +525,8 @@ static HRESULT dmo_wrapper_source_query_interface(struct strmbase_pin *iface, RE
+@@ -466,6 +531,8 @@ static HRESULT dmo_wrapper_source_query_interface(struct strmbase_pin *iface, RE
          *out = &pin->passthrough.IMediaPosition_iface;
      else if (IsEqualGUID(iid, &IID_IMediaSeeking))
          *out = &pin->passthrough.IMediaSeeking_iface;
@@ -650,7 +650,7 @@ index f6e586d0..b2ed0a9c 100644
      else
          return E_NOINTERFACE;
  
-@@ -473,16 +534,81 @@ static HRESULT dmo_wrapper_source_query_interface(struct strmbase_pin *iface, RE
+@@ -473,16 +540,81 @@ static HRESULT dmo_wrapper_source_query_interface(struct strmbase_pin *iface, RE
      return S_OK;
  }
  
@@ -734,7 +734,7 @@ index f6e586d0..b2ed0a9c 100644
  
      IMediaObject_Release(dmo);
  
-@@ -517,16 +643,30 @@ static HRESULT WINAPI dmo_wrapper_source_DecideBufferSize(struct strmbase_source
+@@ -517,16 +649,30 @@ static HRESULT WINAPI dmo_wrapper_source_DecideBufferSize(struct strmbase_source
  
      IUnknown_QueryInterface(filter->dmo, &IID_IMediaObject, (void **)&dmo);
  
@@ -767,7 +767,7 @@ index f6e586d0..b2ed0a9c 100644
      }
  
      IMediaObject_Release(dmo);
-@@ -632,6 +772,7 @@ static HRESULT WINAPI dmo_wrapper_filter_Init(IDMOWrapperFilter *iface, REFCLSID
+@@ -632,6 +778,7 @@ static HRESULT WINAPI dmo_wrapper_filter_Init(IDMOWrapperFilter *iface, REFCLSID
      {
          swprintf(id, ARRAY_SIZE(id), L"out%u", i);
          strmbase_source_init(&sources[i].pin, &filter->filter, id, &source_ops);
@@ -775,7 +775,7 @@ index f6e586d0..b2ed0a9c 100644
          sources[i].buffer.IMediaBuffer_iface.lpVtbl = &buffer_vtbl;
  
          strmbase_passthrough_init(&sources[i].passthrough, (IUnknown *)&sources[i].pin.pin.IPin_iface);
-@@ -663,6 +804,44 @@ static const IDMOWrapperFilterVtbl dmo_wrapper_filter_vtbl =
+@@ -663,6 +810,44 @@ static const IDMOWrapperFilterVtbl dmo_wrapper_filter_vtbl =
      dmo_wrapper_filter_Init,
  };
  
@@ -820,7 +820,7 @@ index f6e586d0..b2ed0a9c 100644
  static struct strmbase_pin *dmo_wrapper_get_pin(struct strmbase_filter *iface, unsigned int index)
  {
      struct dmo_wrapper *filter = impl_from_strmbase_filter(iface);
-@@ -704,6 +883,25 @@ static HRESULT dmo_wrapper_query_interface(struct strmbase_filter *iface, REFIID
+@@ -704,6 +889,25 @@ static HRESULT dmo_wrapper_query_interface(struct strmbase_filter *iface, REFIID
          IUnknown_AddRef((IUnknown *)*out);
          return S_OK;
      }
@@ -846,7 +846,7 @@ index f6e586d0..b2ed0a9c 100644
  
      if (filter->dmo && !IsEqualGUID(iid, &IID_IUnknown))
          return IUnknown_QueryInterface(filter->dmo, iid, out);
-@@ -722,9 +920,9 @@ static HRESULT dmo_wrapper_init_stream(struct strmbase_filter *iface)
+@@ -722,9 +926,9 @@ static HRESULT dmo_wrapper_init_stream(struct strmbase_filter *iface)
  
      IUnknown_QueryInterface(filter->dmo, &IID_IMediaObject, (void **)&dmo);
  
@@ -858,7 +858,7 @@ index f6e586d0..b2ed0a9c 100644
          IMediaObject_Release(dmo);
          return hr;
      }
-@@ -785,6 +983,7 @@ HRESULT dmo_wrapper_create(IUnknown *outer, IUnknown **out)
+@@ -785,6 +989,7 @@ HRESULT dmo_wrapper_create(IUnknown *outer, IUnknown **out)
      strmbase_filter_init(&object->filter, NULL, &CLSID_DMOWrapperFilter, &filter_ops);
  
      object->IDMOWrapperFilter_iface.lpVtbl = &dmo_wrapper_filter_vtbl;
@@ -867,7 +867,7 @@ index f6e586d0..b2ed0a9c 100644
      object->input_buffer.IMediaBuffer_iface.lpVtbl = &buffer_vtbl;
  
 diff --git a/dlls/quartz/acmwrapper.c b/dlls/quartz/acmwrapper.c
-index 8e1b5e6b..a5dadbc4 100644
+index 8e1b5e6b773..a5dadbc48cd 100644
 --- a/dlls/quartz/acmwrapper.c
 +++ b/dlls/quartz/acmwrapper.c
 @@ -292,6 +292,7 @@ static HRESULT acm_wrapper_sink_connect(struct strmbase_sink *iface, IPin *peer,
@@ -879,7 +879,7 @@ index 8e1b5e6b..a5dadbc4 100644
          return VFW_E_TYPE_NOT_ACCEPTED;
      }
 diff --git a/dlls/quartz/dsoundrender.c b/dlls/quartz/dsoundrender.c
-index e72b743e..75037a85 100644
+index e72b743e39e..75037a85aff 100644
 --- a/dlls/quartz/dsoundrender.c
 +++ b/dlls/quartz/dsoundrender.c
 @@ -491,7 +491,10 @@ static HRESULT dsound_render_sink_connect(struct strmbase_sink *iface, IPin *pee
@@ -929,7 +929,7 @@ index e72b743e..75037a85 100644
  
  static const struct strmbase_filter_ops filter_ops =
 diff --git a/dlls/quartz/filesource.c b/dlls/quartz/filesource.c
-index 02cae5b6..6e670147 100644
+index 02cae5b654b..6e670147058 100644
 --- a/dlls/quartz/filesource.c
 +++ b/dlls/quartz/filesource.c
 @@ -178,6 +178,23 @@ static BOOL process_pattern_string(const WCHAR *pattern, HANDLE file)
@@ -980,7 +980,7 @@ index 02cae5b6..6e670147 100644
      {
          CloseHandle(file);
 diff --git a/dlls/quartz/filtergraph.c b/dlls/quartz/filtergraph.c
-index d495b7c0..0ba56ee9 100644
+index 0b7c9714bc7..5515879479c 100644
 --- a/dlls/quartz/filtergraph.c
 +++ b/dlls/quartz/filtergraph.c
 @@ -1009,6 +1009,7 @@ static HRESULT WINAPI FilterGraph2_Disconnect(IFilterGraph2 *iface, IPin *ppin)
@@ -1251,7 +1251,7 @@ index d495b7c0..0ba56ee9 100644
  
  static HRESULT WINAPI FilterGraph2_SetLogFile(IFilterGraph2 *iface, DWORD_PTR file)
 diff --git a/dlls/quartz/main.c b/dlls/quartz/main.c
-index d38ace1e..31736cdd 100644
+index d38ace1eb20..31736cdd153 100644
 --- a/dlls/quartz/main.c
 +++ b/dlls/quartz/main.c
 @@ -522,10 +522,26 @@ HRESULT WINAPI DllRegisterServer(void)
@@ -1282,7 +1282,7 @@ index d38ace1e..31736cdd 100644
      static const REGPINTYPES mpeg_video_codec_outputs[] =
      {
 diff --git a/dlls/quartz/tests/filesource.c b/dlls/quartz/tests/filesource.c
-index 229eef40..3d36e2d7 100644
+index 229eef40b98..3d36e2d7113 100644
 --- a/dlls/quartz/tests/filesource.c
 +++ b/dlls/quartz/tests/filesource.c
 @@ -341,7 +341,7 @@ static void test_file_source_filter(void)
@@ -1295,7 +1295,7 @@ index 229eef40..3d36e2d7 100644
              ok(IsEqualGUID(&file_mt.subtype, tests[i].subtype), "Expected subtype %s, got %s.\n",
                  wine_dbgstr_guid(tests[i].subtype), wine_dbgstr_guid(&file_mt.subtype));
 diff --git a/dlls/quartz/tests/mpegvideo.c b/dlls/quartz/tests/mpegvideo.c
-index 3bcf466e..67717c80 100644
+index 3bcf466e888..67717c809ee 100644
 --- a/dlls/quartz/tests/mpegvideo.c
 +++ b/dlls/quartz/tests/mpegvideo.c
 @@ -696,6 +696,13 @@ static void test_media_types(void)
@@ -1313,7 +1313,7 @@ index 3bcf466e..67717c80 100644
      mt.subtype = MEDIASUBTYPE_MPEG1Packet;
      hr = IPin_QueryAccept(pin, &mt);
 diff --git a/dlls/quartz/vmr7.c b/dlls/quartz/vmr7.c
-index cb38a188..163768ce 100644
+index b316dfa7fef..d7b9eaf7283 100644
 --- a/dlls/quartz/vmr7.c
 +++ b/dlls/quartz/vmr7.c
 @@ -71,8 +71,6 @@ struct vmr7
@@ -1527,7 +1527,7 @@ index cb38a188..163768ce 100644
  }
  
  static HRESULT initialize_device(struct vmr7 *filter, VMRALLOCATIONINFO *info, DWORD count)
-@@ -826,7 +882,6 @@ static HRESULT WINAPI filter_config_SetRenderingMode(IVMRFilterConfig *iface, DW
+@@ -829,7 +885,6 @@ static HRESULT WINAPI filter_config_SetRenderingMode(IVMRFilterConfig *iface, DW
              }
              IUnknown_QueryInterface(default_presenter, &IID_IVMRSurfaceAllocator, (void **)&filter->allocator);
              IUnknown_QueryInterface(default_presenter, &IID_IVMRImagePresenter, (void **)&filter->presenter);
@@ -1535,7 +1535,7 @@ index cb38a188..163768ce 100644
              IUnknown_Release(default_presenter);
              break;
  
-@@ -1314,19 +1369,8 @@ static HRESULT WINAPI surface_allocator_notify_AdviseSurfaceAllocator(
+@@ -1317,19 +1372,8 @@ static HRESULT WINAPI surface_allocator_notify_AdviseSurfaceAllocator(
  static HRESULT WINAPI surface_allocator_notify_SetDDrawDevice(
          IVMRSurfaceAllocatorNotify *iface, IDirectDraw7 *device, HMONITOR monitor)
  {
@@ -1558,7 +1558,7 @@ index cb38a188..163768ce 100644
  
  static HRESULT WINAPI surface_allocator_notify_ChangeDDrawDevice(
 diff --git a/dlls/quartz/vmr7_presenter.c b/dlls/quartz/vmr7_presenter.c
-index 2931dc4c..a69b07a3 100644
+index 2931dc4c36d..a69b07a3546 100644
 --- a/dlls/quartz/vmr7_presenter.c
 +++ b/dlls/quartz/vmr7_presenter.c
 @@ -37,6 +37,7 @@ struct vmr7_presenter
@@ -1624,10 +1624,10 @@ index 2931dc4c..a69b07a3 100644
          DDSURFACEDESC2 primary_desc;
          DWORD *mask;
 diff --git a/dlls/quartz/vmr9.c b/dlls/quartz/vmr9.c
-index 611a1256..a18feac7 100644
+index 5485b4f62dd..13af21f8aa5 100644
 --- a/dlls/quartz/vmr9.c
 +++ b/dlls/quartz/vmr9.c
-@@ -1197,7 +1197,7 @@ static HRESULT WINAPI VMR9WindowlessControl_GetNativeVideoSize(IVMRWindowlessCon
+@@ -1200,7 +1200,7 @@ static HRESULT WINAPI VMR9WindowlessControl_GetNativeVideoSize(IVMRWindowlessCon
          LONG *width, LONG *height, LONG *aspect_width, LONG *aspect_height)
  {
      struct quartz_vmr *filter = impl_from_IVMRWindowlessControl9(iface);
@@ -1636,7 +1636,7 @@ index 611a1256..a18feac7 100644
  
      TRACE("filter %p, width %p, height %p, aspect_width %p, aspect_height %p.\n",
              filter, width, height, aspect_width, aspect_height);
-@@ -1205,6 +1205,10 @@ static HRESULT WINAPI VMR9WindowlessControl_GetNativeVideoSize(IVMRWindowlessCon
+@@ -1208,6 +1208,10 @@ static HRESULT WINAPI VMR9WindowlessControl_GetNativeVideoSize(IVMRWindowlessCon
      if (!width || !height)
          return E_POINTER;
  
@@ -1647,7 +1647,7 @@ index 611a1256..a18feac7 100644
      *width = bmiheader->biWidth;
      *height = bmiheader->biHeight;
      if (aspect_width)
-@@ -1238,6 +1242,11 @@ static HRESULT WINAPI VMR9WindowlessControl_SetVideoPosition(IVMRWindowlessContr
+@@ -1241,6 +1245,11 @@ static HRESULT WINAPI VMR9WindowlessControl_SetVideoPosition(IVMRWindowlessContr
  
      TRACE("filter %p, src %s, dst %s.\n", filter, wine_dbgstr_rect(src), wine_dbgstr_rect(dst));
  
@@ -1660,7 +1660,7 @@ index 611a1256..a18feac7 100644
  
      if (src)
 diff --git a/dlls/vidreszr/vidreszr.c b/dlls/vidreszr/vidreszr.c
-index d12a68af..0bb1218e 100644
+index d12a68af517..0bb1218ef6b 100644
 --- a/dlls/vidreszr/vidreszr.c
 +++ b/dlls/vidreszr/vidreszr.c
 @@ -68,6 +68,7 @@ HRESULT WINAPI DllRegisterServer(void)
@@ -1680,7 +1680,7 @@ index d12a68af..0bb1218e 100644
          {.type = MEDIATYPE_Video, .subtype = MEDIASUBTYPE_RGB32},
          {.type = MEDIATYPE_Video, .subtype = MEDIASUBTYPE_RGB24},
 diff --git a/dlls/wmadmod/Makefile.in b/dlls/wmadmod/Makefile.in
-index 3828e565..bb51f623 100644
+index 3828e565b0d..bb51f623171 100644
 --- a/dlls/wmadmod/Makefile.in
 +++ b/dlls/wmadmod/Makefile.in
 @@ -1,5 +1,6 @@
@@ -1692,7 +1692,7 @@ index 3828e565..bb51f623 100644
  SOURCES = \
  	wmadmod.c \
 diff --git a/dlls/wmadmod/wmadmod.c b/dlls/wmadmod/wmadmod.c
-index daa13fba..5dd0c4ec 100644
+index daa13fba0c4..5dd0c4ecd24 100644
 --- a/dlls/wmadmod/wmadmod.c
 +++ b/dlls/wmadmod/wmadmod.c
 @@ -34,12 +34,12 @@
@@ -1711,7 +1711,7 @@ index daa13fba..5dd0c4ec 100644
  
  static HRESULT WINAPI class_factory_QueryInterface(IClassFactory *iface, REFIID riid, void **out)
 diff --git a/dlls/wmvcore/Makefile.in b/dlls/wmvcore/Makefile.in
-index bf9d47c9..98bc7a58 100644
+index bf9d47c986b..98bc7a58fe0 100644
 --- a/dlls/wmvcore/Makefile.in
 +++ b/dlls/wmvcore/Makefile.in
 @@ -1,7 +1,7 @@
@@ -1724,10 +1724,10 @@ index bf9d47c9..98bc7a58 100644
  VER_FILEDESCRIPTION_STR = "Wine Media Playback dll"
  VER_PRODUCTVERSION      = 12,0,7601,17514
 diff --git a/dlls/wmvcore/async_reader.c b/dlls/wmvcore/async_reader.c
-index c41bd96c..f0bb07fa 100644
+index 2f8c10da8f0..0ec4a44ac4f 100644
 --- a/dlls/wmvcore/async_reader.c
 +++ b/dlls/wmvcore/async_reader.c
-@@ -1918,7 +1918,7 @@ static HRESULT WINAPI async_reader_create(IWMReader **reader)
+@@ -2259,7 +2259,7 @@ static HRESULT WINAPI async_reader_create(IWMReader **reader)
      object->IWMReaderTypeNegotiation_iface.lpVtbl = &WMReaderTypeNegotiationVtbl;
      object->refcount = 1;
  
@@ -1737,7 +1737,7 @@ index c41bd96c..f0bb07fa 100644
          goto failed;
  
 diff --git a/dlls/wmvcore/wmvcore_main.c b/dlls/wmvcore/wmvcore_main.c
-index 3b61fe13..08b20b44 100644
+index 3b61fe13c15..08b20b448e5 100644
 --- a/dlls/wmvcore/wmvcore_main.c
 +++ b/dlls/wmvcore/wmvcore_main.c
 @@ -34,14 +34,14 @@ HRESULT WINAPI WMCreateSyncReader(IUnknown *reserved, DWORD rights, IWMSyncReade
@@ -1758,7 +1758,7 @@ index 3b61fe13..08b20b44 100644
  
  HRESULT WINAPI WMCheckURLExtension(const WCHAR *url)
 diff --git a/dlls/wmvcore/wmvcore_private.h b/dlls/wmvcore/wmvcore_private.h
-index a5225d79..22d0194f 100644
+index a5225d79da9..22d0194f178 100644
 --- a/dlls/wmvcore/wmvcore_private.h
 +++ b/dlls/wmvcore/wmvcore_private.h
 @@ -26,7 +26,7 @@
@@ -1771,10 +1771,10 @@ index a5225d79..22d0194f 100644
  static inline const char *debugstr_time(LONGLONG time)
  {
 diff --git a/libs/strmbase/pin.c b/libs/strmbase/pin.c
-index f332ef7e..b2e19d02 100644
+index cf97ec8050c..720cd47ad28 100644
 --- a/libs/strmbase/pin.c
 +++ b/libs/strmbase/pin.c
-@@ -685,22 +685,41 @@ HRESULT WINAPI BaseOutputPinImpl_DecideAllocator(struct strmbase_source *This,
+@@ -686,22 +686,41 @@ HRESULT WINAPI BaseOutputPinImpl_DecideAllocator(struct strmbase_source *This,
      HRESULT hr;
  
      hr = IMemInputPin_GetAllocator(pPin, pAlloc);
@@ -1817,7 +1817,7 @@ index f332ef7e..b2e19d02 100644
  
      return hr;
  }
-@@ -712,19 +731,42 @@ HRESULT WINAPI BaseOutputPinImpl_DecideAllocator(struct strmbase_source *This,
+@@ -713,19 +732,42 @@ HRESULT WINAPI BaseOutputPinImpl_DecideAllocator(struct strmbase_source *This,
  HRESULT WINAPI BaseOutputPinImpl_AttemptConnection(struct strmbase_source *This,
          IPin *pReceivePin, const AM_MEDIA_TYPE *pmt)
  {
@@ -1861,7 +1861,7 @@ index f332ef7e..b2e19d02 100644
  
      /* get the IMemInputPin interface we will use to deliver samples to the
       * connected pin */
-@@ -732,10 +774,13 @@ HRESULT WINAPI BaseOutputPinImpl_AttemptConnection(struct strmbase_source *This,
+@@ -733,10 +775,13 @@ HRESULT WINAPI BaseOutputPinImpl_AttemptConnection(struct strmbase_source *This,
      {
          This->pMemInputPin = NULL;
          hr = IPin_QueryInterface(pReceivePin, &IID_IMemInputPin, (LPVOID)&This->pMemInputPin);
@@ -1875,7 +1875,7 @@ index f332ef7e..b2e19d02 100644
              if (SUCCEEDED(hr))
                  This->pAllocator = pMemAlloc;
              else if (pMemAlloc)
-@@ -750,6 +795,7 @@ HRESULT WINAPI BaseOutputPinImpl_AttemptConnection(struct strmbase_source *This,
+@@ -751,6 +796,7 @@ HRESULT WINAPI BaseOutputPinImpl_AttemptConnection(struct strmbase_source *This,
              This->pMemInputPin = NULL;
  
              IPin_Disconnect(pReceivePin);
@@ -1884,7 +1884,7 @@ index f332ef7e..b2e19d02 100644
      }
  
 diff --git a/libs/strmbase/renderer.c b/libs/strmbase/renderer.c
-index 7305599f..b788d028 100644
+index 7305599ff78..b788d028193 100644
 --- a/libs/strmbase/renderer.c
 +++ b/libs/strmbase/renderer.c
 @@ -238,7 +238,7 @@ static HRESULT renderer_init_stream(struct strmbase_filter *iface)

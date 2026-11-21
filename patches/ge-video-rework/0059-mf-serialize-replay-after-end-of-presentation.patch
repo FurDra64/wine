@@ -33,10 +33,10 @@ References:
  https://learn.microsoft.com/en-us/windows/win32/medfound/meendofpresentation
  https://learn.microsoft.com/en-us/windows/win32/api/mfidl/nf-mfidl-imfmediasession-start
 diff --git a/dlls/mf/session.c b/dlls/mf/session.c
-index de79aa33..8a2ee72f 100644
+index c8bc8f87358..808cf4d114f 100644
 --- a/dlls/mf/session.c
 +++ b/dlls/mf/session.c
-@@ -4343,6 +4343,10 @@ static void session_raise_end_of_presentation(struct media_session *session)
+@@ -4428,6 +4428,10 @@ static void session_raise_end_of_presentation(struct media_session *session)
          if (session_nodes_is_mask_set(session, MF_TOPOLOGY_MAX, SOURCE_FLAG_END_OF_PRESENTATION))
          {
              session->presentation.flags |= SESSION_FLAG_PRESENTATION_ENDING;
@@ -48,30 +48,28 @@ index de79aa33..8a2ee72f 100644
          }
      }
 diff --git a/dlls/mf/tests/mf.c b/dlls/mf/tests/mf.c
-index 1816a3e8..7e0a1809 100644
+index 1c119f38538..2e88c9a1646 100644
 --- a/dlls/mf/tests/mf.c
 +++ b/dlls/mf/tests/mf.c
-@@ -994,6 +994,7 @@ enum object_state
+@@ -768,6 +768,7 @@ struct test_stream_sink
+     IUnknown *device_manager;
  
- #define MAX_OBJECT_STATE 1024
- 
+     IMFMediaEventQueue *event_queue;
 +    BOOL hold_markers;
- struct object_state_record
- {
-     enum object_state states[MAX_OBJECT_STATE];
-@@ -1269,6 +1270,11 @@ static ULONG WINAPI test_stream_sink_Release(IMFStreamSink *iface)
  
- static HRESULT WINAPI test_stream_sink_GetEvent(IMFStreamSink *iface, DWORD flags, IMFMediaEvent **event)
- {
-+    struct test_stream_sink *sink = impl_from_IMFStreamSink(iface);
-+
-+    if (sink->hold_markers && marker_type == MFSTREAMSINK_MARKER_ENDOFSEGMENT)
+     HANDLE sample_event;
+     IMFCollection *samples;
+@@ -1381,6 +1382,9 @@ static HRESULT WINAPI test_stream_sink_PlaceMarker(IMFStreamSink *iface, MFSTREA
+     struct test_stream_sink *impl = impl_from_IMFStreamSink(iface);
+     HRESULT hr;
+ 
++    if (impl->hold_markers && marker_type == MFSTREAMSINK_MARKER_ENDOFSEGMENT)
 +        return S_OK;
 +
-     ok(0, "Unexpected call.\n");
-     return E_NOTIMPL;
- }
-@@ -11765,6 +11771,141 @@ static void test_media_session_sample_request(void)
+     if (expect_test_stream_sink_PlaceMarker)
+         hr = IMFStreamSink_QueueEvent(&impl->IMFStreamSink_iface, MEStreamSinkMarker, &GUID_NULL, S_OK, context);
+     else
+@@ -11804,6 +11808,141 @@ static void test_media_session_sample_request(void)
      ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
  }
  
@@ -100,9 +98,9 @@ index 1816a3e8..7e0a1809 100644
 +    handler = create_test_handler();
 +    sink = create_test_media_sink(&handler->IMFMediaTypeHandler_iface);
 +    IMFMediaTypeHandler_Release(&handler->IMFMediaTypeHandler_iface);
-+    impl_from_IMFStreamSink(sink->stream)->hold_markers = TRUE;
++    sink->stream->hold_markers = TRUE;
 +
-+    topology = create_test_topology_unk(source, (IUnknown *)sink->stream, NULL, NULL);
++    topology = create_test_topology_unk(source, (IUnknown *)&sink->stream->IMFStreamSink_iface, NULL, NULL);
 +    hr = IMFMediaSession_SetTopology(session, 0, topology);
 +    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
 +    IMFTopology_Release(topology);
@@ -120,7 +118,7 @@ index 1816a3e8..7e0a1809 100644
 +    hr = wait_media_event_until_blocking(session, callback, MESessionTopologyStatus, 1000, &value);
 +    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
 +    PropVariantClear(&value);
-+    hr = IMFStreamSink_QueueEvent(sink->stream, MEStreamSinkStarted, &GUID_NULL, S_OK, NULL);
++    hr = IMFStreamSink_QueueEvent(&sink->stream->IMFStreamSink_iface, MEStreamSinkStarted, &GUID_NULL, S_OK, NULL);
 +    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
 +    hr = wait_media_event_until_blocking(session, callback, MESessionStarted, 1000, &value);
 +    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
@@ -146,14 +144,14 @@ index 1816a3e8..7e0a1809 100644
 +    hr = wait_media_event_until_blocking(session, callback, MESessionStarted, 100, &value);
 +    ok(hr == WAIT_TIMEOUT, "Replay completed before the sink drained, hr %#lx.\n", hr);
 +
-+    hr = IMFStreamSink_QueueEvent(sink->stream, MEStreamSinkMarker, &GUID_NULL, S_OK, NULL);
++    hr = IMFStreamSink_QueueEvent(&sink->stream->IMFStreamSink_iface, MEStreamSinkMarker, &GUID_NULL, S_OK, NULL);
 +    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
 +    hr = wait_media_event_until_blocking(session, callback, MESessionTopologyStatus, 1000, &value);
 +    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
 +    PropVariantClear(&value);
 +    if (hr != S_OK) goto done;
 +    SET_EXPECT(test_stream_sink_Flush);
-+    hr = IMFStreamSink_QueueEvent(sink->stream, MEStreamSinkStopped, &GUID_NULL, S_OK, NULL);
++    hr = IMFStreamSink_QueueEvent(&sink->stream->IMFStreamSink_iface, MEStreamSinkStopped, &GUID_NULL, S_OK, NULL);
 +    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
 +    hr = wait_media_event_until_blocking(session, callback, MESessionEnded, 1000, &value);
 +    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
@@ -165,7 +163,7 @@ index 1816a3e8..7e0a1809 100644
 +    ok(hr == S_OK, "Source did not restart after EOF, hr %#lx.\n", hr);
 +    PropVariantClear(&value);
 +    if (hr != S_OK) goto done;
-+    hr = IMFStreamSink_QueueEvent(sink->stream, MEStreamSinkStarted, &GUID_NULL, S_OK, NULL);
++    hr = IMFStreamSink_QueueEvent(&sink->stream->IMFStreamSink_iface, MEStreamSinkStarted, &GUID_NULL, S_OK, NULL);
 +    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
 +    hr = wait_media_event_until_blocking(session, callback, MESessionStarted, 1000, &value);
 +    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
@@ -186,7 +184,7 @@ index 1816a3e8..7e0a1809 100644
 +    }
 +    IMFClock_Release(clock);
 +    ok(state == MFCLOCK_STATE_STOPPED, "Clock did not stop, state %u.\n", state);
-+    hr = IMFStreamSink_QueueEvent(sink->stream, MEStreamSinkStopped, &GUID_NULL, S_OK, NULL);
++    hr = IMFStreamSink_QueueEvent(&sink->stream->IMFStreamSink_iface, MEStreamSinkStopped, &GUID_NULL, S_OK, NULL);
 +    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
 +    hr = wait_media_event_until_blocking(session, callback, MESessionStopped, 1000, &value);
 +    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
@@ -213,11 +211,11 @@ index 1816a3e8..7e0a1809 100644
  static void test_media_session_invalid_topology(void)
  {
      IMFAsyncCallback *callback;
-@@ -12177,6 +12318,7 @@ START_TEST(mf)
-     test_MFEnumDeviceSources();
-     test_media_session_Close();
+@@ -12371,6 +12510,7 @@ START_TEST(mf)
      test_media_session_source_shutdown();
-+    test_media_session_replay_at_eop();
      test_media_session_thinning();
      test_media_session_seek();
++    test_media_session_replay_at_eop();
      test_media_session_scrubbing();
+     test_media_session_sample_request();
+     test_media_session_invalid_topology();

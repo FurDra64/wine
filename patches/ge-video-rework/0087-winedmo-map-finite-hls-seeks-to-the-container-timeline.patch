@@ -17,18 +17,19 @@ translating presentation seeks into FFmpeg timestamps. Keep the existing
 nonseekable-stream behavior and leave other container timelines alone.
 
 diff --git a/dlls/winedmo/unix_demuxer.c b/dlls/winedmo/unix_demuxer.c
+index 27535965c04..2bca67d9648 100644
 --- a/dlls/winedmo/unix_demuxer.c
 +++ b/dlls/winedmo/unix_demuxer.c
-@@ -56,7 +56,7 @@
+@@ -57,7 +57,7 @@ struct demuxer
      struct stream_context *stream_context;
-     struct stream *streams;
+     BOOL mediaconv;
      INT64 duration;
 -    INT64 live_timestamp_base;
 +    INT64 timestamp_base;
      BOOL direct_url;
      BOOL nonseekable;
  
-@@ -209,15 +209,15 @@
+@@ -210,15 +210,15 @@ static void normalize_stream_timestamps( struct stream *stream, struct sample *s
          sample->dts = max( 0, sample->dts - stream->timestamp_base );
  }
  
@@ -48,17 +49,17 @@ diff --git a/dlls/winedmo/unix_demuxer.c b/dlls/winedmo/unix_demuxer.c
  }
  
  static void fixup_asf_mpeg4_timestamps( const AVFormatContext *ctx, AVStream *avstream,
-@@ -862,7 +862,7 @@
+@@ -783,7 +783,7 @@ NTSTATUS demuxer_create( void *arg )
+         ext = "";
  
      if (!(demuxer = calloc( 1, sizeof(*demuxer) ))) return STATUS_NO_MEMORY;
-     demuxer->stream_context = params->context;
 -    demuxer->live_timestamp_base = AV_NOPTS_VALUE;
 +    demuxer->timestamp_base = AV_NOPTS_VALUE;
  
      if (!(demuxer->ctx = avformat_alloc_context())) goto failed;
      if (is_http_url( params->url ) || is_rtsp_url( params->url ))
-@@ -958,10 +958,12 @@
-     }
+@@ -898,10 +898,12 @@ NTSTATUS demuxer_create( void *arg )
+ 
      if (demuxer->nonseekable) params->duration = AV_NOPTS_VALUE;
      demuxer->duration = params->duration;
 -    if (demuxer->duration == AV_NOPTS_VALUE && demuxer->ctx->start_time != AV_NOPTS_VALUE &&
@@ -72,7 +73,7 @@ diff --git a/dlls/winedmo/unix_demuxer.c b/dlls/winedmo/unix_demuxer.c
      }
      if (!(demuxer->streams = calloc( demuxer->ctx->nb_streams, sizeof(*demuxer->streams) ))) goto failed;
      if (demuxer_create_streams( demuxer )) goto failed;
-@@ -1125,7 +1127,7 @@
+@@ -1056,7 +1058,7 @@ NTSTATUS demuxer_read( void *arg )
      sample->pts = get_stream_time( stream, packet->pts );
      sample->dts = get_stream_time( stream, packet->dts );
      sample->duration = get_stream_time( stream, packet->duration );
@@ -81,7 +82,7 @@ diff --git a/dlls/winedmo/unix_demuxer.c b/dlls/winedmo/unix_demuxer.c
      fixup_asf_mpeg4_timestamps( demuxer->ctx, stream, demuxer_stream, sample );
      if (demuxer->ctx->iformat && strstr( demuxer->ctx->iformat->name, "asf" ))
          normalize_stream_timestamps( demuxer_stream, sample );
-@@ -1158,7 +1160,7 @@
+@@ -1089,7 +1091,7 @@ NTSTATUS demuxer_seek( void *arg )
  {
      struct demuxer_seek_params *params = arg;
      struct demuxer *demuxer = get_demuxer( params->demuxer );
@@ -90,7 +91,7 @@ diff --git a/dlls/winedmo/unix_demuxer.c b/dlls/winedmo/unix_demuxer.c
      NTSTATUS status;
      int i, ret;
  
-@@ -1175,6 +1177,11 @@
+@@ -1106,6 +1108,11 @@ NTSTATUS demuxer_seek( void *arg )
      if (status != STATUS_NOT_SUPPORTED)
          return status;
  
