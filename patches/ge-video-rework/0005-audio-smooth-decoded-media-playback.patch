@@ -35,18 +35,23 @@ diff --git a/dlls/winepulse.drv/pulse.c b/dlls/winepulse.drv/pulse.c
 index ef13a1ed..a58e05bd 100644
 --- a/dlls/winepulse.drv/pulse.c
 +++ b/dlls/winepulse.drv/pulse.c
-@@ -24,7 +24,9 @@
+@@ -24,10 +24,12 @@
  #endif
  
+ #include "config.h"
  #include <stdarg.h>
 +#include <errno.h>
+ #include <stdlib.h>
+ #include <stdint.h>
  #include <pthread.h>
 +#include <time.h>
  #include <math.h>
  #include <poll.h>
- 
-@@ -87,6 +89,8 @@ struct pulse_stream
+  
+@@ -113,8 +113,10 @@ struct pulse_stream
      struct list packet_filled_head;
+     struct list period_entry;
+     struct pulse_period *period;
  };
  
 +static void pulse_write(struct pulse_stream *stream);

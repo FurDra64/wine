@@ -272,7 +272,7 @@ index ef33fc3d..a3e9044a 100644
 +    if (ret_port)
 +        *ret_port = NULL;
 +
-     if (FAILED(hr = IDirectMusic8_GetDefaultPort(perf->dmusic, &guid)))
+     if (FAILED(hr = IDirectMusic_GetDefaultPort(perf->dmusic, &guid)))
          return hr;
  
 @@ -1188,6 +1192,11 @@ static HRESULT perf_dmport_create(struct performance *perf, DMUS_PORTPARAMS *par
@@ -426,24 +426,6 @@ index ef33fc3d..a3e9044a 100644
  
      *ret_iface = pPath;
      TRACE(" returning IDirectMusicAudioPath interface at %p.\n", *ret_iface);
-@@ -1974,7 +2017,7 @@ static HRESULT WINAPI performance_graph_StampPMsg(IDirectMusicGraph *iface, DMUS
- 
-     if (msg->pGraph)
-     {
--        IDirectMusicTool_Release(msg->pGraph);
-+        IDirectMusicGraph_Release(msg->pGraph);
-         msg->pGraph = NULL;
-     }
- 
-@@ -1993,7 +2036,7 @@ static HRESULT WINAPI performance_graph_StampPMsg(IDirectMusicGraph *iface, DMUS
-     if (SUCCEEDED(hr))
-     {
-         msg->pGraph = &This->IDirectMusicGraph_iface;
--        IDirectMusicTool_AddRef(msg->pGraph);
-+        IDirectMusicGraph_AddRef(msg->pGraph);
-     }
- 
-     return hr;
 @@ -2120,9 +2163,19 @@ static HRESULT WINAPI performance_tool_ProcessPMsg(IDirectMusicTool *iface,
          value |= (UINT)midi->bByte1 << 8;
          value |= (UINT)midi->bByte2 << 16;
@@ -483,7 +465,7 @@ index ef33fc3d..a3e9044a 100644
 -            {
 -                msg->mtTime -= note->nOffset;
 -                msg->mtTime += max(1, note->mtDuration - 1);
--                if (FAILED(hr = IDirectMusicPerformance8_MusicToReferenceTime(performance, msg->mtTime, &msg->rtTime)))
+-                if (FAILED(hr = IDirectMusicPerformance_MusicToReferenceTime(performance, msg->mtTime, &msg->rtTime)))
 -                    return hr;
 -                note->bFlags &= ~DMUS_NOTEF_NOTEON;
 -                return DMUS_S_REQUEUE;
@@ -493,7 +475,7 @@ index ef33fc3d..a3e9044a 100644
 +
 +            msg->mtTime -= note->nOffset;
 +            msg->mtTime += max(1, note->mtDuration - 1);
-+            if (FAILED(hr = IDirectMusicPerformance8_MusicToReferenceTime(performance, msg->mtTime, &msg->rtTime)))
++            if (FAILED(hr = IDirectMusicPerformance_MusicToReferenceTime(performance, msg->mtTime, &msg->rtTime)))
 +                return hr;
 +            note->bFlags &= ~DMUS_NOTEF_NOTEON;
 +            return DMUS_S_REQUEUE;
@@ -523,7 +505,7 @@ index ef33fc3d..a3e9044a 100644
 +    obj->current_tempo = 120.0;
  
      hr = IDirectMusicPerformance8_QueryInterface(&obj->IDirectMusicPerformance8_iface, iid, ret_iface);
-     IDirectMusicPerformance_Release(&obj->IDirectMusicPerformance8_iface);
+     IDirectMusicPerformance8_Release(&obj->IDirectMusicPerformance8_iface);
 diff --git a/dlls/dmime/tests/dmime.c b/dlls/dmime/tests/dmime.c
 index a81df786..5d18f232 100644
 --- a/dlls/dmime/tests/dmime.c

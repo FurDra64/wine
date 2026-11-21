@@ -183,9 +183,9 @@ index 46a3d7e45d57008beca2d0a1fbff87385029a3af..d06699599f816b539d07c1142f42182d
              break;
          }
  
--        if (FAILED(hr = IWMReaderAdvanced2_SetAllocateForOutput(reader_advanced, i, TRUE)))
+-        if (FAILED(hr = IWMReaderAdvanced_SetAllocateForOutput(reader_advanced, i, TRUE)))
 +        if (!IsEqualGUID(&stream->source.pin.mt.majortype, &MEDIATYPE_Video)
-+                && FAILED(hr = IWMReaderAdvanced2_SetAllocateForOutput(reader_advanced, i, TRUE)))
++                && FAILED(hr = IWMReaderAdvanced_SetAllocateForOutput(reader_advanced, i, TRUE)))
          {
              WARN("Failed to enable allocation for stream %u, hr %#lx\n", i, hr);
              break;
@@ -264,7 +264,7 @@ index fd829c7d7e35f122b6a9df4da9a950ae3ca60e78..6c9682ebf86e8386f0e76cc658d187b5
 --- a/dlls/winedmo/main.c
 +++ b/dlls/winedmo/main.c
 @@ -300,6 +300,7 @@ static void buffer_unlock( DMO_OUTPUT_DATA_BUFFER *buffer, struct sample *sample
-     if ((buffer->rtTimestamp = buffer_time) != INT64_MIN) buffer->dwStatus |= DMO_OUTPUT_DATA_BUFFERF_TIME;
+     if ((buffer->rtTimestamp = sample->pts) != INT64_MIN) buffer->dwStatus |= DMO_OUTPUT_DATA_BUFFERF_TIME;
      if ((buffer->rtTimelength = sample->duration) != INT64_MIN) buffer->dwStatus |= DMO_OUTPUT_DATA_BUFFERF_TIMELENGTH;
      if (sample->flags & SAMPLE_FLAG_SYNC_POINT) buffer->dwStatus |= DMO_OUTPUT_DATA_BUFFERF_SYNCPOINT;
 +    if (sample->flags & SAMPLE_FLAG_DISCONTINUITY) buffer->dwStatus |= DMO_OUTPUT_DATA_BUFFERF_DISCONTINUITY;
@@ -463,8 +463,7 @@ index 1b89aefa4e761f2a7ca5acc9418ae98a8608f897..67dcfdc4a7cab3f1fa748482c80f697e
          if (out_flags & WINEDMO_SAMPLE_FLAG_FORMAT_CHANGED)
          {
              IMediaSample_Release(output_sample);
-@@ -506,24 +492,213 @@ static HRESULT WINAPI transform_sink_receive(struct strmbase_sink *pin, IMediaSa
- 
+@@ -507,39 +493,213 @@ static HRESULT WINAPI transform_sink_receive
          if (out_pts != INT64_MIN)
          {
 -            REFERENCE_TIME pts_rt = out_pts, end_rt = out_pts + out_dur;
@@ -500,6 +499,20 @@ index 1b89aefa4e761f2a7ca5acc9418ae98a8608f897..67dcfdc4a7cab3f1fa748482c80f697e
      return S_OK;
  }
  
+-static HRESULT transform_sink_begin_flush(struct strmbase_sink *pin)
+-{
+-    struct transform *filter = impl_from_strmbase_filter(pin->pin.filter);
+-
+-    TRACE("(%p)\n", pin);
+-
+-    if (winedmo_transform_flush(filter->winedmo_transform))
+-        return E_FAIL;
+-
+-    if (filter->source.pin.peer)
+-        IPin_BeginFlush(filter->source.pin.peer);
+-
+-    return S_OK;
+-}
 +static HRESULT WINAPI transform_sink_receive(struct strmbase_sink *pin, IMediaSample *sample)
 +{
 +    struct transform *filter = impl_from_strmbase_filter(pin->pin.filter);
@@ -669,11 +682,13 @@ index 1b89aefa4e761f2a7ca5acc9418ae98a8608f897..67dcfdc4a7cab3f1fa748482c80f697e
 +    return S_OK;
 +}
 +
+ 
  static const struct strmbase_sink_ops sink_ops =
  {
      .base.pin_query_accept = transform_sink_query_accept,
      .base.pin_query_interface = transform_sink_query_interface,
      .pfnReceive = transform_sink_receive,
+-    .sink_begin_flush = transform_sink_begin_flush,
 +    .sink_eos = transform_sink_eos,
 +    .sink_begin_flush = transform_sink_begin_flush,
  };
@@ -729,16 +744,17 @@ index 86156f5625c79e223973b4eb77c564559408d2be..bfcde7e3437d153c618e3ddd8e7a5745
      {
          if (sample->dts != AV_NOPTS_VALUE && sample->dts > sample->pts)
              sample->dts = AV_NOPTS_VALUE;
-@@ -728,7 +748,8 @@ NTSTATUS demuxer_create( void *arg )
+@@ -607,8 +627,9 @@ NTSTATUS demuxer_create( void *arg )
      }
      format = demuxer->ctx->iformat;
+
+     /* Determine if we need a call to avformat_find_stream_info. Some stream information is only
+      * available after calling it. */
      if ((params->duration = get_context_duration( demuxer->ctx )) == AV_NOPTS_VALUE ||
--        strstr( format->name, "mp3" ) || strstr( format->name, "mpeg" ))
-+        strstr( format->name, "mp3" ) || strstr( format->name, "mpeg" ) ||
+-        strstr( format->name, "mp3" ))
++        strstr( format->name, "mp3" ) ||
 +        context_has_video_missing_frame_rate( demuxer->ctx ))
-     {
-         if ((ret = avformat_find_stream_info( demuxer->ctx, NULL )) < 0)
-         {
+         needs_find_stream_info = TRUE;
 @@ -874,6 +895,9 @@ NTSTATUS demuxer_read( void *arg )
  
      TRACE( "demuxer %p, capacity %#x\n", demuxer, capacity );
@@ -1574,7 +1590,7 @@ index c6d76900aee7af8be1d6d348b2105d5ff924886c..700d5e7c3d330634bf8ba48af903ec88
  }
  
  static HRESULT WINAPI reader_GetMaxStreamSampleSize(IWMSyncReader2 *iface, WORD stream_number, DWORD *size)
-@@ -2682,87 +2772,70 @@ static HRESULT WINAPI reader_GetNextSample(IWMSyncReader2 *iface,
+@@ -2682,86 +2772,70 @@ static HRESULT WINAPI reader_GetNextSample(IWMSyncReader2 *iface,
  {
      struct wm_reader *reader = impl_from_IWMSyncReader2(iface);
      struct wm_stream *stream;
@@ -1590,9 +1606,10 @@ index c6d76900aee7af8be1d6d348b2105d5ff924886c..700d5e7c3d330634bf8ba48af903ec88
      if (!stream_number && !output_number && !ret_stream_number)
          return E_INVALIDARG;
  
-     if (reader->outer == &reader->IUnknown_inner)
++    if (reader->outer == &reader->IUnknown_inner)
 +    {
-         EnterCriticalSection(&reader->cs);
+-    EnterCriticalSection(&reader->cs);
++        EnterCriticalSection(&reader->cs);
 +        reader_locked = TRUE;
 +    }
  
@@ -1715,13 +1732,16 @@ index c6d76900aee7af8be1d6d348b2105d5ff924886c..700d5e7c3d330634bf8ba48af903ec88
  
  done:
      if (output_number && hr == S_OK)
-@@ -2793,7 +2874,7 @@ done:
+@@ -2793,6 +2874,10 @@ done:
      if (ret_stream_number && (hr == S_OK || stream_number))
          *ret_stream_number = stream_number;
  
--    if (reader->outer == &reader->IUnknown_inner)
+-    LeaveCriticalSection(&reader->cs);
 +    if (reader_locked)
-         LeaveCriticalSection(&reader->cs);
++    {
++        LeaveCriticalSection(&reader->cs);
++        reader_locked = FALSE;
++    }
      return hr;
  }
 @@ -3149,9 +3230,16 @@ static HRESULT WINAPI reader_SetOutputProps(IWMSyncReader2 *iface, DWORD output,
@@ -1782,37 +1802,37 @@ index cec97f42eab8cdba657ea45949f670989724fc42..279258be98b38a6ea50b5d98388ed1a7
  
  struct allocator
 @@ -662,10 +665,29 @@ static DWORD WINAPI async_reader_callback_thread(void *arg)
-                 case ASYNC_OP_START:
-                 {
-                     reader->context = op->u.start.context;
--                    if (SUCCEEDED(hr))
-+                    if (SUCCEEDED(hr) && reader->clock_start
-+                            && reader->active_start == op->u.start.start
-+                            && reader->active_duration == op->u.start.duration)
-+                    {
-+                        TRACE("Ignoring duplicate start for active range %s, duration %s.\n",
-+                                debugstr_time(op->u.start.start), debugstr_time(op->u.start.duration));
-+                    }
-+                    else if (SUCCEEDED(hr))
-+                    {
-+                        if (reader->clock_start)
-+                        {
-+                            LeaveCriticalSection(&reader->callback_cs);
-+                            async_reader_close_all_streams(reader);
-+                            EnterCriticalSection(&reader->callback_cs);
-+                            reader->clock_start = 0;
-+                        }
+                case ASYNC_OP_START:
+                {
+                    reader->context = op->u.start.context;
+-                   if (SUCCEEDED(hr))
++                   if (SUCCEEDED(hr) && reader->clock_start
++                           && reader->active_start == op->u.start.start
++                           && reader->active_duration == op->u.start.duration)
++                   {
++                       TRACE("Ignoring duplicate start for active range %s, duration %s.\n",
++                               debugstr_time(op->u.start.start), debugstr_time(op->u.start.duration));
++                   }
++                   else if (SUCCEEDED(hr))
++                   {
++                       if (reader->clock_start)
++                       {
++                           LeaveCriticalSection(&reader->callback_cs);
++                           async_reader_close_all_streams(reader);
++                           EnterCriticalSection(&reader->callback_cs);
++                           reader->clock_start = 0;
++                       }
 +
-                         hr = IWMSyncReader2_SetRange(reader->reader, op->u.start.start, op->u.start.duration);
--                    if (SUCCEEDED(hr))
-+                    }
-+                    if (SUCCEEDED(hr) && !reader->clock_start)
-                     {
-+                        reader->active_start = op->u.start.start;
-+                        reader->active_duration = op->u.start.duration;
-                         reader->clock_start = get_current_time(reader);
+                        hr = IWMSyncReader2_SetRange(reader->reader, op->u.start.start, op->u.start.duration);
+-                   if (SUCCEEDED(hr))
++                   }
++                   if (SUCCEEDED(hr) && !reader->clock_start)
+                    {
++                       reader->active_start = op->u.start.start;
++                       reader->active_duration = op->u.start.duration;
+                        reader->clock_start = get_current_time(reader);
  
-                         if (FAILED(hr = async_reader_open_all_streams(reader)))
+                        if (FAILED(hr = async_reader_open_all_streams(reader)))
 @@ -1141,16 +1163,31 @@ static HRESULT WINAPI WMReaderAdvanced_DeliverTime(IWMReaderAdvanced6 *iface, QW
  
  static HRESULT WINAPI WMReaderAdvanced_SetManualStreamSelection(IWMReaderAdvanced6 *iface, BOOL selection)
