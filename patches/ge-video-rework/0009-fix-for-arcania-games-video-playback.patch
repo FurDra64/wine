@@ -19,7 +19,7 @@ Subject: [PATCH] fix for arcania games video playback
  12 files changed, 697 insertions(+), 190 deletions(-)
 
 diff --git a/dlls/evr/evr.c b/dlls/evr/evr.c
-index d698cef10a01c71c2e371accb699a0d4942b68b2..7fb9fe15955f443b733eaff2a1cc56ec91f7ee78 100644
+index d698cef10a0..7fb9fe15955 100644
 --- a/dlls/evr/evr.c
 +++ b/dlls/evr/evr.c
 @@ -353,6 +353,10 @@ static HRESULT evr_copy_sample_buffer(struct evr *filter, const GUID *subtype, I
@@ -67,7 +67,7 @@ index d698cef10a01c71c2e371accb699a0d4942b68b2..7fb9fe15955f443b733eaff2a1cc56ec
                  else
                  {
 diff --git a/dlls/mfsrcsnk/media_source.c b/dlls/mfsrcsnk/media_source.c
-index 4789b51b06c5f9803063d6d24cf97e99cb70a446..b6eda67872065ffb7ebca01ff6c93cb0abf8ae5f 100644
+index 882af0d565a..d9ec10ef44f 100644
 --- a/dlls/mfsrcsnk/media_source.c
 +++ b/dlls/mfsrcsnk/media_source.c
 @@ -346,6 +346,7 @@ struct media_source
@@ -155,7 +155,7 @@ index 4789b51b06c5f9803063d6d24cf97e99cb70a446..b6eda67872065ffb7ebca01ff6c93cb0
      }
  
 diff --git a/dlls/qasf/asfreader.c b/dlls/qasf/asfreader.c
-index 46a3d7e45d57008beca2d0a1fbff87385029a3af..d06699599f816b539d07c1142f42182dfd527042 100644
+index 46a3d7e45d5..d06699599f8 100644
 --- a/dlls/qasf/asfreader.c
 +++ b/dlls/qasf/asfreader.c
 @@ -20,6 +20,8 @@
@@ -179,7 +179,7 @@ index 46a3d7e45d57008beca2d0a1fbff87385029a3af..d06699599f816b539d07c1142f42182d
  }
  
  static const INSSBufferVtbl buffer_vtbl =
-@@ -518,7 +521,8 @@ static HRESULT asf_reader_init_stream(struct strmbase_filter *iface)
+@@ -512,7 +515,8 @@ static HRESULT asf_reader_init_stream(struct strmbase_filter *iface)
              break;
          }
  
@@ -218,14 +218,15 @@ index 46a3d7e45d57008beca2d0a1fbff87385029a3af..d06699599f816b539d07c1142f42182d
 +            WARN("Failed to get buffer data, hr %#lx.\n", hr);
 +            return hr;
 +        }
-+
+ 
+-        hr = IMemInputPin_Receive(stream->source.pMemInputPin, buffer->sample);
 +        if (FAILED(hr = IMemAllocator_GetBuffer(stream->source.pAllocator, &media_sample, NULL, NULL, 0)))
 +        {
 +            WARN("Failed to get a sample, hr %#lx.\n", hr);
 +            return hr;
 +        }
  
--        hr = IMemInputPin_Receive(stream->source.pMemInputPin, buffer->sample);
+-        TRACE("Receive returned hr %#lx.\n", hr);
 +        if (buffer_len > IMediaSample_GetSize(media_sample))
 +        {
 +            WARN("Allocated media sample is too small, size %lu.\n", buffer_len);
@@ -239,8 +240,7 @@ index 46a3d7e45d57008beca2d0a1fbff87385029a3af..d06699599f816b539d07c1142f42182d
 +            IMediaSample_Release(media_sample);
 +            return hr;
 +        }
- 
--        TRACE("Receive returned hr %#lx.\n", hr);
++
 +        memcpy(dst, src, buffer_len);
 +        IMediaSample_SetActualDataLength(media_sample, buffer_len);
      }
@@ -259,6 +259,8 @@ index 46a3d7e45d57008beca2d0a1fbff87385029a3af..d06699599f816b539d07c1142f42182d
      return hr;
  }
  
+-- 
+2.54.0
 diff --git a/dlls/winedmo/main.c b/dlls/winedmo/main.c
 index fd829c7d7e35f122b6a9df4da9a950ae3ca60e78..6c9682ebf86e8386f0e76cc658d187b54a227d4f 100644
 --- a/dlls/winedmo/main.c
@@ -289,7 +291,7 @@ index fd829c7d7e35f122b6a9df4da9a950ae3ca60e78..6c9682ebf86e8386f0e76cc658d187b5
          WARN( "transform_drain failed, status %#lx\n", status );
      return status;
 diff --git a/dlls/winedmo/media_source.c b/dlls/winedmo/media_source.c
-index 35530e7f78d4b1b8176e3f3cc8e02030d4c61681..85cc9b6359a2e4f87a7344339156cc37c2e12c18 100644
+index 35530e7f78d..85cc9b6359a 100644
 --- a/dlls/winedmo/media_source.c
 +++ b/dlls/winedmo/media_source.c
 @@ -912,6 +912,7 @@ static HRESULT media_source_start(struct media_source *source, IMFPresentationDe
@@ -301,7 +303,7 @@ index 35530e7f78d4b1b8176e3f3cc8e02030d4c61681..85cc9b6359a2e4f87a7344339156cc37
  
          source->flushing = FALSE;
 diff --git a/dlls/winedmo/quartz_transform.c b/dlls/winedmo/quartz_transform.c
-index 1b89aefa4e761f2a7ca5acc9418ae98a8608f897..67dcfdc4a7cab3f1fa748482c80f697e69d7eefd 100644
+index 1b89aefa4e7..8eb3f817002 100644
 --- a/dlls/winedmo/quartz_transform.c
 +++ b/dlls/winedmo/quartz_transform.c
 @@ -44,10 +44,13 @@ struct transform
@@ -463,7 +465,10 @@ index 1b89aefa4e761f2a7ca5acc9418ae98a8608f897..67dcfdc4a7cab3f1fa748482c80f697e
          if (out_flags & WINEDMO_SAMPLE_FLAG_FORMAT_CHANGED)
          {
              IMediaSample_Release(output_sample);
-@@ -507,39 +493,213 @@ static HRESULT WINAPI transform_sink_receive
+@@ -506,18 +496,205 @@ static HRESULT WINAPI transform_sink_receive(struct strmbase_sink *pin, IMediaSa
+         IMediaSample_SetDiscontinuity(output_sample, !!(out_flags & WINEDMO_SAMPLE_FLAG_DISCONTINUITY));
+         IMediaSample_SetPreroll(output_sample, FALSE);
+ 
          if (out_pts != INT64_MIN)
          {
 -            REFERENCE_TIME pts_rt = out_pts, end_rt = out_pts + out_dur;
@@ -494,25 +499,11 @@ index 1b89aefa4e761f2a7ca5acc9418ae98a8608f897..67dcfdc4a7cab3f1fa748482c80f697e
              return hr;
 +        *delivered = TRUE;
 +        filter->have_decoded_output = true;
-     }
- 
-     return S_OK;
- }
- 
--static HRESULT transform_sink_begin_flush(struct strmbase_sink *pin)
--{
--    struct transform *filter = impl_from_strmbase_filter(pin->pin.filter);
--
--    TRACE("(%p)\n", pin);
--
--    if (winedmo_transform_flush(filter->winedmo_transform))
--        return E_FAIL;
--
--    if (filter->source.pin.peer)
--        IPin_BeginFlush(filter->source.pin.peer);
--
--    return S_OK;
--}
++    }
++
++    return S_OK;
++}
++
 +static HRESULT WINAPI transform_sink_receive(struct strmbase_sink *pin, IMediaSample *sample)
 +{
 +    struct transform *filter = impl_from_strmbase_filter(pin->pin.filter);
@@ -574,8 +565,8 @@ index 1b89aefa4e761f2a7ca5acc9418ae98a8608f897..67dcfdc4a7cab3f1fa748482c80f697e
 +    {
 +        push_flags |= WINEDMO_SAMPLE_FLAG_DISCONTINUITY;
 +        filter->have_next_output_time = false;
-+    }
-+
+     }
+ 
 +    if ((push_flags & WINEDMO_SAMPLE_FLAG_DISCONTINUITY)
 +            && is_windows_media_video_subtype(&filter->sink.pin.mt.subtype))
 +    {
@@ -679,22 +670,21 @@ index 1b89aefa4e761f2a7ca5acc9418ae98a8608f897..67dcfdc4a7cab3f1fa748482c80f697e
 +    if (filter->source.pin.peer)
 +        return IPin_EndOfStream(filter->source.pin.peer);
 +
-+    return S_OK;
-+}
-+
+     return S_OK;
+ }
  
+@@ -537,9 +537,10 @@ static const struct strmbase_sink_ops sink_ops =
  static const struct strmbase_sink_ops sink_ops =
  {
      .base.pin_query_accept = transform_sink_query_accept,
      .base.pin_query_interface = transform_sink_query_interface,
      .pfnReceive = transform_sink_receive,
--    .sink_begin_flush = transform_sink_begin_flush,
 +    .sink_eos = transform_sink_eos,
-+    .sink_begin_flush = transform_sink_begin_flush,
+     .sink_begin_flush = transform_sink_begin_flush,
  };
  
  static HRESULT transform_source_query_accept(struct strmbase_pin *pin, const AM_MEDIA_TYPE *mt)
-@@ -684,6 +859,9 @@ static HRESULT transform_create(IUnknown *outer, const CLSID *clsid, const struc
+@@ -684,6 +846,9 @@ static HRESULT transform_create(IUnknown *outer, const CLSID *clsid, const struc
          return E_OUTOFMEMORY;
  
      strmbase_filter_init(&object->filter, outer, clsid, &filter_ops);
@@ -705,7 +695,7 @@ index 1b89aefa4e761f2a7ca5acc9418ae98a8608f897..67dcfdc4a7cab3f1fa748482c80f697e
      strmbase_source_init(&object->source, &object->filter, L"Out", &source_ops);
  
 diff --git a/dlls/winedmo/unix_demuxer.c b/dlls/winedmo/unix_demuxer.c
-index 86156f5625c79e223973b4eb77c564559408d2be..bfcde7e3437d153c618e3ddd8e7a5745b5450538 100644
+index 86156f5625c..bfcde7e3437 100644
 --- a/dlls/winedmo/unix_demuxer.c
 +++ b/dlls/winedmo/unix_demuxer.c
 @@ -326,6 +326,26 @@ static INT64 get_video_frame_duration( const AVFormatContext *ctx, AVStream *avs
@@ -744,18 +734,14 @@ index 86156f5625c79e223973b4eb77c564559408d2be..bfcde7e3437d153c618e3ddd8e7a5745
      {
          if (sample->dts != AV_NOPTS_VALUE && sample->dts > sample->pts)
              sample->dts = AV_NOPTS_VALUE;
-@@ -607,8 +627,9 @@ NTSTATUS demuxer_create( void *arg )
-     }
-     format = demuxer->ctx->iformat;
-
+@@ -631,5 +631,5 @@ NTSTATUS demuxer_create( void *arg )
      /* Determine if we need a call to avformat_find_stream_info. Some stream information is only
       * available after calling it. */
      if ((params->duration = get_context_duration( demuxer->ctx )) == AV_NOPTS_VALUE ||
--        strstr( format->name, "mp3" ))
-+        strstr( format->name, "mp3" ) ||
-+        context_has_video_missing_frame_rate( demuxer->ctx ))
+-        strstr( format->name, "mp3" ) || strstr( format->name, "mpeg" ))
++        strstr( format->name, "mp3" ) || strstr( format->name, "mpeg" ) || context_has_video_missing_frame_rate( demuxer->ctx ))
          needs_find_stream_info = TRUE;
-@@ -874,6 +895,9 @@ NTSTATUS demuxer_read( void *arg )
+@@ -874,6 +894,9 @@ NTSTATUS demuxer_read( void *arg )
  
      TRACE( "demuxer %p, capacity %#x\n", demuxer, capacity );
  
@@ -765,7 +751,7 @@ index 86156f5625c79e223973b4eb77c564559408d2be..bfcde7e3437d153c618e3ddd8e7a5745
      if ((status = demuxer_filter_packet( demuxer, &packet ))) return status;
  
      stream = demuxer->ctx->streams[packet->stream_index];
-@@ -919,7 +943,6 @@ NTSTATUS demuxer_read( void *arg )
+@@ -919,7 +942,6 @@ NTSTATUS demuxer_read( void *arg )
      params->stream = packet->stream_index;
      av_packet_free( &packet );
      demuxer->last_packet = NULL;
@@ -773,7 +759,7 @@ index 86156f5625c79e223973b4eb77c564559408d2be..bfcde7e3437d153c618e3ddd8e7a5745
      return STATUS_SUCCESS;
  }
  
-@@ -949,6 +972,8 @@ done:
+@@ -949,6 +971,8 @@ done:
      {
          av_bsf_flush( demuxer->streams[i].filter );
          demuxer->streams[i].eos = FALSE;
@@ -783,7 +769,7 @@ index 86156f5625c79e223973b4eb77c564559408d2be..bfcde7e3437d153c618e3ddd8e7a5745
          demuxer->streams[i].next_pts = INT64_MIN;
          demuxer->streams[i].final_last_pts = INT64_MIN;
 diff --git a/dlls/winedmo/unix_transform.c b/dlls/winedmo/unix_transform.c
-index f77814208772edb9a718d8888c22ce2c296adfa4..b50cd15b36fd4c75ebc0cf8388d9a083bd27752b 100644
+index f7781420877..490a4a78d6d 100644
 --- a/dlls/winedmo/unix_transform.c
 +++ b/dlls/winedmo/unix_transform.c
 @@ -112,6 +112,8 @@ struct unix_transform
@@ -795,7 +781,7 @@ index f77814208772edb9a718d8888c22ce2c296adfa4..b50cd15b36fd4c75ebc0cf8388d9a083
  /* -------------------------------------------------------------------------
   * Codec-ID helpers
   * ------------------------------------------------------------------------- */
-@@ -503,12 +505,17 @@ static INT64 get_video_frame_duration( struct unix_transform *t )
+@@ -505,12 +507,17 @@ static INT64 get_video_frame_duration( struct unix_transform *t )
      INT64 duration;
  
      duration = video_duration_from_rate( t->input_fps_num, t->input_fps_den );
@@ -889,7 +875,7 @@ index f77814208772edb9a718d8888c22ce2c296adfa4..b50cd15b36fd4c75ebc0cf8388d9a083
              t->video_input_anchor_pts = params->pts;
              t->video_pts_offset = INT64_MIN;
              t->last_video_pts = INT64_MIN;
-@@ -943,9 +971,23 @@ NTSTATUS transform_push_input( void *arg )
+@@ -943,10 +971,24 @@ NTSTATUS transform_push_input( void *arg )
          {
              t->video_input_anchor_pts = params->pts;
          }
@@ -914,7 +900,8 @@ index f77814208772edb9a718d8888c22ce2c296adfa4..b50cd15b36fd4c75ebc0cf8388d9a083
      t->packet->duration = params->duration != INT64_MIN ? params->duration : 0;
      if (params->flags & WINEDMO_SAMPLE_FLAG_SYNC_POINT)
          t->packet->flags |= AV_PKT_FLAG_KEY;
-@@ -1058,12 +1100,20 @@ NTSTATUS transform_push_input( void *arg )
+     t->last_input_pts = params->pts; /* track for codecs that don't propagate pts to output frames */
+@@ -1058,12 +1102,20 @@ NTSTATUS transform_push_input( void *arg )
          return STATUS_SUCCESS;
      }
  
@@ -935,7 +922,7 @@ index f77814208772edb9a718d8888c22ce2c296adfa4..b50cd15b36fd4c75ebc0cf8388d9a083
      return STATUS_SUCCESS;
  }
  
-@@ -1155,6 +1205,10 @@ NTSTATUS transform_get_output( void *arg )
+@@ -1155,6 +1207,10 @@ NTSTATUS transform_get_output( void *arg )
          {
              av_frame_unref( t->frame );
              ret = avcodec_receive_frame( t->avctx, t->frame );
@@ -946,7 +933,7 @@ index f77814208772edb9a718d8888c22ce2c296adfa4..b50cd15b36fd4c75ebc0cf8388d9a083
              if (ret == AVERROR(EAGAIN)) { params->size = 0; return STATUS_MORE_PROCESSING_REQUIRED; }
              if (ret == AVERROR_EOF)     { params->size = 0; return STATUS_END_OF_FILE; }
              if (ret < 0)
-@@ -1226,11 +1280,12 @@ NTSTATUS transform_get_output( void *arg )
+@@ -1226,11 +1282,12 @@ NTSTATUS transform_get_output( void *arg )
  
          if (video_pts != AV_NOPTS_VALUE)
          {
@@ -962,7 +949,7 @@ index f77814208772edb9a718d8888c22ce2c296adfa4..b50cd15b36fd4c75ebc0cf8388d9a083
                  t->last_video_pts = video_pts;
                  t->last_video_duration = params->duration;
 diff --git a/dlls/winedmo/unixlib.h b/dlls/winedmo/unixlib.h
-index 31b4cf2d8fe445956faf14807bc29ee321d73972..b2b6a30fbb1bbe960160660674839f2df0c43217 100644
+index 31b4cf2d8fe..b2b6a30fbb1 100644
 --- a/dlls/winedmo/unixlib.h
 +++ b/dlls/winedmo/unixlib.h
 @@ -70,6 +70,7 @@ enum sample_flag
@@ -974,7 +961,7 @@ index 31b4cf2d8fe445956faf14807bc29ee321d73972..b2b6a30fbb1bbe960160660674839f2d
  
  struct sample
 diff --git a/dlls/winedmo/winedmo_quartz_parser.c b/dlls/winedmo/winedmo_quartz_parser.c
-index 28056419e6230285e48f5112e5543a8be8bea50a..15c34ffe286a11f5ead03cd971c52ade10629c1f 100644
+index 28056419e62..15c34ffe286 100644
 --- a/dlls/winedmo/winedmo_quartz_parser.c
 +++ b/dlls/winedmo/winedmo_quartz_parser.c
 @@ -139,6 +139,7 @@ struct dmo_packet
@@ -1202,17 +1189,19 @@ index 28056419e6230285e48f5112e5543a8be8bea50a..15c34ffe286a11f5ead03cd971c52ade
      WakeAllConditionVariable(&filter->flushing_cv);
  
 diff --git a/dlls/winedmo/wm_reader.c b/dlls/winedmo/wm_reader.c
-index c6d76900aee7af8be1d6d348b2105d5ff924886c..700d5e7c3d330634bf8ba48af903ec8850920ea6 100644
+index af4bac37d1b..86f40acef63 100644
 --- a/dlls/winedmo/wm_reader.c
 +++ b/dlls/winedmo/wm_reader.c
-@@ -68,6 +68,7 @@ struct wm_stream
+@@ -65,8 +65,9 @@ struct wm_stream
+     INT64 current_pts;
+     INT64 current_duration;
+     DWORD current_flags;
      INT64 last_decoded_pts;
      INT64 observed_decoded_duration;
      INT64 nominal_decoded_duration;
 +    bool next_decoded_cleanpoint;
  
      IWMReaderAllocatorEx *output_allocator;
-     IWMReaderAllocatorEx *stream_allocator;
 @@ -218,6 +219,11 @@ static void winedmo_decoded_format_from_winedmo(const GUID *major, const union w
          wg->u.video.format = WINEDMO_VIDEO_FORMAT_BGR;
          wg->u.video.width = fmt->video.videoInfo.dwWidth;
@@ -1234,7 +1223,7 @@ index c6d76900aee7af8be1d6d348b2105d5ff924886c..700d5e7c3d330634bf8ba48af903ec88
          if (stream->decoded_winedmo_format.u.video.height < 0
                  && winedmo_video_format_is_rgb(stream->decoded_winedmo_format.u.video.format))
              out_fmt.video.videoInfo.VideoFlags |= MFVideoFlag_BottomUpLinearRep;
-@@ -304,14 +312,15 @@ static void wm_stream_reset_decoded_timing(struct wm_stream *stream)
+@@ -304,6 +312,7 @@ static void wm_stream_reset_decoded_timing(struct wm_stream *stream)
  {
      stream->last_decoded_pts = INT64_MIN;
      stream->observed_decoded_duration = 0;
@@ -1242,6 +1231,7 @@ index c6d76900aee7af8be1d6d348b2105d5ff924886c..700d5e7c3d330634bf8ba48af903ec88
  }
  
  static INT64 wm_stream_get_video_duration(const struct wm_stream *stream)
+@@ -314,7 +339,7 @@ static INT64 wm_stream_get_video_duration(const struct wm_stream *stream)
  {
 -    if (stream->observed_decoded_duration > 0)
 -        return stream->observed_decoded_duration;
@@ -1251,8 +1241,7 @@ index c6d76900aee7af8be1d6d348b2105d5ff924886c..700d5e7c3d330634bf8ba48af903ec88
 +        return stream->observed_decoded_duration;
      return 333333;
  }
- 
-@@ -549,7 +558,6 @@ static ULONG WINAPI buffer_Release(INSSBuffer *iface)
+@@ -549,7 +578,6 @@ static ULONG WINAPI buffer_Release(INSSBuffer *iface)
      ULONG refcount = InterlockedDecrement(&buffer->refcount);
  
      TRACE("%p decreasing refcount to %lu.\n", buffer, refcount);
@@ -1260,7 +1249,7 @@ index c6d76900aee7af8be1d6d348b2105d5ff924886c..700d5e7c3d330634bf8ba48af903ec88
      if (!refcount)
          free(buffer);
  
-@@ -558,8 +566,14 @@ static ULONG WINAPI buffer_Release(INSSBuffer *iface)
+@@ -558,8 +586,14 @@ static ULONG WINAPI buffer_Release(INSSBuffer *iface)
  
  static HRESULT WINAPI buffer_GetLength(INSSBuffer *iface, DWORD *size)
  {
@@ -1277,7 +1266,7 @@ index c6d76900aee7af8be1d6d348b2105d5ff924886c..700d5e7c3d330634bf8ba48af903ec88
  }
  
  static HRESULT WINAPI buffer_SetLength(INSSBuffer *iface, DWORD size)
-@@ -580,6 +594,8 @@ static HRESULT WINAPI buffer_GetMaxLength(INSSBuffer *iface, DWORD *size)
+@@ -580,6 +614,8 @@ static HRESULT WINAPI buffer_GetMaxLength(INSSBuffer *iface, DWORD *size)
      struct buffer *buffer = impl_from_INSSBuffer(iface);
  
      TRACE("buffer %p, size %p.\n", buffer, size);
@@ -1286,7 +1275,7 @@ index c6d76900aee7af8be1d6d348b2105d5ff924886c..700d5e7c3d330634bf8ba48af903ec88
  
      *size = buffer->capacity;
      return S_OK;
-@@ -590,6 +606,8 @@ static HRESULT WINAPI buffer_GetBuffer(INSSBuffer *iface, BYTE **data)
+@@ -590,6 +626,8 @@ static HRESULT WINAPI buffer_GetBuffer(INSSBuffer *iface, BYTE **data)
      struct buffer *buffer = impl_from_INSSBuffer(iface);
  
      TRACE("buffer %p, data %p.\n", buffer, data);
@@ -1295,7 +1284,7 @@ index c6d76900aee7af8be1d6d348b2105d5ff924886c..700d5e7c3d330634bf8ba48af903ec88
  
      *data = buffer->data;
      return S_OK;
-@@ -600,9 +618,11 @@ static HRESULT WINAPI buffer_GetBufferAndLength(INSSBuffer *iface, BYTE **data,
+@@ -600,9 +638,11 @@ static HRESULT WINAPI buffer_GetBufferAndLength(INSSBuffer *iface, BYTE **data,
      struct buffer *buffer = impl_from_INSSBuffer(iface);
  
      TRACE("buffer %p, data %p, size %p.\n", buffer, data, size);
@@ -1308,7 +1297,7 @@ index c6d76900aee7af8be1d6d348b2105d5ff924886c..700d5e7c3d330634bf8ba48af903ec88
      return S_OK;
  }
  
-@@ -1012,6 +1032,7 @@ static DWORD CALLBACK wm_demux_thread(void *arg)
+@@ -1012,6 +1052,7 @@ static DWORD CALLBACK wm_demux_thread(void *arg)
          DWORD data_len;
          struct wm_stream *s;
          struct wm_packet *pkt;
@@ -1316,7 +1305,7 @@ index c6d76900aee7af8be1d6d348b2105d5ff924886c..700d5e7c3d330634bf8ba48af903ec88
  
          /* Don't call the demuxer while reinit_stream is seeking it. */
          if (reader->read_flushing)
-@@ -1026,6 +1047,7 @@ static DWORD CALLBACK wm_demux_thread(void *arg)
+@@ -1026,6 +1067,7 @@ static DWORD CALLBACK wm_demux_thread(void *arg)
              continue;
          }
  
@@ -1324,7 +1313,7 @@ index c6d76900aee7af8be1d6d348b2105d5ff924886c..700d5e7c3d330634bf8ba48af903ec88
          memset(&output, 0, sizeof(output));
          output.pBuffer = &sbuf->IMediaBuffer_iface;
          stream_idx = 0;
-@@ -1069,16 +1091,21 @@ static DWORD CALLBACK wm_demux_thread(void *arg)
+@@ -1069,16 +1111,21 @@ static DWORD CALLBACK wm_demux_thread(void *arg)
                      for (;;)
                      {
                          INT64 dec_pts, dec_dur;
@@ -1348,7 +1337,7 @@ index c6d76900aee7af8be1d6d348b2105d5ff924886c..700d5e7c3d330634bf8ba48af903ec88
                              free(dec_buf);
                              continue;
                          }
-@@ -1088,7 +1115,7 @@ static DWORD CALLBACK wm_demux_thread(void *arg)
+@@ -1088,7 +1135,7 @@ static DWORD CALLBACK wm_demux_thread(void *arg)
                              break;
                          }
  
@@ -1357,7 +1346,7 @@ index c6d76900aee7af8be1d6d348b2105d5ff924886c..700d5e7c3d330634bf8ba48af903ec88
                          {
                              free(dec_buf);
                              continue;
-@@ -1102,7 +1129,7 @@ static DWORD CALLBACK wm_demux_thread(void *arg)
+@@ -1102,7 +1149,7 @@ static DWORD CALLBACK wm_demux_thread(void *arg)
                          if ((pkt = malloc(sizeof(*pkt))))
                          {
                              pkt->data = dec_buf;
@@ -1366,7 +1355,7 @@ index c6d76900aee7af8be1d6d348b2105d5ff924886c..700d5e7c3d330634bf8ba48af903ec88
                              pkt->pts = dec_pts;
                              pkt->duration = dec_dur;
                              pkt->flags = 0;
-@@ -1158,6 +1185,12 @@ static DWORD CALLBACK wm_demux_thread(void *arg)
+@@ -1158,6 +1205,12 @@ static DWORD CALLBACK wm_demux_thread(void *arg)
              continue;
          }
  
@@ -1379,7 +1368,7 @@ index c6d76900aee7af8be1d6d348b2105d5ff924886c..700d5e7c3d330634bf8ba48af903ec88
          IMediaBuffer_SetLength(&sbuf->IMediaBuffer_iface, needed_size);
          data_len = needed_size;
          IMediaBuffer_GetBufferAndLength(&sbuf->IMediaBuffer_iface, &src, NULL);
-@@ -1177,6 +1210,13 @@ static DWORD CALLBACK wm_demux_thread(void *arg)
+@@ -1177,6 +1230,13 @@ static DWORD CALLBACK wm_demux_thread(void *arg)
          }
  
          EnterCriticalSection(&s->decoder_cs);
@@ -1393,7 +1382,7 @@ index c6d76900aee7af8be1d6d348b2105d5ff924886c..700d5e7c3d330634bf8ba48af903ec88
          if (s->decode_stream && s->decoder.handle)
          {
              INT64 in_pts = (output.dwStatus & DMO_OUTPUT_DATA_BUFFERF_TIME) ? output.rtTimestamp : INT64_MIN;
-@@ -1187,6 +1227,8 @@ static DWORD CALLBACK wm_demux_thread(void *arg)
+@@ -1187,6 +1247,8 @@ static DWORD CALLBACK wm_demux_thread(void *arg)
              NTSTATUS dec_status;
  
              if (!dec_size) dec_size = 0x40000;
@@ -1402,7 +1391,7 @@ index c6d76900aee7af8be1d6d348b2105d5ff924886c..700d5e7c3d330634bf8ba48af903ec88
  
              if ((dec_status = winedmo_transform_push_input(s->decoder, src, data_len,
                      in_pts, INT64_MIN, in_dur, in_flags))
-@@ -1203,17 +1245,22 @@ static DWORD CALLBACK wm_demux_thread(void *arg)
+@@ -1203,17 +1265,22 @@ static DWORD CALLBACK wm_demux_thread(void *arg)
              for (;;)
              {
                  INT64 dec_pts, dec_dur;
@@ -1427,7 +1416,7 @@ index c6d76900aee7af8be1d6d348b2105d5ff924886c..700d5e7c3d330634bf8ba48af903ec88
                      free(dec_buf);
                      continue;
                  }
-@@ -1223,7 +1270,7 @@ static DWORD CALLBACK wm_demux_thread(void *arg)
+@@ -1223,7 +1290,7 @@ static DWORD CALLBACK wm_demux_thread(void *arg)
                      break;
                  }
  
@@ -1436,7 +1425,7 @@ index c6d76900aee7af8be1d6d348b2105d5ff924886c..700d5e7c3d330634bf8ba48af903ec88
                  {
                      /* format change: frame_pending stays true, re-read on next iteration */
                      free(dec_buf);
-@@ -1238,13 +1285,18 @@ static DWORD CALLBACK wm_demux_thread(void *arg)
+@@ -1238,13 +1305,18 @@ static DWORD CALLBACK wm_demux_thread(void *arg)
                  if ((pkt = malloc(sizeof(*pkt))))
                  {
                      pkt->data = dec_buf;
@@ -1456,7 +1445,7 @@ index c6d76900aee7af8be1d6d348b2105d5ff924886c..700d5e7c3d330634bf8ba48af903ec88
                      if (dec_flags & WINEDMO_SAMPLE_FLAG_DISCONTINUITY) pkt->flags |= WM_SF_DISCONTINUITY;
                      EnterCriticalSection(&s->queue_cs);
                      if (!s->queue_flushing)
-@@ -1285,8 +1337,6 @@ static DWORD CALLBACK wm_demux_thread(void *arg)
+@@ -1285,8 +1357,6 @@ static DWORD CALLBACK wm_demux_thread(void *arg)
              pkt->pts = (output.dwStatus & DMO_OUTPUT_DATA_BUFFERF_TIME) ? output.rtTimestamp : -1;
              pkt->duration = (output.dwStatus & DMO_OUTPUT_DATA_BUFFERF_TIMELENGTH) ? output.rtTimelength : -1;
              pkt->flags = 0;
@@ -1465,7 +1454,7 @@ index c6d76900aee7af8be1d6d348b2105d5ff924886c..700d5e7c3d330634bf8ba48af903ec88
              if (output.dwStatus & DMO_OUTPUT_DATA_BUFFERF_SYNCPOINT) pkt->flags |= WM_SF_CLEANPOINT;
              if (output.dwStatus & DMO_OUTPUT_DATA_BUFFERF_DISCONTINUITY) pkt->flags |= WM_SF_DISCONTINUITY;
              EnterCriticalSection(&s->queue_cs);
-@@ -2241,10 +2291,12 @@ static HRESULT init_stream(struct wm_reader *reader)
+@@ -2181,10 +2251,12 @@ static HRESULT init_stream(struct wm_reader *reader)
      return S_OK;
  }
  
@@ -1479,7 +1468,7 @@ index c6d76900aee7af8be1d6d348b2105d5ff924886c..700d5e7c3d330634bf8ba48af903ec88
      /* Signal flushing so the demux thread's read callback returns empty */
      reader->read_flushing = true;
      reader->read_flush_generation++;
-@@ -2272,10 +2324,12 @@ static HRESULT reinit_stream(struct wm_reader *reader)
+@@ -2212,10 +2284,12 @@ static HRESULT reinit_stream(struct wm_reader *reader)
      {
          struct wm_stream *stream = &reader->streams[i];
  
@@ -1492,7 +1481,7 @@ index c6d76900aee7af8be1d6d348b2105d5ff924886c..700d5e7c3d330634bf8ba48af903ec88
  
          stream->eos = false;
          EnterCriticalSection(&stream->queue_cs);
-@@ -2343,6 +2397,7 @@ static HRESULT wm_reader_read_stream_sample(struct wm_reader *reader, struct wm_
+@@ -2283,6 +2357,7 @@ static HRESULT wm_reader_read_stream_sample(struct wm_reader *reader, struct wm_
      BYTE *raw_data = NULL;
      UINT32 raw_size = 0;
      INT64 raw_pts, raw_dur;
@@ -1500,7 +1489,7 @@ index c6d76900aee7af8be1d6d348b2105d5ff924886c..700d5e7c3d330634bf8ba48af903ec88
      DWORD raw_flags;
      HRESULT hr;
      BYTE *buf_data;
-@@ -2382,15 +2437,20 @@ static HRESULT wm_reader_read_stream_sample(struct wm_reader *reader, struct wm_
+@@ -2322,15 +2397,20 @@ static HRESULT wm_reader_read_stream_sample(struct wm_reader *reader, struct wm_
      INSSBuffer_SetLength(*sample, capacity);
  
      if (stream->current_pts >= 0)
@@ -1527,7 +1516,7 @@ index c6d76900aee7af8be1d6d348b2105d5ff924886c..700d5e7c3d330634bf8ba48af903ec88
      /* Only first chunk gets discontinuity/cleanpoint */
      stream->current_flags &= ~(WM_SF_DISCONTINUITY | WM_SF_CLEANPOINT);
  
-@@ -2435,6 +2495,16 @@ static BOOL wm_stream_peek_pending_sample(struct wm_stream *stream, INT64 *pts)
+@@ -2375,6 +2455,16 @@ static BOOL wm_stream_peek_pending_sample(struct wm_stream *stream, INT64 *pts)
      return has_sample;
  }
  
@@ -1544,7 +1533,7 @@ index c6d76900aee7af8be1d6d348b2105d5ff924886c..700d5e7c3d330634bf8ba48af903ec88
  static const enum winedmo_video_format video_formats[] =
  {
      /* Try to prefer YUV formats over RGB ones. Most decoders output in the
-@@ -2458,12 +2528,16 @@ static HRESULT wm_stream_allocate_sample(struct wm_stream *stream, DWORD size, I
+@@ -2398,12 +2488,16 @@ static HRESULT wm_stream_allocate_sample(struct wm_stream *stream, DWORD size, I
      struct buffer *buffer;
  
      if (!stream->read_compressed && stream->output_allocator)
@@ -1561,7 +1550,7 @@ index c6d76900aee7af8be1d6d348b2105d5ff924886c..700d5e7c3d330634bf8ba48af903ec88
  
      /* FIXME: Should these be pooled? */
      if (!(buffer = calloc(1, offsetof(struct buffer, data[size]))))
-@@ -2650,9 +2724,25 @@ static HRESULT WINAPI reader_Close(IWMSyncReader2 *iface)
+@@ -2590,9 +2684,25 @@ static HRESULT WINAPI reader_Close(IWMSyncReader2 *iface)
  
  static HRESULT WINAPI reader_GetMaxOutputSampleSize(IWMSyncReader2 *iface, DWORD output, DWORD *max)
  {
@@ -1590,7 +1579,7 @@ index c6d76900aee7af8be1d6d348b2105d5ff924886c..700d5e7c3d330634bf8ba48af903ec88
  }
  
  static HRESULT WINAPI reader_GetMaxStreamSampleSize(IWMSyncReader2 *iface, WORD stream_number, DWORD *size)
-@@ -2682,86 +2772,70 @@ static HRESULT WINAPI reader_GetNextSample(IWMSyncReader2 *iface,
+@@ -2680,86 +2680,70 @@ static HRESULT WINAPI reader_GetNextSample(IWMSyncReader2 *iface,
  {
      struct wm_reader *reader = impl_from_IWMSyncReader2(iface);
      struct wm_stream *stream;
@@ -1606,9 +1595,9 @@ index c6d76900aee7af8be1d6d348b2105d5ff924886c..700d5e7c3d330634bf8ba48af903ec88
      if (!stream_number && !output_number && !ret_stream_number)
          return E_INVALIDARG;
  
+-    EnterCriticalSection(&reader->cs);
 +    if (reader->outer == &reader->IUnknown_inner)
 +    {
--    EnterCriticalSection(&reader->cs);
 +        EnterCriticalSection(&reader->cs);
 +        reader_locked = TRUE;
 +    }
@@ -1628,12 +1617,12 @@ index c6d76900aee7af8be1d6d348b2105d5ff924886c..700d5e7c3d330634bf8ba48af903ec88
          {
 -            INT64 candidate_pts = INT64_MIN;
 -            BOOL has_sample;
--
--            stream = &reader->streams[i];
--            if (stream->selection == WMT_OFF || stream->eos) continue;
 +            struct wm_stream *first_active = NULL;
 +            WORD i;
  
+-            stream = &reader->streams[i];
+-            if (stream->selection == WMT_OFF || stream->eos) continue;
+-
 -            if (first_active == reader->stream_count)
 -                first_active = i;
 +            for (i = 0; i < reader->stream_count; ++i)
@@ -1714,7 +1703,7 @@ index c6d76900aee7af8be1d6d348b2105d5ff924886c..700d5e7c3d330634bf8ba48af903ec88
  
          goto done;
      }
-@@ -2783,9 +2856,17 @@ static HRESULT WINAPI reader_GetNextSample(IWMSyncReader2 *iface,
+@@ -2723,9 +2816,17 @@ static HRESULT WINAPI reader_GetNextSample(IWMSyncReader2 *iface,
          goto done;
      }
  
@@ -1732,19 +1721,16 @@ index c6d76900aee7af8be1d6d348b2105d5ff924886c..700d5e7c3d330634bf8ba48af903ec88
  
  done:
      if (output_number && hr == S_OK)
-@@ -2793,6 +2874,10 @@ done:
+@@ -2788,6 +2788,7 @@ done:
      if (ret_stream_number && (hr == S_OK || stream_number))
          *ret_stream_number = stream_number;
  
 -    LeaveCriticalSection(&reader->cs);
 +    if (reader_locked)
-+    {
 +        LeaveCriticalSection(&reader->cs);
-+        reader_locked = FALSE;
-+    }
      return hr;
  }
-@@ -3149,9 +3230,16 @@ static HRESULT WINAPI reader_SetOutputProps(IWMSyncReader2 *iface, DWORD output,
+@@ -3089,9 +3190,16 @@ static HRESULT WINAPI reader_SetOutputProps(IWMSyncReader2 *iface, DWORD output,
          return hr;
      }
  
@@ -1762,7 +1748,7 @@ index c6d76900aee7af8be1d6d348b2105d5ff924886c..700d5e7c3d330634bf8ba48af903ec88
  
      LeaveCriticalSection(&reader->cs);
      return S_OK;
-@@ -3196,7 +3284,7 @@ static HRESULT WINAPI reader_SetRange(IWMSyncReader2 *iface, QWORD start, LONGLO
+@@ -3136,7 +3244,7 @@ static HRESULT WINAPI reader_SetRange(IWMSyncReader2 *iface, QWORD start, LONGLO
      EnterCriticalSection(&reader->cs);
  
      reader->start_time = start;
@@ -1771,7 +1757,7 @@ index c6d76900aee7af8be1d6d348b2105d5ff924886c..700d5e7c3d330634bf8ba48af903ec88
  
      LeaveCriticalSection(&reader->cs);
      return S_OK;
-@@ -3233,7 +3321,7 @@ static HRESULT WINAPI reader_SetReadStreamSamples(IWMSyncReader2 *iface, WORD st
+@@ -3173,7 +3281,7 @@ static HRESULT WINAPI reader_SetReadStreamSamples(IWMSyncReader2 *iface, WORD st
      if (stream->decode_stream != decode)
      {
          stream->decode_stream = decode;

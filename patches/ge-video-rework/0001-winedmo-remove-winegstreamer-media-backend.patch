@@ -1480,10 +1480,10 @@ index 1e0e1d0f..0e10e647 100644
      return sink_class_factory_create_media_sink(iface, bytestream, format, video_type, audio_type, out);
  }
 diff --git a/dlls/winegstreamer/media_source.c b/dlls/winedmo/media_source.c
-similarity index 63%
+similarity index 65%
 rename from dlls/winegstreamer/media_source.c
 rename to dlls/winedmo/media_source.c
-index 35213329..72bbe2f5 100644
+index 18cb81d..1ce2470 100644
 --- a/dlls/winegstreamer/media_source.c
 +++ b/dlls/winedmo/media_source.c
 @@ -1,4 +1,4 @@
@@ -1492,10 +1492,7 @@ index 35213329..72bbe2f5 100644
   *
   * Copyright 2020 Derek Lesho
   * Copyright 2020 Zebediah Figura for CodeWeavers
-@@ -18,18 +18,27 @@
-  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
-  */
- 
+@@ -21,15 +21,24 @@
  #include <stdlib.h>
  #include <string.h>
  
@@ -1521,7 +1518,7 @@ index 35213329..72bbe2f5 100644
  struct object_context
  {
      IUnknown IUnknown_iface;
-@@ -119,6 +128,125 @@ static HRESULT object_context_create(DWORD flags, IMFByteStream *stream, const W
+@@ -122,6 +131,125 @@ static HRESULT object_context_create(DWORD flags, IMFByteStream *stream, const W
      return S_OK;
  }
  
@@ -1647,7 +1644,7 @@ index 35213329..72bbe2f5 100644
  struct media_stream
  {
      IMFMediaStream IMFMediaStream_iface;
-@@ -128,7 +256,11 @@ struct media_stream
+@@ -131,7 +259,11 @@ struct media_stream
      IMFMediaEventQueue *event_queue;
      IMFStreamDescriptor *descriptor;
  
@@ -1660,7 +1657,7 @@ index 35213329..72bbe2f5 100644
  
      IUnknown **token_queue;
      LONG token_queue_count;
-@@ -137,8 +269,22 @@ struct media_stream
+@@ -140,8 +272,22 @@ struct media_stream
      DWORD stream_id;
      BOOL active;
      BOOL eos;
@@ -1683,7 +1680,7 @@ index 35213329..72bbe2f5 100644
  enum source_async_op
  {
      SOURCE_ASYNC_START,
-@@ -174,17 +320,34 @@ struct media_source
+@@ -177,17 +323,34 @@ struct media_source
      IMFGetService IMFGetService_iface;
      IMFRateSupport IMFRateSupport_iface;
      IMFRateControl IMFRateControl_iface;
@@ -1719,7 +1716,7 @@ index 35213329..72bbe2f5 100644
  
      IMFStreamDescriptor **descriptors;
      struct media_stream **streams;
-@@ -199,11 +362,12 @@ struct media_source
+@@ -202,11 +365,12 @@ struct media_source
          SOURCE_SHUTDOWN,
      } state;
      float rate;
@@ -1735,7 +1732,7 @@ index 35213329..72bbe2f5 100644
  static inline struct media_stream *impl_from_IMFMediaStream(IMFMediaStream *iface)
  {
      return CONTAINING_RECORD(iface, struct media_stream, IMFMediaStream_iface);
-@@ -229,6 +393,11 @@ static inline struct media_source *impl_from_IMFRateControl(IMFRateControl *ifac
+@@ -232,6 +396,11 @@ static inline struct media_source *impl_from_IMFRateControl(IMFRateControl *ifac
      return CONTAINING_RECORD(iface, struct media_source, IMFRateControl_iface);
  }
  
@@ -1747,7 +1744,7 @@ index 35213329..72bbe2f5 100644
  static inline struct media_source *impl_from_async_commands_callback_IMFAsyncCallback(IMFAsyncCallback *iface)
  {
      return CONTAINING_RECORD(iface, struct media_source, async_commands_callback);
-@@ -239,6 +408,43 @@ static inline struct source_async_command *impl_from_async_command_IUnknown(IUnk
+@@ -242,6 +411,43 @@ static inline struct source_async_command *impl_from_async_command_IUnknown(IUnk
      return CONTAINING_RECORD(iface, struct source_async_command, IUnknown_iface);
  }
  
@@ -1791,7 +1788,7 @@ index 35213329..72bbe2f5 100644
  static HRESULT WINAPI source_async_command_QueryInterface(IUnknown *iface, REFIID riid, void **obj)
  {
      if (IsEqualIID(riid, &IID_IUnknown))
-@@ -304,6 +510,10 @@ static HRESULT source_create_async_op(enum source_async_op op, IUnknown **out)
+@@ -307,6 +513,10 @@ static HRESULT source_create_async_op(enum source_async_op op, IUnknown **out)
      return S_OK;
  }
  
@@ -1802,7 +1799,7 @@ index 35213329..72bbe2f5 100644
  static HRESULT WINAPI callback_QueryInterface(IMFAsyncCallback *iface, REFIID riid, void **obj)
  {
      TRACE("%p, %s, %p.\n", iface, debugstr_guid(riid), obj);
-@@ -339,247 +549,300 @@ static ULONG WINAPI source_async_commands_callback_Release(IMFAsyncCallback *ifa
+@@ -342,247 +552,300 @@ static ULONG WINAPI source_async_commands_callback_Release(IMFAsyncCallback *ifa
      return IMFMediaSource_Release(&source->IMFMediaSource_iface);
  }
  
@@ -2281,7 +2278,7 @@ index 35213329..72bbe2f5 100644
  }
  
  static HRESULT media_source_start(struct media_source *source, IMFPresentationDescriptor *descriptor,
-@@ -635,6 +898,30 @@ static HRESULT media_source_start(struct media_source *source, IMFPresentationDe
+@@ -638,6 +901,30 @@ static HRESULT media_source_start(struct media_source *source, IMFPresentationDe
          }
      }
  
@@ -2312,7 +2309,7 @@ index 35213329..72bbe2f5 100644
      for (i = 0; i < source->stream_count; i++)
      {
          struct media_stream *stream = source->streams[i];
-@@ -644,7 +931,9 @@ static HRESULT media_source_start(struct media_source *source, IMFPresentationDe
+@@ -647,7 +934,9 @@ static HRESULT media_source_start(struct media_source *source, IMFPresentationDe
              stream->eos = FALSE;
  
          if (!(stream->active = !!descriptors[i]))
@@ -2323,7 +2320,7 @@ index 35213329..72bbe2f5 100644
          else
          {
              if (FAILED(hr = media_stream_start(stream, was_active, seek_message, position)))
-@@ -655,11 +944,13 @@ static HRESULT media_source_start(struct media_source *source, IMFPresentationDe
+@@ -658,11 +947,13 @@ static HRESULT media_source_start(struct media_source *source, IMFPresentationDe
  
      free(descriptors);
  
@@ -2341,7 +2338,7 @@ index 35213329..72bbe2f5 100644
  
      for (i = 0; i < source->stream_count; i++)
          flush_token_queue(source->streams[i], position->vt == VT_EMPTY);
-@@ -668,6 +959,10 @@ static HRESULT media_source_start(struct media_source *source, IMFPresentationDe
+@@ -671,6 +962,10 @@ static HRESULT media_source_start(struct media_source *source, IMFPresentationDe
              seek_message ? MESourceSeeked : MESourceStarted, &GUID_NULL, S_OK, position);
  }
  
@@ -2352,7 +2349,7 @@ index 35213329..72bbe2f5 100644
  static HRESULT media_source_pause(struct media_source *source)
  {
      unsigned int i;
-@@ -681,8 +976,8 @@ static HRESULT media_source_pause(struct media_source *source)
+@@ -684,8 +979,8 @@ static HRESULT media_source_pause(struct media_source *source)
      for (i = 0; i < source->stream_count; i++)
      {
          struct media_stream *stream = source->streams[i];
@@ -2363,44 +2360,43 @@ index 35213329..72bbe2f5 100644
              WARN("Failed to queue MEStreamPaused event, hr %#lx\n", hr);
      }
  
-@@ -703,55 +998,89 @@ static HRESULT media_source_stop(struct media_source *source)
-     for (i = 0; i < source->stream_count; i++)
-     {
-         struct media_stream *stream = source->streams[i];
--        if (stream->active && FAILED(hr = IMFMediaEventQueue_QueueEventParamVar(stream->event_queue, MEStreamStopped,
--                    &GUID_NULL, S_OK, NULL)))
+@@ -695,66 +990,100 @@ static HRESULT media_source_pause(struct media_source *source)
+ 
+ static HRESULT media_source_stop(struct media_source *source)
+ {
+-    unsigned int i;
++    unsigned int i;
++    HRESULT hr;
++
++    TRACE("source %p\n", source);
++
++    if (source->state == SOURCE_SHUTDOWN)
++        return MF_E_SHUTDOWN;
++
++    for (i = 0; i < source->stream_count; i++)
++    {
++        struct media_stream *stream = source->streams[i];
 +        if (stream->active && FAILED(hr = IMFMediaEventQueue_QueueEventParamVar(stream->event_queue,
 +                    MEStreamStopped, &GUID_NULL, S_OK, NULL)))
-             WARN("Failed to queue MEStreamStopped event, hr %#lx\n", hr);
-     }
- 
-     source->state = SOURCE_STOPPED;
--
-     for (i = 0; i < source->stream_count; i++)
-         flush_token_queue(source->streams[i], FALSE);
- 
-     return IMFMediaEventQueue_QueueEventParamVar(source->event_queue, MESourceStopped, &GUID_NULL, S_OK, NULL);
- }
- 
--static HRESULT media_stream_send_sample(struct media_stream *stream, const struct wg_parser_buffer *wg_buffer, IUnknown *token)
++            WARN("Failed to queue MEStreamStopped event, hr %#lx\n", hr);
++    }
++
++    source->state = SOURCE_STOPPED;
++    for (i = 0; i < source->stream_count; i++)
++        flush_token_queue(source->streams[i], FALSE);
++
++    return IMFMediaEventQueue_QueueEventParamVar(source->event_queue, MESourceStopped, &GUID_NULL, S_OK, NULL);
++}
++
 +/* ========================================================================
 + * media_stream_send_eos / media_stream_send_sample / wait_on_sample
 + * ======================================================================== */
 +
 +static void media_source_queue_end_of_presentation(struct media_source *source)
- {
--    IMFSample *sample = NULL;
--    IMFMediaBuffer *buffer;
++{
 +    PROPVARIANT empty = {.vt = VT_EMPTY};
-     HRESULT hr;
--    BYTE *data;
- 
--    if (FAILED(hr = MFCreateMemoryBuffer(wg_buffer->size, &buffer)))
--        return hr;
--    if (FAILED(hr = IMFMediaBuffer_SetCurrentLength(buffer, wg_buffer->size)))
--        goto out;
--    if (FAILED(hr = IMFMediaBuffer_Lock(buffer, &data, NULL, NULL)))
--        goto out;
++    HRESULT hr;
++
 +    if (source->eop_queued)
 +        return;
 +    source->eop_queued = true;
@@ -2413,48 +2409,71 @@ index 35213329..72bbe2f5 100644
 +static HRESULT media_stream_send_eos(struct media_source *source, struct media_stream *stream)
 +{
 +    PROPVARIANT empty = {.vt = VT_EMPTY};
-+    HRESULT hr;
+     HRESULT hr;
 +    UINT i;
  
--    if (!wg_parser_stream_copy_buffer(stream->wg_stream, data, 0, wg_buffer->size))
+-    TRACE("source %p\n", source);
 +    TRACE("source %p, stream %p\n", source, stream);
-+
+ 
+-    if (source->state == SOURCE_SHUTDOWN)
+-        return MF_E_SHUTDOWN;
 +    stream->eos = TRUE;
 +    if (FAILED(hr = IMFMediaEventQueue_QueueEventParamVar(stream->event_queue,
 +            MEEndOfStream, &GUID_NULL, S_OK, &empty)))
 +        WARN("Failed to queue MEEndOfStream event, hr %#lx\n", hr);
-+
-+    for (i = 0; i < source->stream_count; i++)
+ 
+     for (i = 0; i < source->stream_count; i++)
      {
--        hr = S_FALSE;
--        wg_parser_stream_release_buffer(stream->wg_stream);
--        IMFMediaBuffer_Unlock(buffer);
--        goto out;
+-        struct media_stream *stream = source->streams[i];
+-        if (stream->active && FAILED(hr = IMFMediaEventQueue_QueueEventParamVar(stream->event_queue, MEStreamStopped,
+-                    &GUID_NULL, S_OK, NULL)))
+-            WARN("Failed to queue MEStreamStopped event, hr %#lx\n", hr);
 +        struct media_stream *s = source->streams[i];
 +        if (s->active && !s->eos)
 +            return S_OK;
      }
--    wg_parser_stream_release_buffer(stream->wg_stream);
  
--    if (FAILED(hr = IMFMediaBuffer_Unlock(buffer)))
+-    source->state = SOURCE_STOPPED;
+-
+-    for (i = 0; i < source->stream_count; i++)
+-        flush_token_queue(source->streams[i], FALSE);
+-
+-    return IMFMediaEventQueue_QueueEventParamVar(source->event_queue, MESourceStopped, &GUID_NULL, S_OK, NULL);
 +    media_source_queue_end_of_presentation(source);
 +    return S_OK;
-+}
-+
+ }
+ 
+-static HRESULT media_stream_send_sample(struct media_stream *stream, const struct wg_parser_buffer *wg_buffer, IUnknown *token)
 +static HRESULT media_stream_send_sample(struct media_stream *stream, struct media_packet *pkt,
 +        IUnknown *token)
-+{
-+    IMFMediaBuffer *buffer;
+ {
+-    IMFSample *sample = NULL;
+     IMFMediaBuffer *buffer;
+-    HRESULT hr;
 +    IMFSample *sample = NULL;
-+    BYTE *data;
+     BYTE *data;
 +    HRESULT hr;
-+
+ 
+-    if (FAILED(hr = MFCreateMemoryBuffer(wg_buffer->size, &buffer)))
 +    if (FAILED(hr = MFCreateMemoryBuffer(pkt->size, &buffer)))
-+        return hr;
+         return hr;
+-    if (FAILED(hr = IMFMediaBuffer_SetCurrentLength(buffer, wg_buffer->size)))
 +    if (FAILED(hr = IMFMediaBuffer_SetCurrentLength(buffer, pkt->size)))
-+        goto out;
-+    if (FAILED(hr = IMFMediaBuffer_Lock(buffer, &data, NULL, NULL)))
          goto out;
+     if (FAILED(hr = IMFMediaBuffer_Lock(buffer, &data, NULL, NULL)))
+         goto out;
+-
+-    if (!wg_parser_stream_copy_buffer(stream->wg_stream, data, 0, wg_buffer->size))
+-    {
+-        hr = S_FALSE;
+-        wg_parser_stream_release_buffer(stream->wg_stream);
+-        IMFMediaBuffer_Unlock(buffer);
+-        goto out;
+-    }
+-    wg_parser_stream_release_buffer(stream->wg_stream);
+-
+-    if (FAILED(hr = IMFMediaBuffer_Unlock(buffer)))
+-        goto out;
 +    memcpy(data, pkt->data, pkt->size);
 +    IMFMediaBuffer_Unlock(buffer);
  
@@ -2479,7 +2498,7 @@ index 35213329..72bbe2f5 100644
  
      hr = IMFMediaEventQueue_QueueEventParamUnk(stream->event_queue, MEMediaSample,
              &GUID_NULL, S_OK, (IUnknown *)sample);
-@@ -763,64 +1092,191 @@ out:
+@@ -766,64 +1095,191 @@ out:
      return hr;
  }
  
@@ -2645,8 +2664,7 @@ index 35213329..72bbe2f5 100644
 +            Sleep(1);
 +            continue;
 +        }
- 
--    return media_stream_send_eos(source, stream);
++
 +        if (stream_idx >= source->stream_count)
 +        {
 +            IMediaBuffer_Release(&sbuf->IMediaBuffer_iface);
@@ -2692,7 +2710,8 @@ index 35213329..72bbe2f5 100644
 +                free(pkt);
 +            }
 +        }
-+
+ 
+-    return media_stream_send_eos(source, stream);
 +        IMediaBuffer_Release(&sbuf->IMediaBuffer_iface);
 +    }
 +
@@ -2707,7 +2726,7 @@ index 35213329..72bbe2f5 100644
  static HRESULT WINAPI source_async_commands_Invoke(IMFAsyncCallback *iface, IMFAsyncResult *result)
  {
      struct media_source *source = impl_from_async_commands_callback_IMFAsyncCallback(iface);
-@@ -859,7 +1315,8 @@ static HRESULT WINAPI source_async_commands_Invoke(IMFAsyncCallback *iface, IMFA
+@@ -862,7 +1318,8 @@ static HRESULT WINAPI source_async_commands_Invoke(IMFAsyncCallback *iface, IMFA
                  enqueue_token(command->u.request_sample.stream, command->u.request_sample.token);
              else if (source->state == SOURCE_RUNNING)
              {
@@ -2717,7 +2736,7 @@ index 35213329..72bbe2f5 100644
                      WARN("Failed to request sample, hr %#lx\n", hr);
              }
              break;
-@@ -881,65 +1338,9 @@ static const IMFAsyncCallbackVtbl source_async_commands_callback_vtbl =
+@@ -884,65 +1341,9 @@ static const IMFAsyncCallbackVtbl source_async_commands_callback_vtbl =
      source_async_commands_Invoke,
  };
  
@@ -2786,7 +2805,7 @@ index 35213329..72bbe2f5 100644
  
  static HRESULT WINAPI media_stream_QueryInterface(IMFMediaStream *iface, REFIID riid, void **out)
  {
-@@ -987,6 +1388,9 @@ static ULONG WINAPI media_stream_Release(IMFMediaStream *iface)
+@@ -990,6 +1391,9 @@ static ULONG WINAPI media_stream_Release(IMFMediaStream *iface)
          IMFStreamDescriptor_Release(stream->descriptor);
          IMFMediaEventQueue_Release(stream->event_queue);
          flush_token_queue(stream, FALSE);
@@ -2796,7 +2815,7 @@ index 35213329..72bbe2f5 100644
          free(stream);
      }
  
-@@ -1091,18 +1495,23 @@ static HRESULT WINAPI media_stream_RequestSample(IMFMediaStream *iface, IUnknown
+@@ -1094,18 +1498,23 @@ static HRESULT WINAPI media_stream_RequestSample(IMFMediaStream *iface, IUnknown
          hr = MF_E_SHUTDOWN;
      else if (!stream->active)
          hr = MF_E_MEDIA_SOURCE_WRONGSTATE;
@@ -2831,7 +2850,7 @@ index 35213329..72bbe2f5 100644
      }
  
      LeaveCriticalSection(&source->cs);
-@@ -1125,12 +1534,12 @@ static const IMFMediaStreamVtbl media_stream_vtbl =
+@@ -1128,12 +1537,12 @@ static const IMFMediaStreamVtbl media_stream_vtbl =
  };
  
  static HRESULT media_stream_create(IMFMediaSource *source, IMFStreamDescriptor *descriptor,
@@ -2846,7 +2865,7 @@ index 35213329..72bbe2f5 100644
  
      if (!(object = calloc(1, sizeof(*object))))
          return E_OUTOFMEMORY;
-@@ -1151,7 +1560,13 @@ static HRESULT media_stream_create(IMFMediaSource *source, IMFStreamDescriptor *
+@@ -1154,7 +1563,13 @@ static HRESULT media_stream_create(IMFMediaSource *source, IMFStreamDescriptor *
  
      object->active = TRUE;
      object->eos = FALSE;
@@ -2861,7 +2880,7 @@ index 35213329..72bbe2f5 100644
  
      TRACE("Created stream object %p.\n", object);
  
-@@ -1159,6 +1574,10 @@ static HRESULT media_stream_create(IMFMediaSource *source, IMFStreamDescriptor *
+@@ -1162,6 +1577,10 @@ static HRESULT media_stream_create(IMFMediaSource *source, IMFStreamDescriptor *
      return S_OK;
  }
  
@@ -2872,7 +2891,7 @@ index 35213329..72bbe2f5 100644
  static HRESULT WINAPI media_source_get_service_QueryInterface(IMFGetService *iface, REFIID riid, void **obj)
  {
      struct media_source *source = impl_from_IMFGetService(iface);
-@@ -1213,6 +1632,10 @@ static const IMFGetServiceVtbl media_source_get_service_vtbl =
+@@ -1216,6 +1635,10 @@ static const IMFGetServiceVtbl media_source_get_service_vtbl =
      media_source_get_service_GetService,
  };
  
@@ -2883,7 +2902,7 @@ index 35213329..72bbe2f5 100644
  static HRESULT WINAPI media_source_rate_support_QueryInterface(IMFRateSupport *iface, REFIID riid, void **obj)
  {
      struct media_source *source = impl_from_IMFRateSupport(iface);
-@@ -1270,6 +1693,10 @@ static const IMFRateSupportVtbl media_source_rate_support_vtbl =
+@@ -1273,6 +1696,10 @@ static const IMFRateSupportVtbl media_source_rate_support_vtbl =
      media_source_rate_support_IsRateSupported,
  };
  
@@ -2894,7 +2913,7 @@ index 35213329..72bbe2f5 100644
  static HRESULT WINAPI media_source_rate_control_QueryInterface(IMFRateControl *iface, REFIID riid, void **obj)
  {
      struct media_source *source = impl_from_IMFRateControl(iface);
-@@ -1336,6 +1763,84 @@ static const IMFRateControlVtbl media_source_rate_control_vtbl =
+@@ -1339,6 +1766,84 @@ static const IMFRateControlVtbl media_source_rate_control_vtbl =
      media_source_rate_control_GetRate,
  };
  
@@ -2979,7 +2998,7 @@ index 35213329..72bbe2f5 100644
  static HRESULT WINAPI media_source_QueryInterface(IMFMediaSource *iface, REFIID riid, void **out)
  {
      struct media_source *source = impl_from_IMFMediaSource(iface);
-@@ -1352,6 +1857,10 @@ static HRESULT WINAPI media_source_QueryInterface(IMFMediaSource *iface, REFIID
+@@ -1355,6 +1860,10 @@ static HRESULT WINAPI media_source_QueryInterface(IMFMediaSource *iface, REFIID
      {
          *out = &source->IMFGetService_iface;
      }
@@ -2990,7 +3009,7 @@ index 35213329..72bbe2f5 100644
      else
      {
          FIXME("%s, %p.\n", debugstr_guid(riid), out);
-@@ -1382,9 +1891,10 @@ static ULONG WINAPI media_source_Release(IMFMediaSource *iface)
+@@ -1385,9 +1894,10 @@ static ULONG WINAPI media_source_Release(IMFMediaSource *iface)
  
      if (!ref)
      {
@@ -3002,7 +3021,7 @@ index 35213329..72bbe2f5 100644
          source->cs.DebugInfo->Spare[0] = 0;
          DeleteCriticalSection(&source->cs);
          free(source);
-@@ -1463,7 +1973,8 @@ static HRESULT WINAPI media_source_CreatePresentationDescriptor(IMFMediaSource *
+@@ -1466,7 +1976,8 @@ static HRESULT WINAPI media_source_CreatePresentationDescriptor(IMFMediaSource *
          hr = MF_E_SHUTDOWN;
      else if (SUCCEEDED(hr = MFCreatePresentationDescriptor(source->stream_count, source->descriptors, descriptor)))
      {
@@ -3012,7 +3031,7 @@ index 35213329..72bbe2f5 100644
              WARN("Failed to set presentation descriptor MF_PD_DURATION, hr %#lx\n", hr);
  
          for (i = 0; i < source->stream_count; ++i)
-@@ -1489,9 +2000,6 @@ static HRESULT WINAPI media_source_Start(IMFMediaSource *iface, IMFPresentationD
+@@ -1495,9 +2006,6 @@ static HRESULT WINAPI media_source_Start(IMFMediaSource *iface, IMFPresentationD
  
      TRACE("%p, %p, %p, %p.\n", iface, descriptor, time_format, position);
  
@@ -3022,7 +3041,7 @@ index 35213329..72bbe2f5 100644
      EnterCriticalSection(&source->cs);
  
      if (source->state == SOURCE_SHUTDOWN)
-@@ -1566,6 +2074,7 @@ static HRESULT WINAPI media_source_Pause(IMFMediaSource *iface)
+@@ -1572,6 +2080,7 @@ static HRESULT WINAPI media_source_Pause(IMFMediaSource *iface)
  static HRESULT WINAPI media_source_Shutdown(IMFMediaSource *iface)
  {
      struct media_source *source = impl_from_IMFMediaSource(iface);
@@ -3030,7 +3049,7 @@ index 35213329..72bbe2f5 100644
  
      TRACE("%p.\n", iface);
  
-@@ -1579,28 +2088,48 @@ static HRESULT WINAPI media_source_Shutdown(IMFMediaSource *iface)
+@@ -1585,28 +2094,48 @@ static HRESULT WINAPI media_source_Shutdown(IMFMediaSource *iface)
  
      source->state = SOURCE_SHUTDOWN;
  
@@ -3086,7 +3105,7 @@ index 35213329..72bbe2f5 100644
      LeaveCriticalSection(&source->cs);
  
      MFUnlockWorkQueue(source->async_commands_queue);
-@@ -1625,30 +2154,37 @@ static const IMFMediaSourceVtbl IMFMediaSource_vtbl =
+@@ -1631,30 +2160,37 @@ static const IMFMediaSourceVtbl IMFMediaSource_vtbl =
      media_source_Shutdown,
  };
  
@@ -3134,7 +3153,7 @@ index 35213329..72bbe2f5 100644
      unsigned int i;
      HRESULT hr;
  
-@@ -1659,6 +2195,7 @@ static HRESULT media_source_create(struct object_context *context, IMFMediaSourc
+@@ -1665,6 +2201,7 @@ static HRESULT media_source_create(struct object_context *context, IMFMediaSourc
      object->IMFGetService_iface.lpVtbl = &media_source_get_service_vtbl;
      object->IMFRateSupport_iface.lpVtbl = &media_source_rate_support_vtbl;
      object->IMFRateControl_iface.lpVtbl = &media_source_rate_control_vtbl;
@@ -3142,7 +3161,126 @@ index 35213329..72bbe2f5 100644
      object->async_commands_callback.lpVtbl = &source_async_commands_callback_vtbl;
      object->ref = 1;
      object->byte_stream = context->stream;
-@@ -1739,25 +2276,33 @@ fail:
+@@ -1680,21 +2217,26 @@ static HRESULT media_source_create(struct object_context *context, IMFMediaSourc
+     if (FAILED(hr = MFAllocateWorkQueue(&object->async_commands_queue)))
+         goto fail;
+ 
+-    if (!(parser = wg_parser_create(WG_PARSER_CREATE_FLAG_NONE)))
+-    {
+-        hr = E_OUTOFMEMORY;
+-        goto fail;
+-    }
+-    object->wg_parser = parser;
+-
+-    object->read_thread = CreateThread(NULL, 0, read_thread, object, 0, NULL);
++    /* Set up winedmo stream callbacks. */
++    object->demuxer_stream.stream.p_seek = source_stream_seek_cb;
++    object->demuxer_stream.stream.p_read = source_stream_read_cb;
++    object->demuxer_stream.position = 0;
+ 
+     object->state = SOURCE_OPENING;
+ 
+-    if (FAILED(hr = wg_parser_connect(parser, object->file_size, context->url)))
++    status = winedmo_demuxer_create(context->url, &object->demuxer_stream.stream,
++            object->file_size, &duration, &stream_count, mime_type, &object->demuxer);
++    if (status)
++    {
++        hr = HRESULT_FROM_NT(status);
+         goto fail;
++    }
+ 
+-    stream_count = wg_parser_get_stream_count(parser);
++    if (duration > 0)
++    {
++        object->duration = (UINT64)duration;
++        object->has_duration = true;
++    }
+ 
+     if (!(object->descriptors = calloc(stream_count, sizeof(*object->descriptors)))
+             || !(object->streams = calloc(stream_count, sizeof(*object->streams))))
+@@ -1703,27 +2245,52 @@ static HRESULT media_source_create(struct object_context *context, IMFMediaSourc
+         goto fail;
+     }
+ 
+-    for (i = 0; i < stream_count; ++i)
++    for (i = 0; i < stream_count; i++)
+     {
+-        wg_parser_stream_t wg_stream = wg_parser_get_stream(object->wg_parser, i);
++        union winedmo_format *fmt = NULL;
++        GUID major = GUID_NULL;
+         IMFStreamDescriptor *descriptor;
+         struct media_stream *stream;
+-        struct wg_format format;
++        UINT32 fmt_size;
+ 
+-        wg_parser_stream_get_current_format(wg_stream, &format);
+-        if (FAILED(hr = stream_descriptor_create(i, &format, &descriptor)))
+-            goto fail;
+-        if (FAILED(hr = media_stream_create(&object->IMFMediaSource_iface, descriptor, wg_stream, &stream)))
++        if (winedmo_demuxer_stream_type(object->demuxer, i, &major, &fmt) || !fmt)
++        {
++            WARN("Failed to get format for stream %u.\n", i);
++            free(fmt);
++            continue;
++        }
++
++        fmt_size = IsEqualGUID(&major, &MFMediaType_Audio)
++                ? sizeof(WAVEFORMATEX) + fmt->audio.cbSize
++                : fmt->video.dwSize;
++
++        if (FAILED(hr = stream_descriptor_create(i, &major, fmt, fmt_size, &descriptor)))
++        {
++            WARN("Failed to create stream descriptor %u, hr %#lx.\n", i, hr);
++            free(fmt);
++            continue;
++        }
++        free(fmt);
++
++        if (FAILED(hr = media_stream_create(&object->IMFMediaSource_iface, descriptor, i,
++                IsEqualGUID(&major, &MFMediaType_Video), &stream)))
+         {
+             IMFStreamDescriptor_Release(descriptor);
+             goto fail;
+         }
+ 
+-        object->duration = max(object->duration, wg_parser_stream_get_duration(wg_stream));
+         IMFStreamDescriptor_AddRef(descriptor);
+-        object->descriptors[i] = descriptor;
+-        object->streams[i] = stream;
++        object->descriptors[object->stream_count] = descriptor;
++        object->streams[object->stream_count] = stream;
+         object->stream_count++;
++        IMFStreamDescriptor_Release(descriptor);
++
++    }
++
++    if (!object->stream_count)
++    {
++        hr = E_FAIL;
++        goto fail;
+     }
+ 
+     /* Hack for bug 19766 - Biomutant (597820) [T5] Title Hangs After Intro Cut Scene Unless Skipped.
+@@ -1748,9 +2315,18 @@ static HRESULT media_source_create(struct object_context *context, IMFMediaSourc
+             object->duration = 877340000;
+     }
+ 
++
+     media_source_init_descriptors(object);
+     object->state = SOURCE_STOPPED;
+ 
++    /* Start the background demux thread. */
++    object->demux_thread = CreateThread(NULL, 0, source_demux_thread, object, 0, NULL);
++    if (!object->demux_thread)
++    {
++        hr = HRESULT_FROM_WIN32(GetLastError());
++        goto fail;
++    }
++
+     *out = &object->IMFMediaSource_iface;
+     TRACE("Created IMFMediaSource %p\n", *out);
+     return S_OK;
+@@ -1767,25 +2343,33 @@ fail:
      free(object->descriptors);
      free(object->streams);
  
@@ -3184,7 +3322,7 @@ index 35213329..72bbe2f5 100644
  struct result_entry
  {
      struct list entry;
-@@ -1791,6 +2336,10 @@ static void result_entry_destroy(struct result_entry *entry)
+@@ -1819,6 +2403,10 @@ static void result_entry_destroy(struct result_entry *entry)
      free(entry);
  }
  
@@ -3195,7 +3333,7 @@ index 35213329..72bbe2f5 100644
  struct stream_handler
  {
      IMFByteStreamHandler IMFByteStreamHandler_iface;
-@@ -2060,7 +2609,7 @@ static const IMFAsyncCallbackVtbl stream_handler_callback_vtbl =
+@@ -2088,7 +2676,7 @@ static const IMFAsyncCallbackVtbl stream_handler_callback_vtbl =
      stream_handler_callback_Invoke,
  };
  
@@ -5561,7 +5699,7 @@ index 989988e0..ffb5452f 100644
 +/* @makedep: winedmo.rgs */
 +1 WINE_REGISTRY winedmo.rgs
 diff --git a/dlls/winedmo/unix_demuxer.c b/dlls/winedmo/unix_demuxer.c
-index fdc4fa44..7693999d 100644
+index fdc4fa4..8b9565c 100644
 --- a/dlls/winedmo/unix_demuxer.c
 +++ b/dlls/winedmo/unix_demuxer.c
 @@ -38,6 +38,14 @@ struct stream
@@ -5926,7 +6064,93 @@ index fdc4fa44..7693999d 100644
          if (par->codec_id == AV_CODEC_ID_H264)
          {
              if (!(filter = av_bsf_get_by_name( "h264_mp4toannexb" )))
-@@ -295,7 +622,10 @@ NTSTATUS demuxer_read( void *arg )
+@@ -121,7 +448,22 @@ static NTSTATUS demuxer_create_streams( struct demuxer *demuxer )
+             {
+                 if (av_bsf_alloc( filter, &stream->filter ) < 0) return STATUS_UNSUCCESSFUL;
+                 avcodec_parameters_copy( stream->filter->par_in, par );
+-                av_bsf_init( stream->filter );
++                if (av_bsf_init( stream->filter ) < 0) return STATUS_UNSUCCESSFUL;
++                continue;
++            }
++        }
++        else if (par->codec_id == AV_CODEC_ID_VC1 && demuxer->ctx->iformat &&
++                 strstr( demuxer->ctx->iformat->name, "asf" ))
++        {
++            if (!(filter = av_bsf_get_by_name( "vc1_asftorcv" )))
++            {
++                TRACE( "VC1 ASF bitstream filter unavailable, relying on demuxed packet normalization\n" );
++            }
++            else
++            {
++                if (av_bsf_alloc( filter, &stream->filter ) < 0) return STATUS_UNSUCCESSFUL;
++                avcodec_parameters_copy( stream->filter->par_in, par );
++                if (av_bsf_init( stream->filter ) < 0) return STATUS_UNSUCCESSFUL;
+                 continue;
+             }
+         }
+@@ -137,7 +479,7 @@ static NTSTATUS demuxer_create_streams( struct demuxer *demuxer )
+ NTSTATUS demuxer_create( void *arg )
+ {
+     struct demuxer_create_params *params = arg;
+-    const char *ext = params->url ? strrchr( params->url, '.' ) : "";
++    const char *ext = params->url ? strrchr( params->url, '.' ) : NULL;
+     BOOL needs_find_stream_info = FALSE;
+     const AVInputFormat *format;
+     struct demuxer *demuxer;
+@@ -145,9 +487,15 @@ NTSTATUS demuxer_create( void *arg )
+ 
+     TRACE( "context %p, url %s, mime %s\n", params->context, debugstr_a(params->url), debugstr_a(params->mime_type) );
+ 
++    /* Persona 4 Arena Ultimax loads extensionless ASF assets; keep this
++     * non-NULL before the format-name MIME checks below. */
++    if (!ext)
++        ext = "";
++
+     if (!(demuxer = calloc( 1, sizeof(*demuxer) ))) return STATUS_NO_MEMORY;
+     if (!(demuxer->ctx = avformat_alloc_context())) goto failed;
+-    if (!(demuxer->ctx->pb = avio_alloc_context( NULL, 0, 0, params->context, unix_read_callback, NULL, unix_seek_callback ))) goto failed;
++    if (!(demuxer->ctx->pb = avio_alloc_context( NULL, 0, 0, params->context, unix_read_callback, NULL,
++                                                 params->context->length == (UINT64)-1 ? NULL : unix_seek_callback ))) goto failed;
+ 
+     if ((ret = avformat_open_input( &demuxer->ctx, NULL, NULL, NULL )) < 0)
+     {
+@@ -159,7 +507,7 @@ NTSTATUS demuxer_create( void *arg )
+     /* Determine if we need a call to avformat_find_stream_info. Some stream information is only
+      * available after calling it. */
+     if ((params->duration = get_context_duration( demuxer->ctx )) == AV_NOPTS_VALUE ||
+-        strstr( format->name, "mp3" ))
++        strstr( format->name, "mp3" ) || strstr( format->name, "mpeg" ))
+         needs_find_stream_info = TRUE;
+ 
+     for (i = 0; i < demuxer->ctx->nb_streams && !needs_find_stream_info; i++)
+@@ -211,8 +559,14 @@ NTSTATUS demuxer_create( void *arg )
+     return STATUS_SUCCESS;
+ 
+ failed:
+-    for (i = 0; demuxer->streams && i < demuxer->ctx->nb_streams; i++)
+-        av_bsf_free( &demuxer->streams[i].filter );
++    i = demuxer->ctx ? demuxer->ctx->nb_streams : 0;
++    if (demuxer->streams)
++    {
++        for (UINT j = 0; j < i; j++)
++        {
++            av_bsf_free( &demuxer->streams[j].filter );
++        }
++    }
+     free( demuxer->streams );
+     if (demuxer->ctx)
+     {
+@@ -232,7 +586,9 @@ NTSTATUS demuxer_destroy( void *arg )
+     TRACE( "demuxer %p\n", demuxer );
+ 
+     for (i = 0; i < demuxer->ctx->nb_streams; i++)
++    {
+         av_bsf_free( &demuxer->streams[i].filter );
++    }
+     free( demuxer->streams );
+     params->context = demuxer->ctx->pb->opaque;
+     avio_context_free( &demuxer->ctx->pb );
+@@ -295,7 +651,10 @@ NTSTATUS demuxer_read( void *arg )
      struct demuxer_read_params *params = arg;
      struct demuxer *demuxer = get_demuxer( params->demuxer );
      struct sample *sample = &params->sample;
@@ -5937,7 +6161,7 @@ index fdc4fa44..7693999d 100644
      AVStream *stream;
      AVPacket *packet;
      NTSTATUS status;
-@@ -304,19 +634,46 @@ NTSTATUS demuxer_read( void *arg )
+@@ -304,19 +663,46 @@ NTSTATUS demuxer_read( void *arg )
  
      if ((status = demuxer_filter_packet( demuxer, &packet ))) return status;
  
@@ -5988,7 +6212,7 @@ index fdc4fa44..7693999d 100644
      params->stream = packet->stream_index;
      av_packet_free( &packet );
      demuxer->last_packet = NULL;
-@@ -333,7 +690,7 @@ NTSTATUS demuxer_seek( void *arg )
+@@ -333,7 +719,7 @@ NTSTATUS demuxer_seek( void *arg )
  
      TRACE( "demuxer %p, timestamp 0x%s\n", demuxer, wine_dbgstr_longlong( params->timestamp ) );
  
@@ -5997,7 +6221,7 @@ index fdc4fa44..7693999d 100644
      {
          ERR( "Failed to seek demuxer %p, error %s.\n", demuxer, debugstr_averr(ret) );
          return STATUS_UNSUCCESSFUL;
-@@ -343,6 +700,11 @@ NTSTATUS demuxer_seek( void *arg )
+@@ -343,6 +729,11 @@ NTSTATUS demuxer_seek( void *arg )
      {
          av_bsf_flush( demuxer->streams[i].filter );
          demuxer->streams[i].eos = FALSE;
@@ -6009,6 +6233,24 @@ index fdc4fa44..7693999d 100644
      }
      av_packet_free( &demuxer->last_packet );
      demuxer->last_stream = NULL;
+@@ -389,11 +780,16 @@ NTSTATUS demuxer_stream_type( void *arg )
+     AVStream *stream = demuxer->ctx->streams[params->stream];
+     AVCodecParameters *par = demuxer->streams[params->stream].filter->par_out;
+     AVRational sar = stream->sample_aspect_ratio;
++    AVRational fps;
+ 
+     TRACE( "demuxer %p, stream %u, stream %p, index %u\n", demuxer, params->stream, stream, stream->index );
+ 
+     if (!sar.den || !sar.num) sar = stream->codecpar->sample_aspect_ratio;
+-    return media_type_from_codec_params( par, &sar, &stream->avg_frame_rate, 0, &params->media_type );
++    if (par->codec_type == AVMEDIA_TYPE_VIDEO)
++        fps = get_video_display_frame_rate( demuxer->ctx, stream );
++    else
++        fps = stream->avg_frame_rate;
++    return media_type_from_codec_params( par, &sar, &fps, 0, &params->media_type );
+ }
+ 
+ #endif /* HAVE_FFMPEG */
 diff --git a/dlls/winedmo/unix_media_type.c b/dlls/winedmo/unix_media_type.c
 index fe3060ea..33eb37df 100644
 --- a/dlls/winedmo/unix_media_type.c
@@ -8545,10 +8787,10 @@ index 7b0dda30..fed1860e 100644
  };
  
 diff --git a/dlls/winegstreamer/video_decoder.c b/dlls/winedmo/video_decoder.c
-similarity index 73%
+similarity index 62%
 rename from dlls/winegstreamer/video_decoder.c
 rename to dlls/winedmo/video_decoder.c
-index 00babc90..6777fa63 100644
+index 8b2e752..cf56e95 100644
 --- a/dlls/winegstreamer/video_decoder.c
 +++ b/dlls/winedmo/video_decoder.c
 @@ -18,7 +18,9 @@
@@ -8562,7 +8804,15 @@ index 00babc90..6777fa63 100644
  
  #include "mfapi.h"
  #include "mferror.h"
-@@ -58,11 +60,13 @@ static const struct subtype_info subtype_info_list[] =
+@@ -28,6 +30,7 @@
+ #include "wmcodecdsp.h"
+ 
+ #include "wine/debug.h"
++#include "wine/winedmo.h"
+ 
+ #include "initguid.h"
+ 
+@@ -58,11 +61,13 @@ static const struct subtype_info subtype_info_list[] =
      { &MFVideoFormat_RGB555, 16, BI_RGB },
      { &MFVideoFormat_RGB565, 16, BI_BITFIELDS },
      { &MFVideoFormat_RGB24,  24, BI_RGB },
@@ -8576,7 +8826,7 @@ index 00babc90..6777fa63 100644
      { &MEDIASUBTYPE_RGB32,   32, BI_RGB },
  };
  
-@@ -73,6 +77,19 @@ static const GUID *const video_decoder_output_types[] =
+@@ -73,6 +78,19 @@ static const GUID *const video_decoder_output_types[] =
      &MFVideoFormat_IYUV,
      &MFVideoFormat_I420,
      &MFVideoFormat_YUY2,
@@ -8596,7 +8846,7 @@ index 00babc90..6777fa63 100644
  };
  
  struct video_decoder
-@@ -92,6 +109,8 @@ struct video_decoder
+@@ -92,6 +110,8 @@ struct video_decoder
      const GUID *const *input_types;
      UINT output_type_count;
      const GUID *const *output_types;
@@ -8605,7 +8855,7 @@ index 00babc90..6777fa63 100644
  
      UINT64 sample_time;
      IMFMediaType *input_type;
-@@ -100,9 +119,7 @@ struct video_decoder
+@@ -100,9 +120,7 @@ struct video_decoder
      MFT_OUTPUT_STREAM_INFO output_info;
      IMFMediaType *stream_type;
  
@@ -8616,7 +8866,7 @@ index 00babc90..6777fa63 100644
  
      IMFVideoSampleAllocatorEx *allocator;
      BOOL allocator_initialized;
-@@ -113,8 +130,82 @@ struct video_decoder
+@@ -113,8 +131,82 @@ struct video_decoder
      DMO_MEDIA_TYPE dmo_output_type;
  
      INT32 previous_stride;
@@ -8699,7 +8949,7 @@ index 00babc90..6777fa63 100644
  static inline struct video_decoder *impl_from_IUnknown(IUnknown *iface)
  {
      return CONTAINING_RECORD(iface, struct video_decoder, IUnknown_inner);
-@@ -170,21 +261,16 @@ static ULONG WINAPI unknown_Release(IUnknown *iface)
+@@ -170,21 +262,16 @@ static ULONG WINAPI unknown_Release(IUnknown *iface)
          IMFVideoSampleAllocatorEx_Release(decoder->allocator);
          if (decoder->temp_buffer)
              IMFMediaBuffer_Release(decoder->temp_buffer);
@@ -8723,7 +8973,7 @@ index 00babc90..6777fa63 100644
          free(decoder);
      }
  
-@@ -234,12 +320,99 @@ static const GUID *get_dmo_subtype(const GUID *subtype)
+@@ -234,12 +321,99 @@ static const GUID *get_dmo_subtype(const GUID *subtype)
          return &MEDIASUBTYPE_RGB565;
      else if (IsEqualGUID(subtype, &MFVideoFormat_RGB24))
          return &MEDIASUBTYPE_RGB24;
@@ -8823,7 +9073,125 @@ index 00babc90..6777fa63 100644
  static struct video_decoder *impl_from_IMFTransform(IMFTransform *iface)
  {
      return CONTAINING_RECORD(iface, struct video_decoder, IMFTransform_iface);
-@@ -591,7 +764,7 @@ static HRESULT WINAPI transform_GetOutputAvailableType(IMFTransform *iface, DWOR
+@@ -315,25 +489,104 @@ static HRESULT normalize_stride(struct video_decoder *decoder, IMFMediaType **re
+     return hr;
+ }
+ 
+-static HRESULT try_create_wg_transform(struct video_decoder *decoder, IMFMediaType *output_type)
++static HRESULT fill_mfvideoformat(IMFMediaType *type, MFVIDEOFORMAT *fmt)
+ {
+-    /* Call of Duty: Black Ops 3 doesn't care about the ProcessInput/ProcessOutput
+-     * return values, it calls them in a specific order and expects the decoder
+-     * transform to be able to queue its input buffers. We need to use a buffer list
+-     * to match its expectations.
+-     */
+-    UINT32 low_latency;
++    UINT64 frame_size, frame_rate;
++    GUID subtype;
++    HRESULT hr;
++
++    memset(fmt, 0, sizeof(*fmt));
++    fmt->dwSize = sizeof(*fmt);
++
++    if (FAILED(hr = IMFMediaType_GetGUID(type, &MF_MT_SUBTYPE, &subtype)))
++        return hr;
++    fmt->guidFormat = subtype;
+ 
+-    if (decoder->wg_transform)
++    if (SUCCEEDED(IMFMediaType_GetUINT64(type, &MF_MT_FRAME_SIZE, &frame_size)))
++    {
++        fmt->videoInfo.dwWidth  = frame_size >> 32;
++        fmt->videoInfo.dwHeight = (UINT32)frame_size;
++    }
++    if (SUCCEEDED(IMFMediaType_GetUINT64(type, &MF_MT_FRAME_RATE, &frame_rate)) && (UINT32)frame_rate)
+     {
+-        wg_transform_destroy(decoder->wg_transform);
+-        decoder->wg_transform = 0;
++        fmt->videoInfo.FramesPerSecond.Numerator   = frame_rate >> 32;
++        fmt->videoInfo.FramesPerSecond.Denominator = (UINT32)frame_rate;
+     }
++    return S_OK;
++}
+ 
+-    if (SUCCEEDED(IMFAttributes_GetUINT32(decoder->attributes, &MF_LOW_LATENCY, &low_latency)))
+-        decoder->wg_transform_attrs.low_latency = !!low_latency;
++static HRESULT create_mfvideoformat(IMFMediaType *type, union winedmo_format **format, UINT32 *format_size)
++{
++    UINT32 user_data_size = 0, size = sizeof(MFVIDEOFORMAT);
++    union winedmo_format *fmt;
++    HRESULT hr;
++
++    if (SUCCEEDED(IMFMediaType_GetBlobSize(type, &MF_MT_USER_DATA, &user_data_size)))
++        size += user_data_size;
+ 
+-    return wg_transform_create_mf(decoder->input_type, output_type, &decoder->wg_transform_attrs, &decoder->wg_transform);
++    if (!(fmt = calloc(1, size)))
++        return E_OUTOFMEMORY;
++
++    hr = fill_mfvideoformat(type, &fmt->video);
++    if (SUCCEEDED(hr))
++    {
++        fmt->video.dwSize = size;
++        if (user_data_size)
++            hr = IMFMediaType_GetBlob(type, &MF_MT_USER_DATA, (BYTE *)(fmt + 1), user_data_size, NULL);
++    }
++
++    if (FAILED(hr))
++    {
++        free(fmt);
++        return hr;
++    }
++
++    *format = fmt;
++    *format_size = size;
++    return S_OK;
++}
++
++static HRESULT create_mfvideoformat_from_dmo(const DMO_MEDIA_TYPE *dmo_type, union winedmo_format **format,
++        UINT32 *format_size)
++{
++    IMFMediaType *mf_type;
++    HRESULT hr;
++
++    if (FAILED(hr = MFCreateMediaTypeFromRepresentation(AM_MEDIA_TYPE_REPRESENTATION, (void *)dmo_type, &mf_type)))
++        return hr;
++    hr = create_mfvideoformat(mf_type, format, format_size);
++    IMFMediaType_Release(mf_type);
++    return hr;
++}
++
++static HRESULT try_create_winedmo_transform(struct video_decoder *decoder, IMFMediaType *output_type)
++{
++    union winedmo_format *input_fmt = NULL, *output_fmt = NULL;
++    UINT32 input_size, output_size;
++    NTSTATUS status;
++    HRESULT hr;
++
++    if (decoder->winedmo_transform.handle)
++    {
++        winedmo_transform_destroy(decoder->winedmo_transform);
++        decoder->winedmo_transform.handle = 0;
++    }
++
++    if (FAILED(hr = create_mfvideoformat(decoder->input_type, &input_fmt, &input_size)))
++        goto done;
++    if (FAILED(hr = create_mfvideoformat(output_type, &output_fmt, &output_size)))
++        goto done;
++
++    status = winedmo_transform_create(MFMediaType_Video,
++            input_fmt, input_size, output_fmt, output_size,
++            &decoder->winedmo_transform);
++    if (status) WARN("winedmo_transform_create failed, status %#lx\n", status);
++    hr = status ? E_FAIL : S_OK;
++
++done:
++    free(output_fmt);
++    free(input_fmt);
++    return hr;
+ }
+ 
+ static HRESULT create_output_media_type(struct video_decoder *decoder, const GUID *subtype,
+@@ -591,7 +844,7 @@ static HRESULT WINAPI transform_GetOutputAvailableType(IMFTransform *iface, DWOR
      *type = NULL;
      if (!decoder->input_type)
          return MF_E_TRANSFORM_TYPE_NOT_SET;
@@ -8832,7 +9200,7 @@ index 00babc90..6777fa63 100644
          return MF_E_NO_MORE_TYPES;
      return create_output_media_type(decoder, decoder->output_types[index], NULL, type);
  }
-@@ -603,7 +776,7 @@ static HRESULT update_output_info_size(struct video_decoder *decoder, UINT32 wid
+@@ -603,7 +856,7 @@ static HRESULT update_output_info_size(struct video_decoder *decoder, UINT32 wid
  
      decoder->output_info.cbSize = 0;
  
@@ -8841,7 +9209,7 @@ index 00babc90..6777fa63 100644
      {
          if (FAILED(hr = MFCalculateImageSize(decoder->output_types[i], width, height, &size)))
              return hr;
-@@ -630,15 +803,17 @@ static HRESULT WINAPI transform_SetInputType(IMFTransform *iface, DWORD id, IMFM
+@@ -630,15 +883,17 @@ static HRESULT WINAPI transform_SetInputType(IMFTransform *iface, DWORD id, IMFM
              IMFMediaType_Release(decoder->input_type);
              decoder->input_type = NULL;
          }
@@ -8862,7 +9230,7 @@ index 00babc90..6777fa63 100644
          }
  
          return S_OK;
-@@ -669,6 +844,17 @@ static HRESULT WINAPI transform_SetInputType(IMFTransform *iface, DWORD id, IMFM
+@@ -669,6 +924,17 @@ static HRESULT WINAPI transform_SetInputType(IMFTransform *iface, DWORD id, IMFM
          IMFMediaType_Release(decoder->input_type);
      IMFMediaType_AddRef((decoder->input_type = type));
  
@@ -8880,7 +9248,7 @@ index 00babc90..6777fa63 100644
      if (SUCCEEDED(IMFMediaType_GetUINT64(type, &MF_MT_FRAME_SIZE, &frame_size)))
      {
          if (FAILED(hr = IMFMediaType_SetUINT64(decoder->stream_type, &MF_MT_FRAME_SIZE, frame_size)))
-@@ -677,10 +863,10 @@ static HRESULT WINAPI transform_SetInputType(IMFTransform *iface, DWORD id, IMFM
+@@ -677,10 +943,10 @@ static HRESULT WINAPI transform_SetInputType(IMFTransform *iface, DWORD id, IMFM
              return hr;
      }
  
@@ -8894,7 +9262,7 @@ index 00babc90..6777fa63 100644
      }
      return S_OK;
  }
-@@ -703,10 +889,10 @@ static HRESULT WINAPI transform_SetOutputType(IMFTransform *iface, DWORD id, IMF
+@@ -703,10 +969,10 @@ static HRESULT WINAPI transform_SetOutputType(IMFTransform *iface, DWORD id, IMF
              IMFMediaType_Release(decoder->output_type);
              decoder->output_type = NULL;
          }
@@ -8908,7 +9276,7 @@ index 00babc90..6777fa63 100644
          }
  
          return S_OK;
-@@ -722,10 +908,10 @@ static HRESULT WINAPI transform_SetOutputType(IMFTransform *iface, DWORD id, IMF
+@@ -722,10 +988,10 @@ static HRESULT WINAPI transform_SetOutputType(IMFTransform *iface, DWORD id, IMF
      if (!IsEqualGUID(&major, &MFMediaType_Video))
          return MF_E_INVALIDMEDIATYPE;
  
@@ -8921,7 +9289,7 @@ index 00babc90..6777fa63 100644
          return MF_E_INVALIDMEDIATYPE;
  
      if (FAILED(hr = IMFMediaType_GetUINT64(type, &MF_MT_FRAME_SIZE, &frame_size)))
-@@ -754,10 +940,20 @@ static HRESULT WINAPI transform_SetOutputType(IMFTransform *iface, DWORD id, IMF
+@@ -754,10 +1020,20 @@ static HRESULT WINAPI transform_SetOutputType(IMFTransform *iface, DWORD id, IMF
          return hr;
      }
  
@@ -8945,7 +9313,7 @@ index 00babc90..6777fa63 100644
  
      IMFMediaType_Release(output_type);
  
-@@ -806,7 +1002,7 @@ static HRESULT WINAPI transform_GetInputStatus(IMFTransform *iface, DWORD id, DW
+@@ -806,7 +1082,7 @@ static HRESULT WINAPI transform_GetInputStatus(IMFTransform *iface, DWORD id, DW
  
      TRACE("iface %p, id %#lx, flags %p.\n", iface, id, flags);
  
@@ -8954,7 +9322,7 @@ index 00babc90..6777fa63 100644
          return MF_E_TRANSFORM_TYPE_NOT_SET;
  
      *flags = MFT_INPUT_STATUS_ACCEPT_DATA;
-@@ -834,6 +1030,7 @@ static HRESULT WINAPI transform_ProcessEvent(IMFTransform *iface, DWORD id, IMFM
+@@ -834,6 +1110,7 @@ static HRESULT WINAPI transform_ProcessEvent(IMFTransform *iface, DWORD id, IMFM
  static HRESULT WINAPI transform_ProcessMessage(IMFTransform *iface, MFT_MESSAGE_TYPE message, ULONG_PTR param)
  {
      struct video_decoder *decoder = impl_from_IMFTransform(iface);
@@ -8962,7 +9330,7 @@ index 00babc90..6777fa63 100644
      HRESULT hr;
  
      TRACE("iface %p, message %#x, param %Ix.\n", iface, message, param);
-@@ -845,20 +1042,38 @@ static HRESULT WINAPI transform_ProcessMessage(IMFTransform *iface, MFT_MESSAGE_
+@@ -845,20 +1122,38 @@ static HRESULT WINAPI transform_ProcessMessage(IMFTransform *iface, MFT_MESSAGE_
              return hr;
  
          uninit_allocator(decoder);
@@ -9006,7 +9374,7 @@ index 00babc90..6777fa63 100644
          return S_OK;
  
      default:
-@@ -870,10 +1085,18 @@ static HRESULT WINAPI transform_ProcessMessage(IMFTransform *iface, MFT_MESSAGE_
+@@ -870,10 +1165,18 @@ static HRESULT WINAPI transform_ProcessMessage(IMFTransform *iface, MFT_MESSAGE_
  static HRESULT WINAPI transform_ProcessInput(IMFTransform *iface, DWORD id, IMFSample *sample, DWORD flags)
  {
      struct video_decoder *decoder = impl_from_IMFTransform(iface);
@@ -9026,7 +9394,7 @@ index 00babc90..6777fa63 100644
          return MF_E_TRANSFORM_TYPE_NOT_SET;
  
      if (decoder->sample_time == -1 && FAILED(IMFSample_GetSampleTime(sample, (LONGLONG *)&decoder->sample_time)))
-@@ -882,12 +1105,63 @@ static HRESULT WINAPI transform_ProcessInput(IMFTransform *iface, DWORD id, IMFS
+@@ -882,12 +1185,63 @@ static HRESULT WINAPI transform_ProcessInput(IMFTransform *iface, DWORD id, IMFS
      if (!decoder->previous_stride)
          set_previous_stride(decoder);
  
@@ -9092,7 +9460,7 @@ index 00babc90..6777fa63 100644
      IMFSample *sample;
      DWORD status;
      HRESULT hr;
-@@ -905,32 +1179,129 @@ static HRESULT output_sample(struct video_decoder *decoder, IMFSample **out, IMF
+@@ -905,32 +1259,129 @@ static HRESULT output_sample(struct video_decoder *decoder, IMFSample **out, IMF
          IMFSample_Release(sample);
          return hr;
      }
@@ -9230,7 +9598,7 @@ index 00babc90..6777fa63 100644
  
      if (FAILED(hr = IMFMediaType_GetUINT64(decoder->stream_type, &MF_MT_FRAME_SIZE, &frame_size)))
          return hr;
-@@ -947,11 +1318,16 @@ static HRESULT WINAPI transform_ProcessOutput(IMFTransform *iface, DWORD flags,
+@@ -947,11 +1398,16 @@ static HRESULT WINAPI transform_ProcessOutput(IMFTransform *iface, DWORD flags,
      struct video_decoder *decoder = impl_from_IMFTransform(iface);
      UINT32 sample_size;
      LONGLONG duration, sample_duration;
@@ -9250,7 +9618,7 @@ index 00babc90..6777fa63 100644
      HRESULT hr;
  
      TRACE("iface %p, flags %#lx, count %lu, samples %p, status %p.\n", iface, flags, count, samples, status);
-@@ -959,12 +1335,13 @@ static HRESULT WINAPI transform_ProcessOutput(IMFTransform *iface, DWORD flags,
+@@ -959,12 +1415,13 @@ static HRESULT WINAPI transform_ProcessOutput(IMFTransform *iface, DWORD flags,
      if (count != 1)
          return E_INVALIDARG;
  
@@ -9265,7 +9633,147 @@ index 00babc90..6777fa63 100644
  
      if (FAILED(hr = IMFMediaType_GetGUID(decoder->output_type, &MF_MT_SUBTYPE, &subtype)))
          return hr;
-@@ -1104,14 +1481,29 @@ static HRESULT WINAPI media_object_GetStreamCount(IMediaObject *iface, DWORD *in
+@@ -975,67 +1432,98 @@ static HRESULT WINAPI transform_ProcessOutput(IMFTransform *iface, DWORD flags,
+ 
+     if (decoder->output_info.dwFlags & MFT_OUTPUT_STREAM_PROVIDES_SAMPLES)
+     {
+-        if (decoder->temp_buffer)
+-        {
+-            if (FAILED(IMFMediaBuffer_GetMaxLength(decoder->temp_buffer, &size)) || size < sample_size)
+-            {
+-                IMFMediaBuffer_Release(decoder->temp_buffer);
+-                decoder->temp_buffer = NULL;
+-            }
+-        }
+-        if (!decoder->temp_buffer && FAILED(hr = MFCreateMemoryBuffer(sample_size, &decoder->temp_buffer)))
+-            return hr;
+-        if (FAILED(hr = MFCreateSample(&sample)))
+-            return hr;
+-        if (FAILED(hr = IMFSample_AddBuffer(sample, decoder->temp_buffer)))
+-        {
+-            IMFSample_Release(sample);
++        if (FAILED(hr = create_decoder_output_sample(decoder, &subtype, frame_size, sample_size, &sample)))
+             return hr;
+-        }
++        decode_sample = sample;
+     }
+ 
+-    if (SUCCEEDED(hr = wg_transform_read_mf(decoder->wg_transform, sample,
+-            sample_size, &samples->dwStatus, &preserve_timestamps)))
++    if (FAILED(hr = IMFSample_ConvertToContiguousBuffer(sample, &buffer)) ||
++            FAILED(hr = IMFMediaBuffer_Lock(buffer, &data, NULL, NULL)))
+     {
+-        wg_sample_queue_flush(decoder->wg_sample_queue, false);
++        if (decode_sample || FAILED(hr = create_decoder_output_sample(decoder, &subtype, frame_size, sample_size, &decode_sample)))
++            goto done;
+ 
+-        if (decoder->IMediaObject_iface.lpVtbl)
+-            duration = 0; /* WMV decoder doesn't output any timestamp or duration */
+-        else
+-        {
+-            if (FAILED(IMFMediaType_GetUINT64(decoder->input_type, &MF_MT_FRAME_RATE, &frame_rate)))
+-                frame_rate = (UINT64)30000 << 32 | 1001;
+-            duration = MulDiv(10000000, (UINT32)frame_rate, frame_rate >> 32);
+-        }
++        sample = decode_sample;
++        if (FAILED(hr = IMFSample_ConvertToContiguousBuffer(sample, &buffer)) ||
++                FAILED(hr = IMFMediaBuffer_Lock(buffer, &data, NULL, NULL)))
++            goto done;
++    }
++
++    out_size = sample_size;
++    ntstatus = winedmo_transform_get_output(decoder->winedmo_transform, data, &out_size,
++            &pts, &dur, &out_flags);
++    IMFMediaBuffer_Unlock(buffer);
++
++    if (!ntstatus && !(out_flags & WINEDMO_SAMPLE_FLAG_FORMAT_CHANGED))
++    {
++        IMFMediaBuffer_SetCurrentLength(buffer, out_size);
++
++        if (FAILED(IMFMediaType_GetUINT64(decoder->input_type, &MF_MT_FRAME_RATE, &frame_rate)))
++            frame_rate = (UINT64)30000 << 32 | 1001;
++        duration = MulDiv(10000000, (UINT32)frame_rate, frame_rate >> 32);
++        output_dur = dur > 0 ? dur : duration;
++        output_pts = clamp_runaway_video_pts(decoder, pts, output_dur);
+ 
+-        if (!preserve_timestamps)
+-        {
+-            if (FAILED(IMFSample_SetSampleTime(sample, decoder->sample_time)))
+-                WARN("Failed to set sample time\n");
+-            if (FAILED(IMFSample_SetSampleDuration(sample, duration)))
+-                WARN("Failed to set sample duration\n");
+-            decoder->sample_time += duration;
+-        }
+-        else if (FAILED(IMFSample_GetSampleDuration(sample, &sample_duration)) || !sample_duration)
+         {
+-            if (FAILED(IMFSample_SetSampleDuration(sample, duration)))
+-                WARN("Failed to set sample duration\n");
++            /* This is the IMFTransform output path. The DMO path below handles its own
++             * timestamps separately, so checking IMediaObject_iface here is wrong. */
++            if (output_pts != INT64_MIN)
++            {
++                IMFSample_SetSampleTime(sample, output_pts);
++                video_decoder_update_observed_duration(decoder, output_pts, &output_dur);
++                if (output_dur != INT64_MIN
++                        && (FAILED(IMFSample_GetSampleDuration(sample, &sample_duration))
++                        || !sample_duration || sample_duration < output_dur))
++                    IMFSample_SetSampleDuration(sample, output_dur);
++                decoder->sample_time = output_pts + output_dur;
++            }
++            else
++            {
++                IMFSample_SetSampleTime(sample, decoder->sample_time);
++                IMFSample_SetSampleDuration(sample, duration);
++                decoder->sample_time += duration;
++            }
+         }
+-    }
+ 
+-    if (hr == MF_E_TRANSFORM_STREAM_CHANGE)
++        if (out_flags & WINEDMO_SAMPLE_FLAG_INCOMPLETE)
++            samples->dwStatus |= MFT_OUTPUT_DATA_BUFFER_INCOMPLETE;
++        if (decode_sample && provided_sample && FAILED(hr = copy_output_sample(decoder, provided_sample, decode_sample)))
++            goto done;
++        hr = S_OK;
++    }
++    else if (!ntstatus && (out_flags & WINEDMO_SAMPLE_FLAG_FORMAT_CHANGED))
+     {
+         samples[0].dwStatus |= MFT_OUTPUT_DATA_BUFFER_FORMAT_CHANGE;
+         *status |= MFT_OUTPUT_DATA_BUFFER_FORMAT_CHANGE;
+         hr = handle_stream_type_change(decoder);
+     }
++    else if (ntstatus == STATUS_MORE_PROCESSING_REQUIRED)
++    {
++        samples->dwStatus = MFT_OUTPUT_DATA_BUFFER_NO_SAMPLE;
++        hr = MF_E_TRANSFORM_NEED_MORE_INPUT;
++    }
++    else if (ntstatus == STATUS_END_OF_FILE)
++    {
++        samples->dwStatus = MFT_OUTPUT_DATA_BUFFER_NO_SAMPLE;
++        hr = MF_E_END_OF_STREAM;
++    }
++    else
++    {
++        samples->dwStatus = MFT_OUTPUT_DATA_BUFFER_NO_SAMPLE;
++        hr = E_FAIL;
++    }
++
++done:
++    if (buffer)
++        IMFMediaBuffer_Release(buffer);
+ 
+     if (decoder->output_info.dwFlags & MFT_OUTPUT_STREAM_PROVIDES_SAMPLES)
+     {
+         if (hr == S_OK && FAILED(hr = output_sample(decoder, &samples->pSample, sample)))
+             ERR("Failed to output sample, hr %#lx.\n", hr);
+-        IMFSample_Release(sample);
+     }
++    if (decode_sample)
++        IMFSample_Release(decode_sample);
+ 
+     return hr;
+ }
+@@ -1104,14 +1592,29 @@ static HRESULT WINAPI media_object_GetStreamCount(IMediaObject *iface, DWORD *in
  
  static HRESULT WINAPI media_object_GetInputStreamInfo(IMediaObject *iface, DWORD index, DWORD *flags)
  {
@@ -9299,7 +9807,7 @@ index 00babc90..6777fa63 100644
  }
  
  static HRESULT WINAPI media_object_GetInputType(IMediaObject *iface, DWORD index, DWORD type_index,
-@@ -1144,8 +1536,11 @@ static HRESULT WINAPI media_object_GetOutputType(IMediaObject *iface, DWORD inde
+@@ -1144,8 +1647,11 @@ static HRESULT WINAPI media_object_GetOutputType(IMediaObject *iface, DWORD inde
      struct video_decoder *decoder = impl_from_IMediaObject(iface);
      UINT64 frame_size, frame_rate;
      IMFMediaType *media_type;
@@ -9312,7 +9820,7 @@ index 00babc90..6777fa63 100644
      LONG width, height;
      UINT32 image_size;
      HRESULT hr;
-@@ -1168,12 +1563,17 @@ static HRESULT WINAPI media_object_GetOutputType(IMediaObject *iface, DWORD inde
+@@ -1168,12 +1674,17 @@ static HRESULT WINAPI media_object_GetOutputType(IMediaObject *iface, DWORD inde
      if (FAILED(IMFMediaType_GetUINT64(media_type, &MF_MT_FRAME_SIZE, &frame_size)))
          frame_size = 0;
      if (FAILED(IMFMediaType_GetUINT64(media_type, &MF_MT_FRAME_RATE, &frame_rate)))
@@ -9333,7 +9841,67 @@ index 00babc90..6777fa63 100644
      {
          FIXME("Failed to get image size of subtype %s.\n", debugstr_guid(subtype));
          IMFMediaType_Release(media_type);
-@@ -1232,10 +1632,10 @@ static HRESULT WINAPI media_object_SetInputType(IMediaObject *iface, DWORD index
+@@ -1186,8 +1697,8 @@ static HRESULT WINAPI media_object_GetOutputType(IMediaObject *iface, DWORD inde
+     type->bFixedSizeSamples = TRUE;
+     type->bTemporalCompression = FALSE;
+     type->lSampleSize = image_size;
+-    type->formattype = FORMAT_VideoInfo;
+-    type->cbFormat = sizeof(VIDEOINFOHEADER);
++    type->formattype = use_vih2 ? FORMAT_VideoInfo2 : FORMAT_VideoInfo;
++    type->cbFormat = use_vih2 ? sizeof(VIDEOINFOHEADER2) : sizeof(VIDEOINFOHEADER);
+     if (!(type->pbFormat = CoTaskMemAlloc(type->cbFormat)))
+     {
+         IMFMediaType_Release(media_type);
+@@ -1195,20 +1706,35 @@ static HRESULT WINAPI media_object_GetOutputType(IMediaObject *iface, DWORD inde
+     }
+     memset(type->pbFormat, 0, type->cbFormat);
+ 
+-    info = (VIDEOINFOHEADER *)type->pbFormat;
+-    info->rcSource.right  = width;
+-    info->rcSource.bottom = height;
+-    info->rcTarget.right  = width;
+-    info->rcTarget.bottom = height;
++    if (use_vih2)
++    {
++        info2 = (VIDEOINFOHEADER2 *)type->pbFormat;
++        info2->rcSource.right = info2->rcTarget.right = width;
++        info2->rcSource.bottom = info2->rcTarget.bottom = height;
++        info2->dwPictAspectRatioX = width;
++        info2->dwPictAspectRatioY = height;
++        bmi = &info2->bmiHeader;
++    }
++    else
++    {
++        info = (VIDEOINFOHEADER *)type->pbFormat;
++        info->rcSource.right = info->rcTarget.right = width;
++        info->rcSource.bottom = info->rcTarget.bottom = height;
++        bmi = &info->bmiHeader;
++    }
+     if (frame_rate)
+-        MFFrameRateToAverageTimePerFrame(frame_rate >> 32, frame_rate, (UINT64 *)&info->AvgTimePerFrame);
+-    info->bmiHeader.biSize = sizeof(info->bmiHeader);
+-    info->bmiHeader.biWidth  = width;
+-    info->bmiHeader.biHeight = height;
+-    info->bmiHeader.biPlanes = 1;
+-    info->bmiHeader.biBitCount = get_subtype_bpp(subtype);
+-    info->bmiHeader.biCompression = get_subtype_compression(subtype);
+-    info->bmiHeader.biSizeImage = image_size;
++    {
++        REFERENCE_TIME *avg_time = use_vih2 ? &info2->AvgTimePerFrame : &info->AvgTimePerFrame;
++
++        MFFrameRateToAverageTimePerFrame(frame_rate >> 32, (UINT32)frame_rate, (UINT64 *)avg_time);
++    }
++    bmi->biSize = sizeof(*bmi);
++    bmi->biWidth  = width;
++    bmi->biHeight = height;
++    bmi->biPlanes = 1;
++    bmi->biBitCount = get_subtype_bpp(subtype);
++    bmi->biCompression = get_subtype_compression(subtype);
++    bmi->biSizeImage = image_size;
+ 
+     IMFMediaType_Release(media_type);
+     return S_OK;
+@@ -1232,10 +1758,10 @@ static HRESULT WINAPI media_object_SetInputType(IMediaObject *iface, DWORD index
          {
              FreeMediaType(&decoder->dmo_input_type);
              memset(&decoder->dmo_input_type, 0, sizeof(decoder->dmo_input_type));
@@ -9347,7 +9915,21 @@ index 00babc90..6777fa63 100644
              }
              return S_OK;
          }
-@@ -1274,7 +1674,6 @@ static HRESULT WINAPI media_object_SetOutputType(IMediaObject *iface, DWORD inde
+@@ -1261,10 +1787,10 @@ static HRESULT WINAPI media_object_SetInputType(IMediaObject *iface, DWORD index
+ 
+     FreeMediaType(&decoder->dmo_input_type);
+     CopyMediaType(&decoder->dmo_input_type, type);
+-    if (decoder->wg_transform)
++    if (decoder->winedmo_transform.handle)
+     {
+-        wg_transform_destroy(decoder->wg_transform);
+-        decoder->wg_transform = 0;
++        winedmo_transform_destroy(decoder->winedmo_transform);
++        decoder->winedmo_transform.handle = 0;
+     }
+ 
+     return S_OK;
+@@ -1274,7 +1800,6 @@ static HRESULT WINAPI media_object_SetOutputType(IMediaObject *iface, DWORD inde
          const DMO_MEDIA_TYPE *type, DWORD flags)
  {
      struct video_decoder *decoder = impl_from_IMediaObject(iface);
@@ -9355,7 +9937,7 @@ index 00babc90..6777fa63 100644
      IMFMediaType *media_type;
      unsigned int i;
      HRESULT hr;
-@@ -1290,10 +1689,10 @@ static HRESULT WINAPI media_object_SetOutputType(IMediaObject *iface, DWORD inde
+@@ -1290,10 +1815,10 @@ static HRESULT WINAPI media_object_SetOutputType(IMediaObject *iface, DWORD inde
          {
              FreeMediaType(&decoder->dmo_output_type);
              memset(&decoder->dmo_output_type, 0, sizeof(decoder->dmo_output_type));
@@ -9369,7 +9951,7 @@ index 00babc90..6777fa63 100644
              }
              return S_OK;
          }
-@@ -1317,22 +1716,39 @@ static HRESULT WINAPI media_object_SetOutputType(IMediaObject *iface, DWORD inde
+@@ -1317,22 +1842,39 @@ static HRESULT WINAPI media_object_SetOutputType(IMediaObject *iface, DWORD inde
          return DMO_E_TYPE_NOT_ACCEPTED;
      IMFMediaType_Release(media_type);
  
@@ -9419,7 +10001,7 @@ index 00babc90..6777fa63 100644
  
      return S_OK;
  }
-@@ -1340,11 +1756,15 @@ static HRESULT WINAPI media_object_SetOutputType(IMediaObject *iface, DWORD inde
+@@ -1340,11 +1882,15 @@ static HRESULT WINAPI media_object_SetOutputType(IMediaObject *iface, DWORD inde
  static HRESULT WINAPI media_object_GetInputCurrentType(IMediaObject *iface, DWORD index, DMO_MEDIA_TYPE *type)
  {
      struct video_decoder *decoder = impl_from_IMediaObject(iface);
@@ -9439,7 +10021,7 @@ index 00babc90..6777fa63 100644
  
      return CopyMediaType(type, &decoder->dmo_input_type);
  }
-@@ -1352,11 +1772,15 @@ static HRESULT WINAPI media_object_GetInputCurrentType(IMediaObject *iface, DWOR
+@@ -1352,11 +1898,15 @@ static HRESULT WINAPI media_object_GetInputCurrentType(IMediaObject *iface, DWOR
  static HRESULT WINAPI media_object_GetOutputCurrentType(IMediaObject *iface, DWORD index, DMO_MEDIA_TYPE *type)
  {
      struct video_decoder *decoder = impl_from_IMediaObject(iface);
@@ -9459,7 +10041,7 @@ index 00babc90..6777fa63 100644
  
      return CopyMediaType(type, &decoder->dmo_output_type);
  }
-@@ -1364,9 +1788,18 @@ static HRESULT WINAPI media_object_GetOutputCurrentType(IMediaObject *iface, DWO
+@@ -1364,9 +1914,18 @@ static HRESULT WINAPI media_object_GetOutputCurrentType(IMediaObject *iface, DWO
  static HRESULT WINAPI media_object_GetInputSizeInfo(IMediaObject *iface, DWORD index, DWORD *size,
          DWORD *lookahead, DWORD *alignment)
  {
@@ -9480,7 +10062,7 @@ index 00babc90..6777fa63 100644
  }
  
  static HRESULT WINAPI media_object_GetOutputSizeInfo(IMediaObject *iface, DWORD index, DWORD *size, DWORD *alignment)
-@@ -1407,17 +1840,15 @@ static HRESULT WINAPI media_object_SetInputMaxLatency(IMediaObject *iface, DWORD
+@@ -1407,17 +1966,15 @@ static HRESULT WINAPI media_object_SetInputMaxLatency(IMediaObject *iface, DWORD
  static HRESULT WINAPI media_object_Flush(IMediaObject *iface)
  {
      struct video_decoder *decoder = impl_from_IMediaObject(iface);
@@ -9502,7 +10084,7 @@ index 00babc90..6777fa63 100644
  
      return S_OK;
  }
-@@ -1440,8 +1871,8 @@ static HRESULT WINAPI media_object_AllocateStreamingResources(IMediaObject *ifac
+@@ -1440,8 +1997,8 @@ static HRESULT WINAPI media_object_AllocateStreamingResources(IMediaObject *ifac
  
  static HRESULT WINAPI media_object_FreeStreamingResources(IMediaObject *iface)
  {
@@ -9513,7 +10095,124 @@ index 00babc90..6777fa63 100644
  }
  
  static HRESULT WINAPI media_object_GetInputStatus(IMediaObject *iface, DWORD index, DWORD *flags)
-@@ -1653,6 +2084,9 @@ static HRESULT video_decoder_create_with_types(const GUID *const *input_types, U
+@@ -1462,39 +2019,105 @@ static HRESULT WINAPI media_object_ProcessInput(IMediaObject *iface, DWORD index
+         IMediaBuffer *buffer, DWORD flags, REFERENCE_TIME timestamp, REFERENCE_TIME timelength)
+ {
+     struct video_decoder *decoder = impl_from_IMediaObject(iface);
++    BYTE *data;
++    DWORD size;
++    DWORD push_flags = 0;
++    NTSTATUS status;
++    HRESULT hr;
+ 
+     TRACE("iface %p, index %lu, buffer %p, flags %#lx, timestamp %s, timelength %s.\n", iface,
+              index, buffer, flags, wine_dbgstr_longlong(timestamp), wine_dbgstr_longlong(timelength));
+ 
+-    if (!decoder->wg_transform)
++    if (!decoder->winedmo_transform.handle)
+         return DMO_E_TYPE_NOT_SET;
+ 
+-    return wg_transform_push_dmo(decoder->wg_transform, buffer, flags, timestamp, timelength, decoder->wg_sample_queue);
++    if (FAILED(hr = IMediaBuffer_GetBufferAndLength(buffer, &data, &size)))
++        return hr;
++
++    if (flags & DMO_INPUT_DATA_BUFFERF_SYNCPOINT) push_flags |= WINEDMO_SAMPLE_FLAG_SYNC_POINT;
++    if (flags & DMO_INPUT_DATA_BUFFERF_DISCONTINUITY) push_flags |= WINEDMO_SAMPLE_FLAG_DISCONTINUITY;
++
++    if ((flags & DMO_INPUT_DATA_BUFFERF_TIME) && decoder->sample_time != -1
++            && timestamp + 2000000 < decoder->sample_time)
++    {
++        TRACE("Resetting decoder timeline on backward DMO input timestamp %s -> %s.\n",
++                wine_dbgstr_longlong(decoder->sample_time), wine_dbgstr_longlong(timestamp));
++        decoder->sample_time = -1;
++        winedmo_transform_flush(decoder->winedmo_transform);
++        push_flags |= WINEDMO_SAMPLE_FLAG_DISCONTINUITY;
++    }
++
++    status = winedmo_transform_push_input(decoder->winedmo_transform, data, size,
++            (flags & DMO_INPUT_DATA_BUFFERF_TIME) ? timestamp : INT64_MIN,
++            INT64_MIN,
++            (flags & DMO_INPUT_DATA_BUFFERF_TIMELENGTH) ? timelength : INT64_MIN,
++            push_flags);
++    if (status == STATUS_DEVICE_BUSY) return S_FALSE;
++    return status ? E_FAIL : S_OK;
+ }
+ 
+ static HRESULT WINAPI media_object_ProcessOutput(IMediaObject *iface, DWORD flags, DWORD count,
+         DMO_OUTPUT_DATA_BUFFER *buffers, DWORD *status)
+ {
+     struct video_decoder *decoder = impl_from_IMediaObject(iface);
++    IMediaBuffer *ibuffer = buffers[0].pBuffer;
++    BYTE *data;
++    DWORD max_size;
++    UINT32 out_size;
++    INT64 pts, duration;
++    INT64 output_pts, output_dur;
++    DWORD out_flags;
++    NTSTATUS ntstatus;
+     HRESULT hr;
+ 
+     TRACE("iface %p, flags %#lx, count %lu, buffers %p, status %p.\n", iface, flags, count, buffers, status);
+ 
+-    if (!decoder->wg_transform)
++    if (!decoder->winedmo_transform.handle)
+         return DMO_E_TYPE_NOT_SET;
+ 
+-    if ((hr = wg_transform_read_dmo(decoder->wg_transform, buffers)) == MF_E_TRANSFORM_STREAM_CHANGE)
+-        hr = wg_transform_read_dmo(decoder->wg_transform, buffers);
++    *status = buffers[0].dwStatus = 0;
+ 
+-    if (SUCCEEDED(hr))
+-        wg_sample_queue_flush(decoder->wg_sample_queue, false);
+-    else if (hr == MF_E_TRANSFORM_NEED_MORE_INPUT)
++    if (FAILED(hr = IMediaBuffer_GetMaxLength(ibuffer, &max_size)))
++        return hr;
++    if (FAILED(hr = IMediaBuffer_GetBufferAndLength(ibuffer, &data, NULL)))
++        return hr;
++
++retry:
++    out_size = max_size;
++    ntstatus = winedmo_transform_get_output(decoder->winedmo_transform, data, &out_size,
++            &pts, &duration, &out_flags);
++
++    if (!ntstatus && (out_flags & WINEDMO_SAMPLE_FLAG_FORMAT_CHANGED))
++        goto retry;
++
++    if (!ntstatus)
+     {
+-        buffers[0].dwStatus = 0;
+-        hr = S_FALSE;
++        flip_bottom_up_rgb_rows(data, out_size, &decoder->dmo_output_type);
++        fill_32bit_alpha(data, out_size, &decoder->dmo_output_type);
++        IMediaBuffer_SetLength(ibuffer, out_size);
++        buffers[0].dwStatus = DMO_OUTPUT_DATA_BUFFERF_SYNCPOINT;
++        output_dur = duration > 0 ? duration : dmo_output_sample_duration(&decoder->dmo_output_type);
++        output_pts = clamp_runaway_video_pts(decoder, pts, output_dur);
++        if (output_pts != INT64_MIN)
++        {
++            video_decoder_update_observed_duration(decoder, output_pts, &output_dur);
++            buffers[0].rtTimestamp = output_pts;
++            buffers[0].dwStatus |= DMO_OUTPUT_DATA_BUFFERF_TIME;
++            if (output_dur != INT64_MIN) decoder->sample_time = output_pts + output_dur;
++        }
++        if (output_dur != INT64_MIN)
++        {
++            buffers[0].rtTimelength = output_dur;
++            buffers[0].dwStatus |= DMO_OUTPUT_DATA_BUFFERF_TIMELENGTH;
++        }
++        if (out_flags & WINEDMO_SAMPLE_FLAG_INCOMPLETE)
++            buffers[0].dwStatus |= DMO_OUTPUT_DATA_BUFFERF_INCOMPLETE;
++        return S_OK;
+     }
++    else if (ntstatus == STATUS_MORE_PROCESSING_REQUIRED)
++        return S_FALSE;
+ 
+-    return hr;
++    return E_FAIL;
+ }
+ 
+ static HRESULT WINAPI media_object_Lock(IMediaObject *iface, LONG lock)
+@@ -1653,6 +2276,9 @@ static HRESULT video_decoder_create_with_types(const GUID *const *input_types, U
      decoder->input_types = input_types;
      decoder->output_type_count = output_type_count;
      decoder->output_types = output_types;
@@ -9523,7 +10222,24 @@ index 00babc90..6777fa63 100644
  
      if (FAILED(hr = MFCreateMediaType(&decoder->stream_type)))
          goto failed;
-@@ -1684,8 +2118,6 @@ static HRESULT video_decoder_create_with_types(const GUID *const *input_types, U
+@@ -1667,16 +2293,11 @@ static HRESULT video_decoder_create_with_types(const GUID *const *input_types, U
+ 
+     if (FAILED(hr = MFCreateAttributes(&decoder->output_attributes, 0)))
+         goto failed;
+-    if (FAILED(hr = wg_sample_queue_create(&decoder->wg_sample_queue)))
+-        goto failed;
+     if (FAILED(hr = MFCreateVideoSampleAllocatorEx(&IID_IMFVideoSampleAllocatorEx, (void **)&decoder->allocator)))
+         goto failed;
+     if (FAILED(hr = MFCreateSampleCopierMFT(&decoder->copier)))
+         goto failed;
+ 
+-    decoder->wg_transform_attrs.input_queue_length = 15;
+-    decoder->wg_transform_attrs.preserve_timestamps = TRUE;
+-
+     *out = decoder;
+     TRACE("Created decoder %p\n", decoder);
+     return S_OK;
+@@ -1684,8 +2305,6 @@ static HRESULT video_decoder_create_with_types(const GUID *const *input_types, U
  failed:
      if (decoder->allocator)
          IMFVideoSampleAllocatorEx_Release(decoder->allocator);
@@ -9532,7 +10248,7 @@ index 00babc90..6777fa63 100644
      if (decoder->output_attributes)
          IMFAttributes_Release(decoder->output_attributes);
      if (decoder->attributes)
-@@ -1696,38 +2128,40 @@ failed:
+@@ -1696,38 +2315,40 @@ failed:
      return hr;
  }
  
@@ -9593,7 +10309,7 @@ index 00babc90..6777fa63 100644
          return hr;
  
      if (FAILED(hr = IMFAttributes_SetUINT32(decoder->attributes, &CODECAPI_AVDecVideoAcceleration_H264, TRUE)))
-@@ -1742,17 +2176,33 @@ HRESULT h264_decoder_create(REFIID riid, void **out)
+@@ -1742,17 +2363,33 @@ HRESULT h264_decoder_create(REFIID riid, void **out)
      decoder->output_info.dwFlags = MFT_OUTPUT_STREAM_WHOLE_SAMPLES | MFT_OUTPUT_STREAM_SINGLE_SAMPLE_PER_BUFFER
              | MFT_OUTPUT_STREAM_FIXED_SAMPLE_SIZE;
      decoder->output_info.cbSize = 1920 * 1088 * 2;
@@ -9630,7 +10346,7 @@ index 00babc90..6777fa63 100644
  extern GUID MFVideoFormat_IV50;
  static const GUID *const iv50_decoder_input_types[] =
  {
-@@ -1771,16 +2221,13 @@ static const GUID *const iv50_decoder_output_types[] =
+@@ -1771,16 +2408,13 @@ static const GUID *const iv50_decoder_output_types[] =
      &MFVideoFormat_RGB8,
  };
  

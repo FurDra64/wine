@@ -43,7 +43,7 @@ Decoder DMO in RGB24 (its WMV9 movies already did).
      const struct attribute_desc input_desc[] =
      {
          ATTR_GUID(MF_MT_MAJOR_TYPE, MFMediaType_Video),
-@@ -6447,8 +6449,8 @@
+@@ -6447,7 +6449,7 @@
          hr = MFTEnumEx(MFT_CATEGORY_VIDEO_DECODER, MFT_ENUM_FLAG_SYNCMFT,
                  &input_filter, &output_filter, &activates, &count);
          ok(hr == S_OK, "MFTEnumEx returned %#lx.\n", hr);

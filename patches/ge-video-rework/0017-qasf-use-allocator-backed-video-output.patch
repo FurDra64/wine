@@ -209,7 +209,7 @@ index e885952784f58a7d3faa481355eec4833083cffe..7b4d65d63f13de647eae6caf791e7842
      t->video_pts_offset   = INT64_MIN;
      t->cumulative_samples = 0;
 diff --git a/dlls/winedmo/wm_reader.c b/dlls/winedmo/wm_reader.c
-index 22a7628a66c12df4c261ebb44e0c989816d999cb..e109b55857666778650fee7fb3886f8089491056 100644
+index bcc9ed0ac93add18d8fbe8606026a6d2c07a6fed..26e4fc71e68b7a7bb93abf4ba5b18a1b0c44b08b 100644
 --- a/dlls/winedmo/wm_reader.c
 +++ b/dlls/winedmo/wm_reader.c
 @@ -1024,9 +1024,11 @@ static BOOL wm_stream_wait_queue_space(struct wm_reader *reader, struct wm_strea

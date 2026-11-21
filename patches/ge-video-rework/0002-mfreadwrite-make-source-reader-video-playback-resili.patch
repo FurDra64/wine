@@ -2501,10 +2501,10 @@ index ec87be69..80980f1e 100644
  
      return byte_stream_plugin_create(outer, riid, out);
 diff --git a/include/mediaobj.idl b/include/mediaobj.idl
-index 689048b9..80cf1506 100644
+index 127b95e7fc3e8f722857a0b967d780f485a1779e..b14d42b2d307439233920e15db79d049832f610c 100644
 --- a/include/mediaobj.idl
 +++ b/include/mediaobj.idl
-@@ -108,9 +108,10 @@ enum _DMO_INPUT_STATUS_FLAGS
+@@ -99,9 +99,10 @@ enum _DMO_INPUT_STATUS_FLAGS
  
  enum _DMO_INPUT_DATA_BUFFER_FLAGS
  {
@@ -2518,7 +2518,7 @@ index 689048b9..80cf1506 100644
  };
  
  enum _DMO_PROCESS_OUTPUT_FLAGS
-@@ -136,10 +137,11 @@ enum _DMO_SET_TYPE_FLAGS {
+@@ -127,10 +128,11 @@ enum _DMO_SET_TYPE_FLAGS {
  };
  
  enum _DMO_OUTPUT_DATA_BUFFERF_FLAGS {
@@ -2535,7 +2535,7 @@ index 689048b9..80cf1506 100644
  
  /*****************************************************************************
 diff --git a/include/nserror.h b/include/nserror.h
-index 00f267d5..e2fc80f7 100644
+index 00f267d5135e8d7656aaa3463c86deaafddf6c50..e2fc80f7bcecf89a95639dbfda5818e151204ea0 100644
 --- a/include/nserror.h
 +++ b/include/nserror.h
 @@ -24,10 +24,18 @@
@@ -2558,7 +2558,7 @@ index 00f267d5..e2fc80f7 100644
  /* Success events */
  #define NS_S_CALLPENDING                                              _HRESULT_TYPEDEF_(0x000d0000)
 diff --git a/include/wine/mfinternal.idl b/include/wine/mfinternal.idl
-index f1c1f8c9..0b77eaef 100644
+index f1c1f8c9090c39cc1f4e8d2d89f4e1fd4b50fd19..0b77eaefab1a27cb1869f7e495bf4203e6a46e5c 100644
 --- a/include/wine/mfinternal.idl
 +++ b/include/wine/mfinternal.idl
 @@ -45,6 +45,19 @@ interface IMFSinkClassFactory : IUnknown

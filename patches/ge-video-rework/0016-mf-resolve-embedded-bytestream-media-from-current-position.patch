@@ -19,7 +19,7 @@ absolute byte-stream offsets.
  1 file changed, 13 insertions(+), 3 deletions(-)
 
 diff --git a/dlls/winedmo/media_source.c b/dlls/winedmo/media_source.c
-index 341b8ef9..b5694bc1 100644
+index 1807d70..2e9ff8a 100644
 --- a/dlls/winedmo/media_source.c
 +++ b/dlls/winedmo/media_source.c
 @@ -44,6 +44,7 @@ struct object_context
@@ -47,14 +47,15 @@ index 341b8ef9..b5694bc1 100644
      context->url = tmp_url;
      context->result = result;
      IMFAsyncResult_AddRef(context->result);
-@@ -336,5 +338,6 @@ struct media_source
+@@ -333,6 +335,7 @@ struct media_source
      CRITICAL_SECTION demuxer_cs;
  
      UINT64 file_size;
 +    UINT64 stream_offset;
      UINT64 duration;
      bool has_duration;
-@@ -764,7 +767,8 @@ static NTSTATUS CDECL source_stream_read_cb(struct winedmo_stream *stream, BYTE
+ 
+@@ -748,7 +751,8 @@ static NTSTATUS CDECL source_stream_read_cb(struct winedmo_stream *stream, BYTE
      if (!*size)
          return STATUS_SUCCESS;
  
@@ -64,7 +65,7 @@ index 341b8ef9..b5694bc1 100644
          hr = winedmo_bytestream_read(source->byte_stream, buffer, *size, &ret_size);
  
      if (FAILED(hr))
-@@ -2223,7 +2227,9 @@ static HRESULT media_source_create(struct object_context *context, IMFMediaSourc
+@@ -2211,7 +2215,9 @@ static HRESULT media_source_create(struct object_context *context, IMFMediaSourc
      object->ref = 1;
      object->byte_stream = context->stream;
      IMFByteStream_AddRef(context->stream);
@@ -75,7 +76,7 @@ index 341b8ef9..b5694bc1 100644
      object->rate = 1.0f;
      InitializeCriticalSectionEx(&object->cs, 0, RTL_CRITICAL_SECTION_FLAG_FORCE_DEBUG_INFO);
      object->cs.DebugInfo->Spare[0] = (DWORD_PTR)(__FILE__ ": cs");
-@@ -2460,7 +2466,7 @@ static HRESULT WINAPI stream_handler_BeginCreateObject(IMFByteStreamHandler *ifa
+@@ -2483,7 +2489,7 @@ static HRESULT WINAPI stream_handler_BeginCreateObject(IMFByteStreamHandler *ifa
      struct stream_handler *handler = impl_from_IMFByteStreamHandler(iface);
      IMFAsyncResult *result;
      IUnknown *context;
@@ -84,7 +85,7 @@ index 341b8ef9..b5694bc1 100644
      HRESULT hr;
      DWORD caps;
  
-@@ -2486,10 +2492,15 @@ static HRESULT WINAPI stream_handler_BeginCreateObject(IMFByteStreamHandler *ifa
+@@ -2509,10 +2515,15 @@ static HRESULT WINAPI stream_handler_BeginCreateObject(IMFByteStreamHandler *ifa
          FIXME("Failed to get byte stream length, hr %#lx.\n", hr);
          return hr;
      }
@@ -101,3 +102,5 @@ index 341b8ef9..b5694bc1 100644
      {
          IMFAsyncResult_Release(result);
          return hr;
+-- 
+2.51.0

@@ -501,10 +501,9 @@ diff --git a/dlls/qasf/tests/asfreader.c b/dlls/qasf/tests/asfreader.c
  START_TEST(asfreader)
  {
      CoInitializeEx(NULL, COINIT_MULTITHREADED);
-@@ -1024,6 +1202,7 @@
-     test_aggregation();
-     test_filesourcefilter();
+@@ -1120,5 +1298,6 @@
      test_filter_state();
+     test_seeking();
 +    test_compressed_output();
      test_threading(FALSE);
      test_threading(TRUE);

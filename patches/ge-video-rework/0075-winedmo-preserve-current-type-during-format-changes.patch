@@ -34,7 +34,7 @@ diff --git a/dlls/winedmo/video_decoder.c b/dlls/winedmo/video_decoder.c
 index f73a0508989..2c1234b912d 100644
 --- a/dlls/winedmo/video_decoder.c
 +++ b/dlls/winedmo/video_decoder.c
-@@ -1463,11 +1463,10 @@ static HRESULT handle_stream_type_change(struct video_decoder *decoder, BOOL *ch
+@@ -1454,11 +1454,10 @@ static HRESULT handle_stream_type_change(struct video_decoder *decoder, BOOL *ch
      if (decoder->stream_type)
          IMFMediaType_Release(decoder->stream_type);
      decoder->stream_type = new_type;

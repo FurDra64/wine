@@ -38,18 +38,6 @@ index edc311f..294d81a 100644
      if (!(descriptors = calloc(source->stream_count, sizeof(*descriptors))))
          return E_OUTOFMEMORY;
  
-@@ -2797,9 +2801,9 @@ static HRESULT WINAPI scheme_handler_BeginCreateObject(IMFSchemeHandler *iface,
-         *cancel_cookie = NULL;
- 
-     if ((!wcsnicmp(url, L"http://", 7) || !wcsnicmp(url, L"https://", 8))
--            && wcsstr(url, L".googlevideo.com/videoplayback"))
-+            && (wcsstr(url, L".googlevideo.com/videoplayback") || wcsstr(url, L".mp4")))
-     {
--        /* The demuxer opens signed Googlevideo URLs directly through FFmpeg. */
-+        /* The demuxer opens progressive HTTP media directly through FFmpeg. */
-         if (FAILED(hr = CreateStreamOnHGlobal(0, TRUE, &stream)))
-             return hr;
-     }
 diff --git a/dlls/winedmo/unix_demuxer.c b/dlls/winedmo/unix_demuxer.c
 index aa8fe07..606e484 100644
 --- a/dlls/winedmo/unix_demuxer.c
@@ -111,10 +99,9 @@ index aa8fe07..606e484 100644
      }
      else
      {
-@@ -896,6 +901,7 @@ NTSTATUS demuxer_create( void *arg )
-         }
-         params->duration = get_context_duration( demuxer->ctx );
-     }
+@@ -818,5 +823,6 @@ NTSTATUS demuxer_create( void *arg )
+     if (params->duration == AV_NOPTS_VALUE) params->duration = get_context_duration( demuxer->ctx );
+ 
 +    if (demuxer->nonseekable) params->duration = AV_NOPTS_VALUE;
      demuxer->duration = params->duration;
      if (demuxer->duration == AV_NOPTS_VALUE && demuxer->ctx->start_time != AV_NOPTS_VALUE &&

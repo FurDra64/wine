@@ -21,43 +21,38 @@ Do not synchronously open the same Googlevideo URL through URLMon first.  The
 scheme handler only needs a placeholder byte stream for direct FFmpeg inputs;
 opening a large DASH stream through URLMon blocks source creation before the
 demuxer can run.
-
-Also clear media-converter contexts after freeing them on failure.  Leaving
-the caller with a dangling context causes the demuxer failure cleanup to free
-it again.
 ---
- dlls/winedmo/media_source.c            |  9 ++++++++-
- dlls/winedmo/unix_demuxer.c           | 37 ++++++++++++++++++++++++++++---------
- dlls/winedmo/unix_demuxer_mediaconv.c |  3 +++
- 3 files changed, 39 insertions(+), 10 deletions(-)
+ dlls/mf/scheme_handler.c    |  9 ++++++++-
+ dlls/winedmo/unix_demuxer.c | 35 +++++++++++++++++++++++++++--------
+ 2 files changed, 35 insertions(+), 9 deletions(-)
 
-diff --git a/dlls/winedmo/media_source.c b/dlls/winedmo/media_source.c
---- a/dlls/winedmo/media_source.c
-+++ b/dlls/winedmo/media_source.c
-@@ -2792,7 +2792,14 @@ static HRESULT WINAPI scheme_handler_BeginCreateObject(IMFSchemeHandler *iface,
-     if (cancel_cookie)
-         *cancel_cookie = NULL;
- 
--    if (!wcsnicmp(url, L"http://", 7) || !wcsnicmp(url, L"https://", 8))
-+    if ((!wcsnicmp(url, L"http://", 7) || !wcsnicmp(url, L"https://", 8))
-+            && wcsstr(url, L".googlevideo.com/videoplayback"))
+diff --git a/dlls/mf/scheme_handler.c b/dlls/mf/scheme_handler.c
+--- a/dlls/mf/scheme_handler.c
++++ b/dlls/mf/scheme_handler.c
+@@ -499,8 +499,15 @@ static HRESULT urlmon_stream_create(const WCHAR *url, DWORD flags, IMFByteStream
+     if (flags & MF_RESOLUTION_WRITE)
+         return E_INVALIDARG;
+
+-    if (FAILED(hr = URLOpenBlockingStreamW(NULL, url, &stream, 0, NULL)))
++    if ((!StrCmpNIW(url, L"http://", 7) || !StrCmpNIW(url, L"https://", 8))
++            && StrStrW(url, L".googlevideo.com/videoplayback"))
 +    {
 +        /* The demuxer opens signed Googlevideo URLs directly through FFmpeg. */
-+        if (FAILED(hr = CreateStreamOnHGlobal(0, TRUE, &stream)))
-+            return hr;
++        if (!(stream = SHCreateMemStream(NULL, 0)))
++            return E_OUTOFMEMORY;
 +    }
-+    else if (!wcsnicmp(url, L"http://", 7) || !wcsnicmp(url, L"https://", 8))
++    else if (FAILED(hr = URLOpenBlockingStreamW(NULL, url, &stream, 0, NULL)))
      {
-         if (FAILED(hr = URLOpenBlockingStreamW(NULL, url, &stream, 0, NULL)))
-         {
-
+         WARN("Failed to open url %s, hr %#lx\n", debugstr_w(url), hr);
+         return hr;
+     }
 diff --git a/dlls/winedmo/unix_demuxer.c b/dlls/winedmo/unix_demuxer.c
 --- a/dlls/winedmo/unix_demuxer.c
 +++ b/dlls/winedmo/unix_demuxer.c
-@@ -767,6 +767,13 @@ static BOOL is_http_hls_url( const char *url )
+@@ -668,6 +668,13 @@ static BOOL is_http_hls_url( const char *url )
      return !!strstr( url, ".m3u8" ) || !!strstr( url, "/hls_playlist/" );
  }
- 
+
 +static BOOL is_googlevideo_url( const char *url )
 +{
 +    if (!url || (strncmp( url, "http://", 7 ) && strncmp( url, "https://", 8 ))) return FALSE;
@@ -68,9 +63,8 @@ diff --git a/dlls/winedmo/unix_demuxer.c b/dlls/winedmo/unix_demuxer.c
  static void demuxer_free_context( struct demuxer *demuxer )
  {
      if (!demuxer->ctx) return;
-@@ -801,18 +808,30 @@ NTSTATUS demuxer_create( void *arg )
-     demuxer->stream_context = params->context;
- 
+@@ -705,19 +712,31 @@ NTSTATUS demuxer_create( void *arg )
+     if (!(demuxer = calloc( 1, sizeof(*demuxer) ))) return STATUS_NO_MEMORY;
      if (!(demuxer->ctx = avformat_alloc_context())) goto failed;
 -    if (is_http_hls_url( params->url ))
 +    if (is_http_hls_url( params->url ) || is_googlevideo_url( params->url ))
@@ -79,7 +73,7 @@ diff --git a/dlls/winedmo/unix_demuxer.c b/dlls/winedmo/unix_demuxer.c
 +        BOOL googlevideo = is_googlevideo_url( params->url );
 +        AVDictionary *options = NULL;
 +        const AVInputFormat *format = googlevideo ? NULL : av_find_input_format( "hls" );
- 
+
 -        /* HLS playlists need the source URL as their base URI so relative
 -         * segment URLs can be resolved.  The custom bytestream path only
 -         * exposes the downloaded manifest bytes, which breaks YouTube HLS
@@ -107,41 +101,7 @@ diff --git a/dlls/winedmo/unix_demuxer.c b/dlls/winedmo/unix_demuxer.c
              goto failed;
          }
      }
-@@ -870,7 +876,7 @@ NTSTATUS demuxer_create( void *arg )
-         strcpy( params->mime_type, "video/x-application" );
-     }
- 
--    if (strstr( format->name, "mp4" )) parse_mp4_streams_metadata( demuxer );
-+    if (!demuxer->direct_url && strstr( format->name, "mp4" )) parse_mp4_streams_metadata( demuxer );
-     return STATUS_SUCCESS;
- 
- failed:
-diff --git a/dlls/winedmo/unix_demuxer_mediaconv.c b/dlls/winedmo/unix_demuxer_mediaconv.c
---- a/dlls/winedmo/unix_demuxer_mediaconv.c
-+++ b/dlls/winedmo/unix_demuxer_mediaconv.c
-@@ -204,6 +204,7 @@ int mediaconv_demuxer_open( AVFormatContext **ctx, struct stream_context *contex
-         WARN( "Failed to find decoder for stream %u, codec %#x %s\n", i, par->codec_id, avcodec_get_name(par->codec_id) );
-         avio_context_free( &(*ctx)->pb );
-         avformat_free_context( *ctx );
-+        *ctx = NULL;
-     }
- 
-     if (!(buffer = calloc( 1, HASH_CHUNK_SIZE ))) return AVERROR(ENOMEM);
-@@ -262,6 +263,7 @@ int mediaconv_demuxer_open( AVFormatContext **ctx, struct stream_context *contex
-                                                NULL, mediaconv_demuxer_seek_callback )))
-         {
-             avformat_free_context( *ctx );
-+            *ctx = NULL;
-             return AVERROR(ENOMEM);
-         }
-     }
-@@ -277,6 +279,7 @@ int mediaconv_demuxer_open( AVFormatContext **ctx, struct stream_context *contex
-         if ((ret = avio_open( &(*ctx)->pb, blank_path, AVIO_FLAG_READ )) < 0)
-         {
-             avformat_free_context( *ctx );
-+            *ctx = NULL;
-             return ret;
-         }
-     }
--- 
+     else
+     {
+--
 2.52.0

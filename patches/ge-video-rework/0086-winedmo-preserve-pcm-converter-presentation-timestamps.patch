@@ -124,10 +124,9 @@ index fe37f5b8..51c70e16 100644
      test_color_convert(TRUE);
      test_resizer(FALSE);
 diff --git a/dlls/winedmo/unix_transform.c b/dlls/winedmo/unix_transform.c
-index 9b5c5888..d5d85035 100644
 --- a/dlls/winedmo/unix_transform.c
 +++ b/dlls/winedmo/unix_transform.c
-@@ -59,6 +59,7 @@ struct unix_transform
+@@ -60,6 +60,7 @@
      AVPacket       *parsed_packet; /* reusable packet for parser output */
  
      bool is_audio;
@@ -135,7 +134,7 @@ index 9b5c5888..d5d85035 100644
      bool is_raw_video;
      bool draining;       /* NULL packet sent — flushing decoder */
      bool frame_pending;  /* frame holds undispatched output */
-@@ -721,6 +722,8 @@ NTSTATUS transform_create( void *arg )
+@@ -779,6 +780,8 @@
          const WAVEFORMATEX *wfx = &in_fmt->audio;
  
          t->is_audio = true;
@@ -144,7 +143,7 @@ index 9b5c5888..d5d85035 100644
          codec_id    = codec_id_from_audio_format( wfx );
  
          if (wfx->cbSize && params->input_format_size >= sizeof(*wfx) + wfx->cbSize)
-@@ -1308,7 +1311,7 @@ NTSTATUS transform_get_output( void *arg )
+@@ -1473,7 +1476,7 @@
           * clip starts at a non-zero packet timestamp. Rebase those frame-relative
           * timestamps onto the current input packet anchor so audio and video start
           * on the same timeline for clip transitions. */
@@ -153,7 +152,7 @@ index 9b5c5888..d5d85035 100644
                  && t->last_input_pts > 0 && params->pts >= 0 && params->pts < t->last_input_pts)
              params->pts += t->last_input_pts;
      }
-@@ -1328,7 +1331,7 @@ NTSTATUS transform_get_output( void *arg )
+@@ -1493,7 +1496,7 @@
          INT64 base_pts = params->pts;
          NTSTATUS st;
  
@@ -162,7 +161,7 @@ index 9b5c5888..d5d85035 100644
          {
              base_pts -= t->audio_pts_offset;
              params->pts = base_pts;
-@@ -1385,7 +1388,9 @@ NTSTATUS transform_get_output( void *arg )
+@@ -1550,7 +1553,9 @@
           * (legacy PROVIDES_SAMPLES query) get STATUS_BUFFER_TOO_SMALL with the full
           * size; all other callers receive up to capacity bytes with INCOMPLETE set when
           * more data remains. */

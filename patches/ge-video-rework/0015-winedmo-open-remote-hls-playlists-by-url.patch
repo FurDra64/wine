@@ -882,17 +882,14 @@ diff --git a/dlls/winedmo/unix_demuxer.c b/dlls/winedmo/unix_demuxer.c
 index 12c1a297312c000cd362bf916cc411030f33cbed..7c121942a6f587b1ed40c66f7a344462dea5e486 100644
 --- a/dlls/winedmo/unix_demuxer.c
 +++ b/dlls/winedmo/unix_demuxer.c
-@@ -51,7 +51,9 @@ struct demuxer
- struct demuxer
- {
+@@ -53,5 +53,6 @@ struct demuxer
      AVFormatContext *ctx;
-+    struct stream_context *stream_context;
      struct stream *streams;
      INT64 duration;
 +    BOOL direct_url;
  
      AVPacket *last_packet; /* last read packet */
-@@ -649,6 +651,26 @@ NTSTATUS demuxer_create( void *arg )
+@@ -649,6 +649,26 @@
      return STATUS_SUCCESS;
  }
  
@@ -919,10 +916,16 @@ index 12c1a297312c000cd362bf916cc411030f33cbed..7c121942a6f587b1ed40c66f7a344462
  NTSTATUS demuxer_create( void *arg )
  {
      struct demuxer_create_params *params = arg;
-@@ -663,10 +685,29 @@ NTSTATUS demuxer_create( void *arg )
-     if (!(demuxer = calloc( 1, sizeof(*demuxer) ))) return STATUS_NO_MEMORY;
-+    demuxer->stream_context = params->context;
+@@ -684,10 +684,28 @@ NTSTATUS demuxer_create( void *arg )
      if (!(demuxer->ctx = avformat_alloc_context())) goto failed;
+-    if (!(demuxer->ctx->pb = avio_alloc_context( NULL, 0, 0, params->context, unix_read_callback, NULL,
+-                                                 params->context->length == (UINT64)-1 ? NULL : unix_seek_callback ))) goto failed;
+-
+-    if ((ret = avformat_open_input( &demuxer->ctx, NULL, NULL, NULL )) < 0)
+-    {
+-        ERR( "Failed to open input, error %s.\n", debugstr_averr(ret) );
+-        goto failed;
+-    }
 +    if (is_http_hls_url( params->url ))
 +    {
 +        const AVInputFormat *hls = av_find_input_format( "hls" );
@@ -940,14 +943,9 @@ index 12c1a297312c000cd362bf916cc411030f33cbed..7c121942a6f587b1ed40c66f7a344462
 +    }
 +    else
 +    {
--    if (!(demuxer->ctx->pb = avio_alloc_context( NULL, 0, 0, params->context, unix_read_callback, NULL, unix_seek_callback ))) goto failed;
-+        if (!(demuxer->ctx->pb = avio_alloc_context( NULL, 0, 0, params->context, unix_read_callback, NULL, unix_seek_callback ))) goto failed;
- 
--    if ((ret = avformat_open_input( &demuxer->ctx, NULL, NULL, NULL )) < 0)
--    {
--        ERR( "Failed to open input, error %s.\n", debugstr_averr(ret) );
--        goto failed;
--    }
++        if (!(demuxer->ctx->pb = avio_alloc_context( NULL, 0, 0, params->context, unix_read_callback, NULL,
++                                                 params->context->length == (UINT64)-1 ? NULL : unix_seek_callback ))) goto failed;
++
 +        if ((ret = avformat_open_input( &demuxer->ctx, NULL, NULL, NULL )) < 0)
 +        {
 +            ERR( "Failed to open input, error %s.\n", debugstr_averr(ret) );
@@ -955,7 +953,7 @@ index 12c1a297312c000cd362bf916cc411030f33cbed..7c121942a6f587b1ed40c66f7a344462
 +        }
 +    }
      format = demuxer->ctx->iformat;
-@@ -711,6 +756,7 @@ NTSTATUS demuxer_create( void *arg )
+@@ -811,6 +850,7 @@ NTSTATUS demuxer_create( void *arg )
      if (strstr( format->name, "mp4" )) strcpy( params->mime_type, "video/mp4" );
      else if (strstr( format->name, "avi" )) strcpy( params->mime_type, "video/avi" );
      else if (strstr( format->name, "mpeg" )) strcpy( params->mime_type, "video/mpeg" );
@@ -963,10 +961,7 @@ index 12c1a297312c000cd362bf916cc411030f33cbed..7c121942a6f587b1ed40c66f7a344462
      else if (strstr( format->name, "mp3" )) strcpy( params->mime_type, "audio/mp3" );
      else if (strstr( format->name, "wav" )) strcpy( params->mime_type, "audio/wav" );
      else if (strstr( format->name, "asf" ))
-@@ -730,11 +776,7 @@ NTSTATUS demuxer_create( void *arg )
- failed:
-     for (i = 0; demuxer->streams && i < demuxer->ctx->nb_streams; i++)
-         av_bsf_free( &demuxer->streams[i].filter );
+@@ -732,8 +772,4 @@ NTSTATUS demuxer_create( void *arg )
      free( demuxer->streams );
 -    if (demuxer->ctx)
 -    {
@@ -976,9 +971,11 @@ index 12c1a297312c000cd362bf916cc411030f33cbed..7c121942a6f587b1ed40c66f7a344462
 +    demuxer_free_context( demuxer );
      free( demuxer );
      return STATUS_UNSUCCESSFUL;
-@@ -750,9 +792,8 @@ NTSTATUS demuxer_destroy( void *arg )
+@@ -777,9 +813,8 @@ NTSTATUS demuxer_destroy( void *arg )
      for (i = 0; i < demuxer->ctx->nb_streams; i++)
+     {
          av_bsf_free( &demuxer->streams[i].filter );
+     }
      free( demuxer->streams );
      params->context = demuxer->ctx->pb->opaque;
 -    avio_context_free( &demuxer->ctx->pb );
@@ -986,8 +983,7 @@ index 12c1a297312c000cd362bf916cc411030f33cbed..7c121942a6f587b1ed40c66f7a344462
 +    demuxer_free_context( demuxer );
      free( demuxer );
  
-     return STATUS_SUCCESS;
-diff --git a/dlls/winedmo/unixlib.c b/dlls/winedmo/unixlib.c
+     return STATUS_SUCCESS; b/dlls/winedmo/unixlib.c
 index 39a4ed35fa15c7ae501bfad13c2df1ed841388f8..29dfba72c90fefc67507a734dffc97b936220eab 100644
 --- a/dlls/winedmo/unixlib.c
 +++ b/dlls/winedmo/unixlib.c

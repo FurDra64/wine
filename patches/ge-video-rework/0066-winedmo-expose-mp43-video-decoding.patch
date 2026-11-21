@@ -31,18 +31,16 @@ Remi Bernon's Wine/CodeWeavers implementation.
 Bug: https://github.com/GloriousEggroll/proton-ge-custom/issues/659
 Reference: https://learn.microsoft.com/en-us/windows/win32/medfound/windowsmediampeg4v3decoder
 diff --git a/dlls/mf/tests/transform.c b/dlls/mf/tests/transform.c
-index 580c01c1..fe37f5b8 100644
 --- a/dlls/mf/tests/transform.c
 +++ b/dlls/mf/tests/transform.c
-@@ -66,6 +66,7 @@ DEFINE_MEDIATYPE_GUID(MFVideoFormat_ARGB4444, D3DFMT_A4R4G4B4);
+@@ -67,5 +67,6 @@
  DEFINE_MEDIATYPE_GUID(MFVideoFormat_A2B10G10R10, D3DFMT_A2R10G10B10);
  DEFINE_MEDIATYPE_GUID(MFVideoFormat_P208,MAKEFOURCC('P','2','0','8'));
  DEFINE_MEDIATYPE_GUID(MFVideoFormat_VC1S,MAKEFOURCC('V','C','1','S'));
 +DEFINE_MEDIATYPE_GUID(MFVideoFormat_mp43,MAKEFOURCC('m','p','4','3'));
  
  DEFINE_GUID(mft_output_sample_incomplete,0xffffff,0xffff,0xffff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff);
- 
-@@ -6500,6 +6501,101 @@ failed:
+@@ -6514,6 +6515,101 @@
      CoUninitialize();
  }
  
@@ -144,7 +142,7 @@ index 580c01c1..fe37f5b8 100644
  const GUID *wmv_decoder_output_subtypes[] =
  {
      &MEDIASUBTYPE_NV12,
-@@ -12514,6 +12610,7 @@ START_TEST(transform)
+@@ -13060,4 +13156,5 @@
      test_wmv_decoder_dmo_output_type();
      test_wmv_decoder_dmo_get_size_info();
      test_wmv_decoder_media_object();
@@ -152,6 +150,7 @@ index 580c01c1..fe37f5b8 100644
      test_audio_convert();
      test_color_convert(FALSE);
      test_color_convert(TRUE);
+
 diff --git a/dlls/winedmo/video_decoder.c b/dlls/winedmo/video_decoder.c
 index c360f2cc..ba445c0f 100644
 --- a/dlls/winedmo/video_decoder.c

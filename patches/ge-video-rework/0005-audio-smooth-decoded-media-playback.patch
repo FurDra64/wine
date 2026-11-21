@@ -32,25 +32,21 @@ This version intentionally does not reintroduce DualSense mono/haptic reconnect 
 
 
 diff --git a/dlls/winepulse.drv/pulse.c b/dlls/winepulse.drv/pulse.c
-index ef13a1ed..a58e05bd 100644
+index 04da7f3854cf2a8a4a892639acaced661f07e9fb..abaf1d31abd0dd7b5359643ba2d8c7c022d25151 100644
 --- a/dlls/winepulse.drv/pulse.c
 +++ b/dlls/winepulse.drv/pulse.c
-@@ -24,10 +24,12 @@
- #endif
- 
+@@ -26,8 +26,10 @@
  #include "config.h"
  #include <stdarg.h>
-+#include <errno.h>
  #include <stdlib.h>
  #include <stdint.h>
++#include <errno.h>
  #include <pthread.h>
 +#include <time.h>
  #include <math.h>
  #include <poll.h>
-
-@@ -113,8 +113,10 @@ struct pulse_stream
-     struct list packet_filled_head;
-     struct list period_entry;
+ 
+@@ -119,6 +121,8 @@ struct pulse_stream
      struct pulse_period *period;
  };
  
@@ -59,14 +55,13 @@ index ef13a1ed..a58e05bd 100644
  typedef struct _ACPacket
  {
      struct list entry;
-@@ -383,14 +403,32 @@ static void pulse_contextcallback(pa_context *c, void *userdata)
+@@ -403,14 +423,32 @@ static void pulse_contextcallback(pa_context *c, void *userdata)
  
  static void pulse_stream_state(pa_stream *s, void *user)
  {
 +    struct pulse_stream *stream = user;
      pa_stream_state_t state = pa_stream_get_state(s);
--    TRACE("Stream state changed to %i\n", state);
-+    TRACE("%p: Stream state changed to %i\n", user, state);
+     TRACE("Stream state changed to %i\n", state);
 +    if (stream && stream->dataflow == eRender && state == PA_STREAM_READY)
 +    {
 +        const pa_buffer_attr *attr = pa_stream_get_buffer_attr(s);
@@ -87,22 +82,23 @@ index ef13a1ed..a58e05bd 100644
  static void pulse_attr_update(pa_stream *s, void *user) {
 +    struct pulse_stream *stream = user;
      const pa_buffer_attr *attr = pa_stream_get_buffer_attr(s);
--    TRACE("New attributes or device moved:\n");
-+    TRACE("%p: New attributes or device moved:\n", user);
+     TRACE("New attributes or device moved:\n");
 +    if (stream && attr)
 +        stream->attr = *attr;
      dump_attr(attr);
  }
  
-@@ -1159,6 +1202,7 @@ static NTSTATUS pulse_create_stream(void *args)
-         return STATUS_SUCCESS;
-     }
- 
+@@ -2079,8 +2101,9 @@ static HRESULT pulse_stream_connect_timeout(struct pulse_stream *stream, const ch
+     attr.tlength = period_bytes * 3;
+     attr.maxlength = stream->bufsize_frames * pa_frame_size(&stream->ss);
+     attr.prebuf = pa_frame_size(&stream->ss);
 +    stream->attr = attr;
-     if (!(stream = calloc(1, sizeof(*stream))))
-     {
-         pulse_unlock();
-@@ -1198,7 +1242,7 @@ static NTSTATUS pulse_create_stream(void *args)
+     dump_attr(&attr);
+ 
+     /* If specific device was requested, use it exactly. For PipeWire raw
+      * haptic targets, keep the public DualSense sink as the Pulse device and
+      * let target.object select the hidden split ALSA node. */
+@@ -2758,7 +2781,7 @@ static NTSTATUS pulse_create_stream(void *args)
          hr = pulse_stream_connect(stream, connect_device, haptic_target, stream->period_bytes);
      if (SUCCEEDED(hr)) {
          UINT32 unalign;
@@ -111,7 +107,20 @@ index ef13a1ed..a58e05bd 100644
          SIZE_T size;
  
          stream->attr = *attr;
-@@ -2230,7 +2274,7 @@ static NTSTATUS pulse_get_latency(void *args)
+@@ -3266,4 +3266,4 @@ static void pa_streams_timer_cb(pa_mainloop_api *api, pa_time_event *e, const st
+ {
+     struct pulse_period *period = userdata;
+-    struct pulse_stream *stream;
++    struct pulse_stream *stream, *next;
+     BOOL reset_timeline = FALSE;
+@@ -3129,5 +3152,5 @@ static void pa_streams_timer_cb(pa_mainloop_api *api, pa_time_event *e, const st
+ 
+-    LIST_FOR_EACH_ENTRY(stream, &period->streams, struct pulse_stream, period_entry)
++    LIST_FOR_EACH_ENTRY_SAFE(stream, next, &period->streams, struct pulse_stream, period_entry)
+     {
+         if (stream->started)
+         {
+@@ -2516,7 +2567,7 @@ static NTSTATUS pulse_get_latency(void *args)
          params->result = AUDCLNT_E_DEVICE_INVALIDATED;
          return STATUS_SUCCESS;
      }
@@ -120,7 +129,7 @@ index ef13a1ed..a58e05bd 100644
      if (stream->dataflow == eRender)
          lat = attr->minreq / pa_frame_size(&stream->ss);
      else
-@@ -2397,15 +2441,18 @@ static NTSTATUS pulse_set_sample_rate(void *args)
+@@ -2683,15 +2734,18 @@ static NTSTATUS pulse_set_sample_rate(void *args)
      new_ss = stream->ss;
      new_ss.rate = params->rate;
  
@@ -145,3 +154,4 @@ index ef13a1ed..a58e05bd 100644
          wait_pa_operation_complete(pa_stream_flush(stream->stream, pulse_op_cb, &success));
  
      stream->clock_lastpos = stream->clock_written = 0;
+

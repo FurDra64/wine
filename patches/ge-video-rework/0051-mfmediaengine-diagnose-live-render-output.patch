@@ -10,32 +10,29 @@ back the corresponding final render destinations. This distinguishes a
 failed system-memory upload from a later AVPro presentation failure while
 keeping the synchronous diagnostic bounded.
 diff --git a/dlls/mfmediaengine/main.c b/dlls/mfmediaengine/main.c
-index 3f2243b9..cd587a0a 100644
 --- a/dlls/mfmediaengine/main.c
 +++ b/dlls/mfmediaengine/main.c
-@@ -2542,6 +2542,7 @@ static void media_engine_adjust_destination_for_ratio(const struct media_engine
- 
+@@ -3067,9 +3067,11 @@ static HRESULT WINAPI media_engine_Shutdown(IMFMediaEngineEx *iface)
+
  static void media_engine_update_d3d11_frame_surface(ID3D11DeviceContext *context, struct media_engine *engine)
  {
 +    static LONG live_render_upload_count;
      D3D11_TEXTURE2D_DESC surface_desc;
      IMFMediaBuffer *media_buffer;
      IMFSample *sample;
-@@ -2549,6 +2550,7 @@ static void media_engine_update_d3d11_frame_surface(ID3D11DeviceContext *context
++    LONG diagnostic_id = 0;
+
      if (!video_frame_sink_get_sample(engine->presentation.frame_sink, &sample))
          return;
- 
-+    LONG diagnostic_id = 0;
-     ID3D11Texture2D_GetDesc(engine->video_frame.d3d11.source, &surface_desc);
- 
-     switch (surface_desc.Format)
-@@ -2566,8 +2568,42 @@ static void media_engine_update_d3d11_frame_surface(ID3D11DeviceContext *context
+@@ -3090,9 +3090,44 @@ static void media_engine_update_d3d11_frame_surface(ID3D11DeviceContext *context
+     if (SUCCEEDED(IMFSample_ConvertToContiguousBuffer(sample, &media_buffer)))
      {
          BYTE *buffer;
          DWORD buffer_size;
 +
 +        if (isinf(engine->duration))
 +            diagnostic_id = InterlockedIncrement(&live_render_upload_count);
++
          if (SUCCEEDED(IMFMediaBuffer_Lock(media_buffer, &buffer, NULL, &buffer_size)))
          {
 +            if (diagnostic_id && diagnostic_id <= 4)
@@ -72,7 +69,7 @@ index 3f2243b9..cd587a0a 100644
              if (buffer_size == surface_desc.Width * surface_desc.Height)
              {
                  ID3D11DeviceContext_UpdateSubresource(context, (ID3D11Resource *)engine->video_frame.d3d11.source,
-@@ -3017,16 +3053,19 @@ static HRESULT media_engine_transfer_to_d3d11_texture(struct media_engine *engin
+@@ -3541,19 +3541,22 @@ static HRESULT media_engine_transfer_to_d3d11_texture(struct media_engine *engin
          const MFVideoNormalizedRect *src_rect, const RECT *dst_rect, const MFARGB *color)
  {
      static const float black[] = {0.0f, 0.0f, 0.0f, 0.0f};
@@ -91,20 +88,23 @@ index 3f2243b9..cd587a0a 100644
 +    LONG diagnostic_id = 0;
      HRESULT hr;
      RECT rect;
- 
-@@ -3051,6 +3090,8 @@ static HRESULT media_engine_transfer_to_d3d11_texture(struct media_engine *engin
+
+     if (FAILED(hr = media_engine_lock_d3d_device(engine, &device)))
+         return hr;
+
+@@ -3576,6 +3576,8 @@ static HRESULT media_engine_transfer_to_d3d11_texture(struct media_engine *engin
      }
- 
+
      ID3D11Texture2D_GetDesc(texture, &desc);
 +    if (isinf(engine->duration))
 +        diagnostic_id = InterlockedIncrement(&live_render_transfer_count);
- 
+
      if (FAILED(hr = ID3D11Device_CreateRenderTargetView(device, (ID3D11Resource *)texture, NULL, &rtv)))
      {
-@@ -3154,6 +3195,15 @@ static HRESULT media_engine_transfer_to_d3d11_texture(struct media_engine *engin
- 
+@@ -3679,6 +3679,15 @@ static HRESULT media_engine_transfer_to_d3d11_texture(struct media_engine *engin
+
      ID3D11DeviceContext_Draw(context, 4, 0);
- 
+
 +    if (diagnostic_id && diagnostic_id <= 4)
 +    {
 +        diagnostic_box.right = desc.Width;
@@ -116,4 +116,6 @@ index 3f2243b9..cd587a0a 100644
 +
      ID3D11RenderTargetView_Release(rtv);
      ID3D11DeviceContext_Release(context);
- 
+
+--
+2.52.0

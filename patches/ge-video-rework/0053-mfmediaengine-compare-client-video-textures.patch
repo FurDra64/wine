@@ -16,7 +16,7 @@ changing playback behavior.
 diff --git a/dlls/mfmediaengine/main.c b/dlls/mfmediaengine/main.c
 --- a/dlls/mfmediaengine/main.c
 +++ b/dlls/mfmediaengine/main.c
-@@ -3935,6 +3935,9 @@ static HRESULT WINAPI media_engine_TransferVideoFrame(IMFMediaEngineEx *iface, I
+@@ -3872,6 +3872,9 @@ static HRESULT WINAPI media_engine_TransferVideoFrame(IMFMediaEngineEx *iface, I
  {
      struct media_engine *engine = impl_from_IMFMediaEngineEx(iface);
 +    static LONG finite_client_texture_count;
@@ -26,8 +26,8 @@ diff --git a/dlls/mfmediaengine/main.c b/dlls/mfmediaengine/main.c
      ID3D11Texture2D *texture;
      HRESULT hr = E_NOINTERFACE;
      IWICBitmap *bitmap;
-@@ -3950,6 +3953,32 @@ static HRESULT WINAPI media_engine_TransferVideoFrame(IMFMediaEngineEx *iface, I
- 
+@@ -3885,6 +3885,32 @@ static HRESULT WINAPI media_engine_TransferVideoFrame(IMFMediaEngineEx *iface, I
+
      if (SUCCEEDED(IUnknown_QueryInterface(surface, &IID_ID3D11Texture2D, (void **)&texture)))
      {
 +        LONG count;
@@ -56,8 +56,9 @@ diff --git a/dlls/mfmediaengine/main.c b/dlls/mfmediaengine/main.c
 +            ID3D11Device_Release(device);
 +        }
 +
-         if (!engine->device_manager
-                 || engine->video_frame.format_mismatch
-                 || FAILED(hr = media_engine_transfer_d3d11(engine, texture, src_rect, dst_rect, color)))
--- 
+         if (!engine->device_manager || FAILED(hr = media_engine_transfer_d3d11(engine, texture, src_rect, dst_rect, color)))
+             hr = media_engine_transfer_to_d3d11_texture(engine, texture, src_rect, dst_rect, color);
+         ID3D11Texture2D_Release(texture);
+     }
+--
 2.52.0

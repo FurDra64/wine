@@ -20,10 +20,9 @@ Rebased over 0067's late-clipping-window allocation fix: keep failure
 cleanup in initialize_device(), and retry RGB24 allocation from the common
 allocate_surfaces() path so both immediate and deferred allocation use it.
 diff --git a/dlls/quartz/tests/vmr7.c b/dlls/quartz/tests/vmr7.c
-index bff19431..ae598977 100644
 --- a/dlls/quartz/tests/vmr7.c
 +++ b/dlls/quartz/tests/vmr7.c
-@@ -1623,6 +1623,92 @@ static void test_connect_pin(void)
+@@ -1623,6 +1623,92 @@
      ok(!ref, "Got outstanding refcount %ld.\n", ref);
  }
  
@@ -116,7 +115,7 @@ index bff19431..ae598977 100644
  static void test_overlay(void)
  {
      IBaseFilter *filter = create_vmr7(0);
-@@ -4148,6 +4234,7 @@ START_TEST(vmr7)
+@@ -4148,6 +4234,7 @@
      test_enum_media_types();
      test_unconnected_filter_state();
      test_connect_pin();
@@ -124,11 +123,13 @@ index bff19431..ae598977 100644
      test_overlay();
      test_video_window();
      test_basic_video();
+-- 
+2.55.0
+
 diff --git a/dlls/quartz/vmr7.c b/dlls/quartz/vmr7.c
-index e8630d9d..8b517cd7 100644
 --- a/dlls/quartz/vmr7.c
 +++ b/dlls/quartz/vmr7.c
-@@ -236,6 +236,22 @@ static void convert_yv12_to_rgb32(BYTE *dst, unsigned int dst_pitch,
+@@ -236,6 +236,22 @@
      }
  }
  
@@ -151,7 +152,7 @@ index e8630d9d..8b517cd7 100644
  static HRESULT vmr_render(struct strmbase_renderer *iface, IMediaSample *sample)
  {
      struct vmr7 *filter = impl_from_IBaseFilter(&iface->filter.IBaseFilter_iface);
-@@ -350,6 +366,12 @@ static HRESULT vmr_render(struct strmbase_renderer *iface, IMediaSample *sample)
+@@ -350,6 +366,12 @@
              copy_plane(&dst, surface_desc.lPitch / 2, surface_desc.dwHeight / 2, &src, src_pitch / 2, height / 2);
          }
      }
@@ -170,9 +171,9 @@ index e8630d9d..8b517cd7 100644
      VMRALLOCATIONINFO info = {0};
 +    HRESULT hr;
      DWORD count = 1;
- 
+
      TRACE("Initializing in mode %u, our window %p, clipping window %p.\n",
-@@ -492,7 +515,17 @@ static HRESULT allocate_surfaces(struct vmr7 *filter, const AM_MEDIA_TYPE *mt)
+@@ -491,7 +514,17 @@ static HRESULT allocate_surfaces(struct vmr7 *filter, const AM_MEDIA_TYPE *mt)
      info.szAspectRatio.cx = info.szNativeSize.cx = bitmap_header.biWidth;
      info.szAspectRatio.cy = info.szNativeSize.cy = bitmap_header.biHeight;
  
@@ -189,5 +190,5 @@ index e8630d9d..8b517cd7 100644
 +    }
 +    return hr;
  }
- 
+
  static void vmr_init_stream(struct strmbase_renderer *iface)

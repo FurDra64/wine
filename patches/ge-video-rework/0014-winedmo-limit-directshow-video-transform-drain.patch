@@ -55,7 +55,7 @@ index d06699599f816b539d07c1142f42182dfd527042..dacfccf54abfc4dbf6ae53b7fa1ebd49
      LeaveCriticalSection(&filter->filter.filter_cs);
  
      return pin;
-@@ -487,5 +498,6 @@ static HRESULT asf_reader_init_stream(struct strmbase_filter *iface)
+@@ -489,5 +489,6 @@ static HRESULT asf_reader_init_stream(struct strmbase_filter *iface)
      WMT_STREAM_SELECTION selections[ARRAY_SIZE(filter->streams)];
      WORD stream_numbers[ARRAY_SIZE(filter->streams)];
      IWMReaderAdvanced *reader_advanced;
@@ -100,7 +100,7 @@ index d06699599f816b539d07c1142f42182dfd527042..dacfccf54abfc4dbf6ae53b7fa1ebd49
      WCHAR name[MAX_PATH];
      QWORD duration;
      HRESULT hr;
-@@ -839,10 +864,41 @@ static HRESULT WINAPI reader_callback_OnStatus(IWMReaderCallback *iface, WMT_STA
+@@ -839,16 +839,48 @@ static HRESULT WINAPI reader_callback_OnStatus(IWMReaderCallback *iface, WMT_STA
                  IWMHeaderInfo_Release(header_info);
              }
  
@@ -122,11 +122,11 @@ index d06699599f816b539d07c1142f42182dfd527042..dacfccf54abfc4dbf6ae53b7fa1ebd49
              for (i = 0; i < stream_count; ++i)
              {
                  struct asf_stream *stream = filter->streams + i;
- 
-                 if (FAILED(hr = asf_stream_get_media_type(&stream->source.pin, 0, &stream_media_type)))
 +                WMT_STREAM_SELECTION selection = WMT_ON;
 +                IWMReaderAdvanced *reader_advanced;
-+
+ 
+                 if (FAILED(hr = asf_stream_get_media_type(&stream->source.pin, 0, &stream_media_type)))
+                     WARN("Failed to get stream media type, hr %#lx.\n", hr);
 +                stream->hidden = FALSE;
 +                if (IsEqualGUID(&stream_media_type.majortype, &MEDIATYPE_Audio)
 +                        && SUCCEEDED(IWMReader_QueryInterface(filter->reader, &IID_IWMReaderAdvanced,
@@ -140,15 +140,15 @@ index d06699599f816b539d07c1142f42182dfd527042..dacfccf54abfc4dbf6ae53b7fa1ebd49
 +                if (IsEqualGUID(&stream_media_type.majortype, &MEDIATYPE_Audio)
 +                        && audio_output_count > 1 && i != preferred_audio_output)
 +                    stream->hidden = TRUE;
-                     WARN("Failed to get stream media type, hr %#lx.\n", hr);
                  if (IsEqualGUID(&stream_media_type.majortype, &MEDIATYPE_Video))
-@@ -849,4 +899,6 @@ static HRESULT WINAPI reader_callback_OnStatus(IWMReaderCallback *iface, WMT_STA
                      swprintf(name, ARRAY_SIZE(name), L"Raw Video %u", stream->index);
                  else
                      swprintf(name, ARRAY_SIZE(name), L"Raw Audio %u", stream->index);
 +                if (stream->hidden)
 +                    TRACE("Hiding deselected ASF audio stream %lu.\n", i);
                  FreeMediaType(&stream_media_type);
+ 
+                 strmbase_source_init(&stream->source, &filter->filter, name, &source_ops);
 diff --git a/dlls/winedmo/quartz_parser.c b/dlls/winedmo/quartz_parser.c
 index 8301f93fa13075641293eee66e0811d21adfee95..e41c6e22abbe60f1c99eb1e5048966c308f6f094 100644
 --- a/dlls/winedmo/quartz_parser.c

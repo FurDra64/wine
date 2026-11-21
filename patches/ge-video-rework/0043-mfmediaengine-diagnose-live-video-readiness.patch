@@ -13,10 +13,9 @@ run without the timing changes caused by the full mfplat trace channel.
  3 files changed, 23 insertions(+)
 
 diff --git a/dlls/mfmediaengine/main.c b/dlls/mfmediaengine/main.c
-index dfa6cc0b..8bf86794 100644
 --- a/dlls/mfmediaengine/main.c
 +++ b/dlls/mfmediaengine/main.c
-@@ -1224,6 +1224,9 @@ static HRESULT WINAPI media_engine_sink_events_Invoke(IMFAsyncCallback *iface, I
+@@ -1249,6 +1249,9 @@ static HRESULT WINAPI media_engine_sink_events_Invoke(IMFAsyncCallback *iface,
  
      EnterCriticalSection(&engine->cs);
  
@@ -26,7 +25,7 @@ index dfa6cc0b..8bf86794 100644
      switch (event)
      {
          case MF_MEDIA_ENGINE_EVENT_FIRSTFRAMEREADY:
-@@ -2087,6 +2090,7 @@ static double WINAPI media_engine_GetCurrentTime(IMFMediaEngineEx *iface)
+@@ -2188,6 +2191,7 @@ static double WINAPI media_engine_GetCurrentTime(IMFMediaEngineEx *iface)
  {
      struct media_engine *engine = impl_from_IMFMediaEngineEx(iface);
      double ret = 0.0;
@@ -34,8 +33,7 @@ index dfa6cc0b..8bf86794 100644
      MFTIME clocktime;
  
      EnterCriticalSection(&engine->cs);
-@@ -2106,6 +2110,14 @@ static double WINAPI media_engine_GetCurrentTime(IMFMediaEngineEx *iface)
-             engine->presentation.start_position.vt,
+@@ -2230,5 +2234,13 @@ static double WINAPI media_engine_GetCurrentTime(IMFMediaEngineEx *iface)
              wine_dbgstr_longlong(engine->presentation.start_position.vt == VT_I8
                      ? engine->presentation.start_position.hVal.QuadPart : 0));
 +    if (isinf(engine->duration))
@@ -50,10 +48,9 @@ index dfa6cc0b..8bf86794 100644
  
      return ret;
 diff --git a/dlls/mfmediaengine/video_frame_sink.c b/dlls/mfmediaengine/video_frame_sink.c
-index 11e3a0a1..fb19e834 100644
 --- a/dlls/mfmediaengine/video_frame_sink.c
 +++ b/dlls/mfmediaengine/video_frame_sink.c
-@@ -412,6 +412,8 @@ static HRESULT WINAPI video_frame_sink_stream_ProcessSample(IMFStreamSink *iface
+@@ -420,6 +420,8 @@ static HRESULT WINAPI video_frame_sink_stream_ProcessSample(IMFStreamSink *ifac
          {
              if (!(sink->flags & FLAGS_FIRST_FRAME))
              {

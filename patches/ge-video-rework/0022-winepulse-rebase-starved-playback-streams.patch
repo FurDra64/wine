@@ -35,19 +35,20 @@ diff --git a/dlls/winepulse.drv/pulse.c b/dlls/winepulse.drv/pulse.c
 index 4aa0b2d8f790f4b3c3b57fc3c41fcd5a63428d94..e150e2207d6769f0266d7d74ba37119a5cb808ed 100644
 --- a/dlls/winepulse.drv/pulse.c
 +++ b/dlls/winepulse.drv/pulse.c
-@@ -109,7 +109,7 @@ struct pulse_stream
-     SIZE_T tmp_buffer_bytes, held_bytes, peek_len, peek_buffer_len, pa_held_bytes, max_pa_held_bytes;
-     BYTE *local_buffer, *tmp_buffer, *peek_buffer;
+@@ -113,7 +113,7 @@ struct pulse_stream
+     pa_usec_t haptic_path_check_time;
+     unsigned int haptic_hotplug_generation;
      void *locked_ptr;
--    BOOL just_underran, pa_started, update_timing_info_pending;
-+    BOOL just_underran, pa_started, update_timing_info_pending, rebase_write_index;
+-    BOOL please_quit, just_started, just_underran, pa_started, update_timing_info_pending;
++    BOOL please_quit, just_started, just_underran, pa_started, update_timing_info_pending, rebase_write_index;
      pa_usec_t mmdev_period_usec;
      pa_usec_t timeline_start_stream_time, timeline_start_period_time;
- 
-@@ -1412,9 +1412,11 @@ exit:
+
+@@ -2863,10 +2863,12 @@ static int write_buffer(const struct pulse_stream *stream, BYTE *buffer, UINT32
+     pulse_unlock();
      return STATUS_SUCCESS;
  }
- 
+
 -static int write_buffer(const struct pulse_stream *stream, BYTE *buffer, UINT32 bytes)
 +static int write_buffer(struct pulse_stream *stream, BYTE *buffer, UINT32 bytes)
  {
@@ -57,9 +58,9 @@ index 4aa0b2d8f790f4b3c3b57fc3c41fcd5a63428d94..e150e2207d6769f0266d7d74ba37119a
      UINT32 i, channels, mute = 0;
      BOOL adjust = FALSE;
      BYTE *end;
-@@ -1548,14 +1550,25 @@ static int write_buffer(const struct pulse_stream *stream, BYTE *buffer, UINT32
+@@ -3000,6 +3000,16 @@ static int write_buffer(const struct pulse_stream *stream, BYTE *buffer, UINT32
      }
- 
+
  write:
 -    return pa_stream_write(stream->stream, buffer, bytes, NULL, 0, PA_SEEK_RELATIVE);
 +    if (!bytes)
@@ -74,18 +75,19 @@ index 4aa0b2d8f790f4b3c3b57fc3c41fcd5a63428d94..e150e2207d6769f0266d7d74ba37119a
 +    }
 +    return ret;
  }
- 
+
+@@ -3006,8 +3019,9 @@ static void pulse_write_index_catchup(struct pulse_stream *stream)
  static void pulse_write_index_catchup(struct pulse_stream *stream)
  {
-     const pa_timing_info *ti;
+     const pa_timing_info *ti = pa_stream_get_timing_info(stream->stream);
 +    size_t writable;
      UINT32 frame_size, to_write, max_write;
 -    uint64_t max_gap;
 +    uint64_t gap_delta, max_gap, sane_gap;
      int64_t gap, write_index;
- 
-     if (!pulse_stream_ready(stream))
-@@ -1585,8 +1598,38 @@ static void pulse_write_index_catchup(struct pulse_stream *stream)
+
+     if (!ti || ti->read_index <= ti->write_index) return;
+@@ -3028,8 +3042,38 @@ static void pulse_write_index_catchup(struct pulse_stream *stream)
              max_gap = max(max_gap, (uint64_t)stream->attr.maxlength);
          if (!max_gap)
              max_gap = silence_buf_size;
@@ -125,8 +127,8 @@ index 4aa0b2d8f790f4b3c3b57fc3c41fcd5a63428d94..e150e2207d6769f0266d7d74ba37119a
              WARN("Ignoring implausible Pulse timing gap %lld bytes, limit %llu.\n",
                      (long long)gap, (unsigned long long)max_gap);
              break;
-@@ -1618,8 +1661,9 @@ static void pulse_write(struct pulse_stream *stream)
- 
+@@ -3069,8 +3113,9 @@ static void pulse_write(struct pulse_stream *stream)
+
      if (stream->just_underran)
      {
 -        /* prebuffer with silence if needed */

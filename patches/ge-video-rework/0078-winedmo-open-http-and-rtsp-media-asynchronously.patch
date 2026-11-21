@@ -49,47 +49,6 @@ diff --git a/dlls/winedmo/media_source.c b/dlls/winedmo/media_source.c
  
  #include "wine/list.h"
  
-@@ -2801,22 +2800,9 @@
-     if (cancel_cookie)
-         *cancel_cookie = NULL;
- 
--    if ((!wcsnicmp(url, L"http://", 7) || !wcsnicmp(url, L"https://", 8))
--            && (wcsstr(url, L".googlevideo.com/videoplayback") || wcsstr(url, L".mp4")))
--    {
--        /* The demuxer opens progressive HTTP media directly through FFmpeg. */
--        if (FAILED(hr = CreateStreamOnHGlobal(0, TRUE, &stream)))
--            return hr;
--    }
--    else if (!wcsnicmp(url, L"http://", 7) || !wcsnicmp(url, L"https://", 8))
--    {
--        if (FAILED(hr = URLOpenBlockingStreamW(NULL, url, &stream, 0, NULL)))
--        {
--            WARN("Failed to open url %s, hr %#lx\n", debugstr_w(url), hr);
--            return hr;
--        }
--    }
--    else if (FAILED(hr = CreateStreamOnHGlobal(0, TRUE, &stream)))
-+    /* The IO work item opens the URL through FFmpeg. Downloading here would
-+     * block BeginCreateObject indefinitely for an unbounded HTTP stream. */
-+    if (FAILED(hr = CreateStreamOnHGlobal(0, TRUE, &stream)))
-         return hr;
- 
-     hr = MFCreateMFByteStreamOnStream(stream, &bytestream);
-@@ -2825,8 +2811,13 @@
-         return hr;
- 
-     if (FAILED(hr = MFCreateAsyncResult(NULL, callback, state, &result)))
-+    {
-+        IMFByteStream_Release(bytestream);
-         return hr;
--    if (FAILED(hr = object_context_create(flags, bytestream, url, -1, 0, result, &context)))
-+    }
-+    hr = object_context_create(flags, bytestream, url, -1, 0, result, &context);
-+    IMFByteStream_Release(bytestream);
-+    if (FAILED(hr))
-     {
-         IMFAsyncResult_Release(result);
-         return hr;
 diff --git a/dlls/winedmo/unix_demuxer.c b/dlls/winedmo/unix_demuxer.c
 --- a/dlls/winedmo/unix_demuxer.c
 +++ b/dlls/winedmo/unix_demuxer.c
@@ -129,8 +88,11 @@ diff --git a/dlls/winedmo/unix_demuxer.c b/dlls/winedmo/unix_demuxer.c
      const UINT32 buffer_size = 64 * 1024;
      UINT64 offset, length;
      AVStream *video = NULL;
-@@ -802,20 +804,30 @@
-     unix_seek_callback( context, pos, SEEK_SET );
+@@ -707,23 +709,33 @@
+         avcodec_parameters_copy( stream->filter->par_out, demuxer->ctx->streams[i]->codecpar );
+     }
+ 
+     return STATUS_SUCCESS;
  }
  
 -static BOOL is_http_hls_url( const char *url )
@@ -258,14 +220,15 @@ diff --git a/dlls/mfplat/tests/Makefile.in b/dlls/mfplat/tests/Makefile.in
 +++ b/dlls/mfplat/tests/Makefile.in
 @@ -1,6 +1,7 @@
  TESTDLL   = mfplat.dll
--IMPORTS   = ole32 mfplat user32 d3d9 dxva2 mfuuid propsys uuid strmiids kernelbase
-+IMPORTS   = ole32 mfplat user32 d3d9 dxva2 mfuuid propsys uuid strmiids kernelbase ws2_32
+-IMPORTS   = ole32 mfplat user32 d3d9 dxva2 mfuuid propsys uuid strmiids kernel32 kernelbase
++IMPORTS   = ole32 mfplat user32 d3d9 dxva2 mfuuid propsys uuid strmiids kernel32 kernelbase ws2_32
  
  SOURCES = \
  	mfplat.c \
 +	network.c \
  	resource.rc
 diff --git a/dlls/mfplat/tests/network.c b/dlls/mfplat/tests/network.c
+new file mode 100644
 --- /dev/null
 +++ b/dlls/mfplat/tests/network.c
 @@ -0,0 +1,246 @@
