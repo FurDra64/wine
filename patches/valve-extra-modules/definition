@@ -1,0 +1,5 @@
+Feature: valve-extra-modules
+Description: Provider sources for valve-build configure wiring: stub/proxy Wine modules from ValveSoftware/wine proton_11.0 (dlls/audioses, dlls/protontts, programs/belauncher, programs/dotnetfx35, programs/getminidump, programs/tabtip). Without these, valve-build registers Makefile.in files that do not exist and configure fails.
+Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
+Upstream-Status: none
+Depends-On: none
