@@ -17,8 +17,8 @@ index 54cdbb7..0a709eb 100644
  void activate_keyboard_hkl(HWND hwnd, BOOL ime);
  
  /**********************************************************************
-+    /* TODO: We can remove this once FSHack is implemented in opengl and vulkan upstream for all drivers.
-+     * The opengl implementation is already merged. Then we would only need to ensure contents via expose. */
++ * TODO: We can remove this once FSHack is implemented in opengl and vulkan upstream for all drivers.
++ * The opengl implementation is already merged. Then we would only need to ensure contents via expose.
   *          Wayland pointer
   */
  
