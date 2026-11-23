@@ -15,9 +15,9 @@ diff --git a/dlls/winewayland.drv/wayland_surface.c b/dlls/winewayland.drv/wayla
 index 340d0a27bf9..90c7050ac04 100644
 --- a/dlls/winewayland.drv/wayland_surface.c
 +++ b/dlls/winewayland.drv/wayland_surface.c
-@@ -34,6 +34,71 @@
- 
- WINE_DEFAULT_DEBUG_CHANNEL(waylanddrv);
+@@ -123,6 +123,71 @@
+     TRACE("Initialized image descriptors, scRGB %p BT.2100 %p\n", scrgb_desc, bt2100_desc);
+ }
  
 +static void wayland_surface_handle_enter(void *private, struct wl_surface *wl_surface,
 +                                         struct wl_output *wl_output)
@@ -87,7 +87,7 @@ index 340d0a27bf9..90c7050ac04 100644
  static void xdg_surface_handle_configure(void *private, struct xdg_surface *xdg_surface,
                                           uint32_t serial)
  {
-@@ -285,13 +350,15 @@ struct wayland_surface *wayland_surface_create(HWND hwnd)
+@@ -472,13 +537,15 @@ struct wayland_surface *wayland_surface_create(HWND hwnd)
      TRACE("surface=%p\n", surface);
  
      surface->hwnd = hwnd;
@@ -108,7 +108,7 @@ diff --git a/dlls/winewayland.drv/waylanddrv.h b/dlls/winewayland.drv/waylanddrv
 index d12abb8ed3e..d756f43564f 100644
 --- a/dlls/winewayland.drv/waylanddrv.h
 +++ b/dlls/winewayland.drv/waylanddrv.h
-@@ -380,6 +380,12 @@ struct wayland_shm_buffer
+@@ -390,6 +390,12 @@ struct wayland_shm_buffer
      HRGN damage_region;
  };
  
@@ -121,12 +121,15 @@ index d12abb8ed3e..d756f43564f 100644
  struct wayland_surface
  {
      HWND hwnd;
-@@ -411,7 +417,7 @@ struct wayland_surface
+@@ -421,8 +421,9 @@ struct wayland_surface
          };
      };
      struct wp_alpha_modifier_surface_v1 *wp_alpha_modifier_surface_v1;
--
 +    struct wl_list output_list;
+     struct zwlr_layer_surface_v1 *zwlr_layer_surface_v1;
+     struct wl_output *layer_output;
+     BOOL layer_menu;
+ 
      struct wayland_surface_config pending, requested, processing, current;
      BOOL resizing;
      /* TODO: We can remove this once FSHack is implemented in opengl and vulkan upstream for all drivers.

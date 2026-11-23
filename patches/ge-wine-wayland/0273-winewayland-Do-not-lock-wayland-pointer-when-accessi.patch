@@ -11,10 +11,10 @@ frame state is only touched in the dispatcher thread, so we don't need to lock.
  1 file changed, 2 insertions(+), 16 deletions(-)
 
 diff --git a/dlls/winewayland.drv/wayland_pointer.c b/dlls/winewayland.drv/wayland_pointer.c
-index 7145e78ee04..5badfb61ae8 100644
+index c9ab497..a719f6d 100644
 --- a/dlls/winewayland.drv/wayland_pointer.c
 +++ b/dlls/winewayland.drv/wayland_pointer.c
-@@ -210,9 +210,10 @@ static void pointer_handle_enter(void *data, struct wl_pointer *wl_pointer,
+@@ -211,9 +211,10 @@ static void pointer_handle_enter(void *data, struct wl_pointer *wl_pointer,
      pthread_mutex_lock(&pointer->mutex);
      pointer->focused_hwnd = hwnd;
      pointer->enter_serial = serial;
@@ -26,7 +26,7 @@ index 7145e78ee04..5badfb61ae8 100644
      /* The cursor is undefined at every enter, so we set it again with
       * the latest information we have. */
      wayland_set_cursor(hwnd, NULL, FALSE);
-@@ -296,7 +297,6 @@ static void pointer_handle_axis(void *user_data, struct wl_pointer *wl_pointer,
+@@ -298,7 +299,6 @@ static void pointer_handle_axis(void *user_data, struct wl_pointer *wl_pointer,
  
      if (!(hwnd = wayland_pointer_get_focused_hwnd())) return;
  
@@ -34,7 +34,7 @@ index 7145e78ee04..5badfb61ae8 100644
      switch (axis)
      {
          case WL_POINTER_AXIS_VERTICAL_SCROLL:
-@@ -309,7 +309,6 @@ static void pointer_handle_axis(void *user_data, struct wl_pointer *wl_pointer,
+@@ -311,7 +311,6 @@ static void pointer_handle_axis(void *user_data, struct wl_pointer *wl_pointer,
              break;
          default: break;
      }
@@ -42,7 +42,7 @@ index 7145e78ee04..5badfb61ae8 100644
  
      TRACE("hwnd %p scroll %.3f\n", hwnd, scroll);
  }
-@@ -326,9 +325,6 @@ static void pointer_handle_frame(void *data, struct wl_pointer *wl_pointer)
+@@ -329,9 +328,6 @@ static void pointer_handle_frame(void *data, struct wl_pointer *wl_pointer)
      TRACE("hwnd %p\n", hwnd);
  
      input.type = INPUT_MOUSE;
@@ -52,15 +52,15 @@ index 7145e78ee04..5badfb61ae8 100644
      input.mi.dwFlags = MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_MOVE;
  
      if (frame->flags & WAYLAND_POINTER_FRAME_ABSOLUTE)
-@@ -400,7 +396,6 @@ static void pointer_handle_frame(void *data, struct wl_pointer *wl_pointer)
+@@ -402,7 +398,6 @@ static void pointer_handle_frame(void *data, struct wl_pointer *wl_pointer)
  
      frame->flags = 0;
      frame->scroll = frame->horz_scroll = 0;
 -    pthread_mutex_unlock(&pointer->mutex);
- }
  
- static void pointer_handle_axis_source(void *data, struct wl_pointer *wl_pointer,
-@@ -417,7 +412,6 @@ static void pointer_handle_axis_stop(void *data, struct wl_pointer *wl_pointer,
+     /* Wine still accumulates motion in win32u; deliver it at the end of this frame. */
+     NtUserSendHardwareInput(NULL, SEND_HWMSG_RAWINPUT, &flush, 0);
+@@ -422,7 +417,6 @@ static void pointer_handle_axis_stop(void *data, struct wl_pointer *wl_pointer,
  
      if (!(hwnd = wayland_pointer_get_focused_hwnd())) return;
  
@@ -68,7 +68,7 @@ index 7145e78ee04..5badfb61ae8 100644
      switch (axis)
      {
          case WL_POINTER_AXIS_HORIZONTAL_SCROLL:
-@@ -428,7 +422,6 @@ static void pointer_handle_axis_stop(void *data, struct wl_pointer *wl_pointer,
+@@ -433,7 +427,6 @@ static void pointer_handle_axis_stop(void *data, struct wl_pointer *wl_pointer,
              break;
          default: break;
      }
@@ -76,23 +76,23 @@ index 7145e78ee04..5badfb61ae8 100644
  
      TRACE("hwnd %p axis %u\n", hwnd, axis);
  }
-@@ -443,7 +436,6 @@ static void pointer_handle_axis_value120(void *data, struct wl_pointer *wl_point
+@@ -448,7 +441,6 @@ static void pointer_handle_axis_value120(void *data, struct wl_pointer *wl_point
      if (!value120) return;
      if (!(hwnd = wayland_pointer_get_focused_hwnd())) return;
  
 -    pthread_mutex_lock(&pointer->mutex);
      switch (axis)
      {
-         case WL_POINTER_AXIS_VERTICAL_SCROLL:
-@@ -456,7 +448,6 @@ static void pointer_handle_axis_value120(void *data, struct wl_pointer *wl_point
-             break;
-         default: break;
+     case WL_POINTER_AXIS_VERTICAL_SCROLL:
+@@ -461,7 +453,6 @@ static void pointer_handle_axis_value120(void *data, struct wl_pointer *wl_point
+         break;
+     default: break;
      }
 -    pthread_mutex_unlock(&pointer->mutex);
  
      TRACE("hwnd=%p axis=%u value120=%d\n", hwnd, axis, value120);
  }
-@@ -549,17 +540,12 @@ static void relative_pointer_v1_relative_motion(void *private,
+@@ -554,17 +545,12 @@ static void relative_pointer_v1_relative_motion(void *private,
          raw_y = screen_y;
      }
  
@@ -110,6 +110,3 @@ index 7145e78ee04..5badfb61ae8 100644
      TRACE("hwnd=%p screen=%.2f,%.2f raw=%.2f,%.2f accum=%.2f,%.2f\n",
            hwnd, screen_x, screen_y, raw_x, raw_y, frame->dx_raw, frame->dy_raw);
  }
--- 
-2.55.0
-

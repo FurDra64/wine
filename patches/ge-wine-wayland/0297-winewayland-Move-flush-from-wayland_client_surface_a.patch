@@ -24,20 +24,19 @@ index 4d84f33ae62..d00782c9e1b 100644
  err:
      ERR("Failed to configure image description for client surface!\n");
 diff --git a/dlls/winewayland.drv/wayland_surface.c b/dlls/winewayland.drv/wayland_surface.c
-index 90c7050ac04..103ae09bf1f 100644
 --- a/dlls/winewayland.drv/wayland_surface.c
 +++ b/dlls/winewayland.drv/wayland_surface.c
-@@ -1899,13 +1899,11 @@ void wayland_client_surface_attach_image_description(struct wayland_client_surfa
-             wp_color_management_surface_v1_destroy(surface->wp_color_management_surface_v1);
-             surface->wp_color_management_surface_v1 = NULL;
+@@ -2218,13 +2218,11 @@
+             wp_color_management_surface_v1_destroy(surface->color_management);
+             surface->color_management = NULL;
          }
 -        wl_display_flush(process_wayland.wl_display);
          return;
      }
  
      client_surface_add_ref(&surface->client);
-     wp_image_description_v1_add_listener(image_desc, &image_description_listener, surface);
+     wp_image_description_v1_add_listener(image_desc, &client_image_description_listener, surface);
 -    wl_display_flush(process_wayland.wl_display);
  }
  
- /**********************************************************************
+ 

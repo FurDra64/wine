@@ -10,10 +10,10 @@ Subject: [PATCH 282/285] winewayland: Fix formatting of
  1 file changed, 3 insertions(+), 6 deletions(-)
 
 diff --git a/dlls/winewayland.drv/window.c b/dlls/winewayland.drv/window.c
-index fce92450cb1..74e4fd3eb83 100644
+index 242f216..f214bc0 100644
 --- a/dlls/winewayland.drv/window.c
 +++ b/dlls/winewayland.drv/window.c
-@@ -505,13 +505,10 @@ void WAYLAND_WindowPosChanged(HWND hwnd, HWND insert_after, HWND owner_hint, UIN
+@@ -661,13 +661,10 @@ void WAYLAND_WindowPosChanged(HWND hwnd, HWND insert_after, HWND owner_hint, UIN
      data->resizeable = swp_flags & WINE_SWP_RESIZABLE;
      data->managed = managed;
  
@@ -28,8 +28,5 @@ index fce92450cb1..74e4fd3eb83 100644
 +        wayland_surface_destroy(data->wayland_surface);
 +        data->wayland_surface = NULL;
      }
-     else if (wayland_win_data_create_wayland_surface(data, owner_surface))
-     {
--- 
-2.55.0
-
+     else if (wayland_win_data_create_wayland_surface(data, owner_surface, use_layer_shell,
+                                                             tray_menu))

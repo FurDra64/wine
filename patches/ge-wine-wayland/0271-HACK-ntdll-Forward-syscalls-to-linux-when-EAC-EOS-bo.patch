@@ -1,4 +1,4 @@
-From ba3dcc1cec664e93d383b506ee60375160480f37 Mon Sep 17 00:00:00 2001
+From ba3dcc1cec664e93c383b506ee60375160480f37 Mon Sep 17 00:00:00 2001
 From: Etaash Mathamsetty
  <45927311+Etaash-mathamsetty@users.noreply.github.com>
 Date: Wed, 12 Aug 2026 00:24:03 -0400
@@ -7,83 +7,83 @@ Subject: [PATCH 271/285] HACK: ntdll: Forward syscalls to linux when EAC (EOS)
 
 ---
  dlls/kernelbase/process.c       |  8 +++++++
- dlls/ntdll/unix/signal_x86_64.c | 37 +++++++++++++++++++++++++++++++++
- 2 files changed, 45 insertions(+)
+ dlls/ntdll/unix/signal_x86_64.c | 36 ++++++++++++++++++++++++++++++++
+ 2 files changed, 44 insertions(+)
+
 diff --git a/dlls/kernelbase/process.c b/dlls/kernelbase/process.c
-index ae9a7d64..08fbd49e 100644
+index fe337dcfff8..e8c23c39f7a 100644
 --- a/dlls/kernelbase/process.c
 +++ b/dlls/kernelbase/process.c
-@@ -802,6 +802,9 @@ BOOL WINAPI DECLSPEC_HOTPATCH GetExitCodeProcess( HANDLE process, LPDWORD exit_c
-     PROCESS_BASIC_INFORMATION pbi;
+@@ -821,6 +821,9 @@
+             sync_env_var_to_unix( new_env, "UPLAY_ARGUMENTS" );
+             sync_env_var_to_unix( new_env, "UPC_GAME_STARTER_RUNNING" );
  
-     status = NtQueryInformationProcess( process, ProcessBasicInformation, &pbi, sizeof(pbi), NULL );
 +            /* HACK: tell the sigsys handler that this is the EAC (EOS) dispatcher */
 +            __wine_set_unix_env("PROTON_SYSCALL_HACK", "1");
 +
-     if (!status && exit_code) *exit_code = pbi.ExitStatus;
-     return set_ntstatus( status );
- }
-@@ -959,6 +962,11 @@ BOOL WINAPI DECLSPEC_HOTPATCH GetProcessShutdownParameters( LPDWORD level, LPDWO
+             p = app_name + wcslen( app_name );
+             while (p != app_name && *p != '/' && *p != '\\') --p;
+             if (p != app_name)
+@@ -943,6 +946,11 @@
+     }
  
- 
- /*********************************************************************
+  done:
 +
 +    /* clean up the syscall hack env now that we are done using it */
 +    if (product_name && !strcmp( product_name, "Easy Anti-Cheat Bootstrapper (EOS)" ))
 +        __wine_set_unix_env("PROTON_SYSCALL_HACK", NULL);
 +
-  *           GetProcessTimes   (kernelbase.@)
-  */
- BOOL WINAPI DECLSPEC_HOTPATCH GetProcessTimes( HANDLE process, FILETIME *create, FILETIME *exit,
+     RtlDestroyProcessParameters( params );
+     if (tidy_cmdline != cmd_line) HeapFree( GetProcessHeap(), 0, tidy_cmdline );
+     HeapFree( GetProcessHeap(), 0, product_name );
 diff --git a/dlls/ntdll/unix/signal_x86_64.c b/dlls/ntdll/unix/signal_x86_64.c
-index f807caa4..4067a4b9 100644
+index 3923e68e530..ac7cd771bd3 100644
 --- a/dlls/ntdll/unix/signal_x86_64.c
 +++ b/dlls/ntdll/unix/signal_x86_64.c
-@@ -2611,6 +2611,9 @@ static void usr1_handler( int signal, siginfo_t *siginfo, void *_sigcontext )
+@@ -2692,6 +2692,8 @@
+ static BOOL use_nascar25_hack;
+ static int nascar25_hack_checked;
  
- 
- #if defined(__APPLE__) || defined(__linux__)
-+
 +static BOOL use_eos_syscall_hack;
 +
  /**********************************************************************
   *		sigsys_handler
   *
-@@ -2633,6 +2636,33 @@ static void sigsys_handler( int signal, siginfo_t *siginfo, void *_sigcontext )
-         RIP_sig(sigcontext) -= 2;  /* retry the syscall */
+@@ -2734,6 +2736,33 @@
          return;
      }
+ #endif
 +
 +    /* HACK: The EOS version of easy anti cheat executes linux syscalls in a high address
 +     * to evade the older seccomp based syscall emulation. It maps a page at
 +     * 0x700100000000 and uses it to execute syscalls.
 +     * The child process does more of the same but at different address.
 +     * Detect this case and execute the linux syscall instead. */
-+    if ((long)RIP_sig(ucontext) >= 0x700100000000 && use_eos_syscall_hack)
++    if ((long)RIP_sig(sigcontext) >= 0x700100000000 && use_eos_syscall_hack)
 +    {
 +        /* block syscall user dispatch, if it was already blocked we wont be in this handler */
 +        __asm__ (
-+            "movq %%gs:0x30,%%r13\n\t"
-+            "movb $0, 0x340(%%r13)\n\t"
++            "movq %%gs:0x30,%%r13\\n\\t"
++            "movb $0, 0x340(%%r13)\\n\\t"
 +            ::: "r13"
 +        );
 +
-+        RAX_sig(ucontext) = syscall(RAX_sig(ucontext), RDI_sig(ucontext), RSI_sig(ucontext),
-+                                    RDX_sig(ucontext), R10_sig(ucontext), R8_sig(ucontext),
-+                                    R9_sig(ucontext));
++        RAX_sig(sigcontext) = syscall(RAX_sig(sigcontext), RDI_sig(sigcontext), RSI_sig(sigcontext),
++                                    RDX_sig(sigcontext), R10_sig(sigcontext), R8_sig(sigcontext),
++                                    R9_sig(sigcontext));
 +
 +        /* restore syscall user dispatch state */
 +        __asm__ (
-+            "movq %%gs:0x30,%%r13\n\t"
-+            "movb $1, 0x340(%%r13)\n\t"
++            "movq %%gs:0x30,%%r13\\n\\t"
++            "movb $1, 0x340(%%r13)\\n\\t"
 +            ::: "r13"
 +        );
 +        return;
 +    }
- #endif
  
-     frame->rip = RIP_sig(sigcontext) + 0xb;
-@@ -2859,6 +2889,7 @@ void signal_init_process( TEB *teb )
+     /* NASCAR 25's protected loader corrupts its VM state before its first direct
+      * NtProtectVirtualMemory syscall under Wine. Restore the known-good state once. */
+@@ -2994,6 +3023,7 @@
  #ifdef __linux__
      if (syscall_dispatch_enabled)
      {
@@ -91,16 +91,17 @@ index f807caa4..4067a4b9 100644
          struct sigaction act;
  
          if (sigaction( SIGSYS, NULL, &act ) == -1)
-@@ -2871,6 +2902,12 @@ void signal_init_process( TEB *teb )
+@@ -3006,6 +3036,12 @@
              WARN_(seh)( "could not find library containing signal restorer trampoline\n" );
              syscall_dispatch_enabled = FALSE;
-         }
++        }
 +        else
 +        {
 +            /* We don't unset the env since child processes also need to inherit the same syscall hack */
 +            use_eos_syscall_hack = (env = getenv("PROTON_SYSCALL_HACK")) && !strcmp(env, "1");
 +            if (use_eos_syscall_hack) ERR_(seh)("Using EAC bootstrapper (EOS) syscall workaround!\n");
-+        }
+         }
      }
  #endif
  
+-- 

@@ -5,13 +5,14 @@ Date: Mon, 7 Sep 2026 16:36:32 -0500
 Subject: [PATCH] winewayland: Introduce new window activation architecture.
 
 ---
- dlls/winewayland.drv/wayland_surface.c |   97 ++++++++++++++++++++++----------
+ dlls/winewayland.drv/wayland_surface.c | 97 ++++++++++++++++++--------
  1 file changed, 67 insertions(+), 30 deletions(-)
 
 diff --git a/dlls/winewayland.drv/wayland_surface.c b/dlls/winewayland.drv/wayland_surface.c
+index aad5515..ab04e11 100644
 --- a/dlls/winewayland.drv/wayland_surface.c
 +++ b/dlls/winewayland.drv/wayland_surface.c
-@@ -1732,9 +1732,9 @@ void wayland_surface_set_opacity(struct wayland_surface *surface, BYTE alpha, UI
+@@ -2340,9 +2340,9 @@ void wayland_surface_set_opacity(struct wayland_surface *surface, BYTE alpha, UI
      }
  }
  
@@ -24,7 +25,7 @@ diff --git a/dlls/winewayland.drv/wayland_surface.c b/dlls/winewayland.drv/wayla
  {
      HWND hwnd = user_data;
      struct wayland_win_data *data;
-@@ -1750,60 +1750,97 @@ done:
+@@ -2358,60 +2358,97 @@ done:
      xdg_activation_token_v1_destroy(xdg_activation_token_v1);
  }
  

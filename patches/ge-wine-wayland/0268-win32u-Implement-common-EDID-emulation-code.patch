@@ -11,10 +11,10 @@ Based on patches by Paul Gofman and Jactry Zeng.
  2 files changed, 240 insertions(+), 24 deletions(-)
 
 diff --git a/dlls/win32u/sysparams.c b/dlls/win32u/sysparams.c
-index 6cc9c13e7b7..21cf322f82b 100644
+index dfd692d..94431e4 100644
 --- a/dlls/win32u/sysparams.c
 +++ b/dlls/win32u/sysparams.c
-@@ -130,21 +130,6 @@ struct source
+@@ -129,21 +129,6 @@ struct source
      DEVMODEW *modes;
  };
  
@@ -36,7 +36,7 @@ index 6cc9c13e7b7..21cf322f82b 100644
  struct monitor
  {
      LONG refcount;
-@@ -2096,6 +2081,191 @@ static BOOL write_monitor_to_registry( struct monitor *monitor, const BYTE *edid
+@@ -2075,6 +2060,191 @@ static BOOL write_monitor_to_registry( struct monitor *monitor, const BYTE *edid
      return TRUE;
  }
  
@@ -228,7 +228,7 @@ index 6cc9c13e7b7..21cf322f82b 100644
  static void add_monitor( const struct gdi_monitor *gdi_monitor, void *param )
  {
      struct device_manager_ctx *ctx = param;
-@@ -2103,6 +2273,8 @@ static void add_monitor( const struct gdi_monitor *gdi_monitor, void *param )
+@@ -2082,6 +2252,8 @@ static void add_monitor( const struct gdi_monitor *gdi_monitor, void *param )
      struct source *source;
      char buffer[MAX_PATH];
      char monitor_id_string[16];
@@ -237,7 +237,7 @@ index 6cc9c13e7b7..21cf322f82b 100644
  
      assert( !list_empty( &sources ) );
      source = LIST_ENTRY( list_tail( &sources ), struct source, entry );
-@@ -2117,7 +2289,16 @@ static void add_monitor( const struct gdi_monitor *gdi_monitor, void *param )
+@@ -2096,7 +2268,16 @@ static void add_monitor( const struct gdi_monitor *gdi_monitor, void *param )
  
      TRACE( "%u %s %s\n", monitor->id, wine_dbgstr_rect(&gdi_monitor->rc_monitor), wine_dbgstr_rect(&gdi_monitor->rc_work) );
  
@@ -255,7 +255,7 @@ index 6cc9c13e7b7..21cf322f82b 100644
      if (monitor->edid_info.flags & MONITOR_INFO_HAS_MONITOR_ID)
          strcpy( monitor_id_string, monitor->edid_info.monitor_id_string );
      else
-@@ -2127,18 +2308,19 @@ static void add_monitor( const struct gdi_monitor *gdi_monitor, void *param )
+@@ -2106,18 +2287,19 @@ static void add_monitor( const struct gdi_monitor *gdi_monitor, void *param )
      snprintf( monitor->path, sizeof(monitor->path), "DISPLAY\\%s\\%04X&%04X", monitor_id_string, source->id, monitor->id );
      set_reg_ascii_value( source->key, buffer, monitor->path );
  
@@ -282,12 +282,12 @@ index 6cc9c13e7b7..21cf322f82b 100644
 +    ctx->monitor_count++;
  }
  
- static UINT add_screen_size( SIZE *sizes, UINT count, SIZE size )
+ /* Return whether fsr should be used */
 diff --git a/include/wine/gdi_driver.h b/include/wine/gdi_driver.h
-index d52f6ec3734..d6bf25821e3 100644
+index 542d066..2e558bb 100644
 --- a/include/wine/gdi_driver.h
 +++ b/include/wine/gdi_driver.h
-@@ -339,12 +339,46 @@ struct pci_id
+@@ -348,12 +348,46 @@ struct pci_id
      UINT16 revision;
  };
  
@@ -334,6 +334,3 @@ index d52f6ec3734..d6bf25821e3 100644
      BOOL hdr_enabled;
  };
  
--- 
-2.55.0
-

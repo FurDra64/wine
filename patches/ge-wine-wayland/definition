@@ -1,5 +1,5 @@
 Feature: ge-wine-wayland
-Description: Ported from GE-Proton patches/wine-hotfixes/wine-wayland/. Wine-Wayland driver stack (ETAASH).
+Description: EM/GE Wayland hotfixes from proton-ge-custom wine-hotfixes/wine-wayland (199 patches, including two Wine-only patches).
 Author: FurDra64 <152027224+FurDra64@users.noreply.github.com>
-Upstream-Status: none
+Upstream-Status: mixed
 Depends-On: none
