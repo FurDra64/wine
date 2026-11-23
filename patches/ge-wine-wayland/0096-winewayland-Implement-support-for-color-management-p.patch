@@ -7,16 +7,16 @@ Subject: [PATCH 096/285] winewayland: Implement support for color management
 
 Thanks to kode54 for finding some problems with a prior version of this patch: wine-cachyos pull 6
 ---
- dlls/winewayland.drv/display.c        |  67 ++++++
- dlls/winewayland.drv/wayland.c        |  18 +-
- dlls/winewayland.drv/wayland_output.c | 371 +++++++++++++++++++++++++++++++++-
+dlls/winewayland.drv/display.c        |  67 ++++++
+ dlls/winewayland.drv/wayland.c        |  26 ++-
+ dlls/winewayland.drv/wayland_output.c | 373 +++++++++++++++++++++++++++++++++-
  dlls/winewayland.drv/waylanddrv.h     |  26 +++
- 4 files changed, 474 insertions(+), 8 deletions(-)
+
 diff --git a/dlls/winewayland.drv/display.c b/dlls/winewayland.drv/display.c
-index a3647651..a260033c 100644
+index 08ce009..a1a971c 100644
 --- a/dlls/winewayland.drv/display.c
 +++ b/dlls/winewayland.drv/display.c
-@@ -204,8 +204,18 @@ static void wayland_add_device_source(const struct gdi_device_manager *device_ma
+@@ -307,8 +307,18 @@ static void wayland_add_device_source(const struct gdi_device_manager *device_ma
      device_manager->add_source(output_info->output->name, state_flags, dpi, param);
  }
  
@@ -35,7 +35,7 @@ index a3647651..a260033c 100644
      struct wayland_output_mode *mode = output_info->output->current_mode;
      const char *model = output_info->output->model;
      unsigned int edid_size = 128, extensions = 0;
-@@ -214,6 +224,12 @@ static UINT get_edid(struct output_info *output_info, unsigned char **edid)
+@@ -317,6 +327,12 @@ static UINT get_edid(struct output_info *output_info, unsigned char **edid)
      unsigned char *data, *p, c;
      char temp_model[13] = {0};
  
@@ -48,7 +48,7 @@ index a3647651..a260033c 100644
      if (!(*edid = calloc(edid_size, sizeof(**edid))))
          return 0;
  
-@@ -245,6 +261,18 @@ static UINT get_edid(struct output_info *output_info, unsigned char **edid)
+@@ -348,6 +364,18 @@ static UINT get_edid(struct output_info *output_info, unsigned char **edid)
      data[21] = round(mwidth / 10.0); /* cm */
      data[22] = round(mheight / 10.0); /* cm */
      data[24] = 0x6;
@@ -67,7 +67,7 @@ index a3647651..a260033c 100644
  
      for (i = 0; i < 16; ++i) data[38 + i] = 1;
  
-@@ -294,6 +322,38 @@ static UINT get_edid(struct output_info *output_info, unsigned char **edid)
+@@ -397,6 +425,38 @@ static UINT get_edid(struct output_info *output_info, unsigned char **edid)
          c += data[i];
      data[127] = 256 - c;
  
@@ -106,7 +106,7 @@ index a3647651..a260033c 100644
      return edid_size;
  }
  
-@@ -301,6 +361,7 @@ static void wayland_add_device_monitor(const struct gdi_device_manager *device_m
+@@ -404,6 +464,7 @@ static void wayland_add_device_monitor(const struct gdi_device_manager *device_m
                                         void *param, struct output_info *output_info,
                                         struct output_info *primary)
  {
@@ -114,7 +114,7 @@ index a3647651..a260033c 100644
      struct gdi_monitor monitor = {0};
  
      SetRect(&monitor.rc_monitor, output_info->x, output_info->y,
-@@ -311,6 +372,12 @@ static void wayland_add_device_monitor(const struct gdi_device_manager *device_m
+@@ -414,6 +475,12 @@ static void wayland_add_device_monitor(const struct gdi_device_manager *device_m
      monitor.edid_len = get_edid(output_info, &monitor.edid);
      /* We don't have a direct way to get the work area in Wayland. */
      monitor.rc_work = monitor.rc_monitor;
@@ -128,7 +128,7 @@ index a3647651..a260033c 100644
      TRACE("name=%s rc_monitor=rc_work=%s\n",
            output_info->output->name, wine_dbgstr_rect(&monitor.rc_monitor));
 diff --git a/dlls/winewayland.drv/wayland.c b/dlls/winewayland.drv/wayland.c
-index 342dc0f8..40f51065 100644
+index 3855f4f..37b84fb 100644
 --- a/dlls/winewayland.drv/wayland.c
 +++ b/dlls/winewayland.drv/wayland.c
 @@ -40,7 +40,10 @@ struct wayland process_wayland =
@@ -143,10 +143,25 @@ index 342dc0f8..40f51065 100644
  };
  
  /**********************************************************************
-@@ -302,6 +305,19 @@ static void registry_handle_global_remove(void *data, struct wl_registry *regist
-         process_wayland.zxdg_decoration_manager_v1 =
-             wl_registry_bind(registry, id, &zxdg_decoration_manager_v1_interface, 2);
+@@ -227,14 +230,6 @@ static void registry_handle_global(void *data, struct wl_registry *registry,
+         process_wayland.wp_fractional_scale_manager_v1 =
+             wl_registry_bind(registry, id, &wp_fractional_scale_manager_v1_interface, 1);
      }
+-    else if (strcmp(interface, "wp_color_manager_v1") == 0)
+-    {
+-        process_wayland.wp_color_manager_v1 =
+-            wl_registry_bind(registry, id, &wp_color_manager_v1_interface,
+-                             version < 3 ? version : 3);
+-        wp_color_manager_v1_add_listener(process_wayland.wp_color_manager_v1,
+-                                         &color_manager_listener, NULL);
+-    }
+ #ifdef WL_FIXES_ACK_GLOBAL_REMOVE
+     else if (strcmp(interface, "wl_fixes") == 0)
+     {
+@@ -245,6 +240,19 @@ static void registry_handle_global(void *data, struct wl_registry *registry,
+             wl_registry_bind(registry, id, &wl_fixes_interface, 2);
+     }
+ #endif
 +    else if (strcmp(interface, "wp_color_manager_v1") == 0)
 +    {
 +        struct wayland_output *output;
@@ -162,9 +177,9 @@ index 342dc0f8..40f51065 100644
 +    }
  }
  
- static const struct wl_registry_listener registry_listener = {
+ static void registry_handle_global_remove(void *data, struct wl_registry *registry,
 diff --git a/dlls/winewayland.drv/wayland_output.c b/dlls/winewayland.drv/wayland_output.c
-index 6332247c..cb588ecd 100644
+index 6332247..9cbb49e 100644
 --- a/dlls/winewayland.drv/wayland_output.c
 +++ b/dlls/winewayland.drv/wayland_output.c
 @@ -35,11 +35,16 @@ WINE_DEFAULT_DEBUG_CHANNEL(waylanddrv);
@@ -520,7 +535,7 @@ index 6332247c..cb588ecd 100644
      if (output->zxdg_output_v1)
          zxdg_output_v1_destroy(output->zxdg_output_v1);
      wl_output_destroy(output->wl_output);
-@@ -428,9 +724,70 @@ void wayland_output_destroy(struct wayland_output *output)
+@@ -428,9 +724,72 @@ void wayland_output_destroy(struct wayland_output *output)
   */
  void wayland_output_use_xdg_extension(struct wayland_output *output)
  {
@@ -540,6 +555,7 @@ index 6332247c..cb588ecd 100644
 +static void wayland_color_manager_handle_supported_feature(void *data,
 +    struct wp_color_manager_v1 *wp_color_manager_v1, uint32_t feature)
 +{
++    color_manager_listener.supported_feature(data, wp_color_manager_v1, feature);
 +    pthread_mutex_lock(&process_wayland.output_mutex);
 +
 +    TRACE("feature %u\n", feature);
@@ -573,6 +589,7 @@ index 6332247c..cb588ecd 100644
 +static void wayland_color_manager_handle_done(void *data,
 +                        struct wp_color_manager_v1 *wp_color_manager_v1)
 +{
++    color_manager_listener.done(data, wp_color_manager_v1);
 +}
 +
 +static const struct wp_color_manager_v1_listener wp_color_manager_listener = {
@@ -592,7 +609,7 @@ index 6332247c..cb588ecd 100644
 +                                     &wp_color_manager_listener, NULL);
 +}
 diff --git a/dlls/winewayland.drv/waylanddrv.h b/dlls/winewayland.drv/waylanddrv.h
-index af3982d1..5330f975 100644
+index f8bb832..70ae39c 100644
 --- a/dlls/winewayland.drv/waylanddrv.h
 +++ b/dlls/winewayland.drv/waylanddrv.h
 @@ -243,6 +243,9 @@ struct wayland
@@ -652,7 +669,7 @@ index af3982d1..5330f975 100644
      uint32_t global_id;
      unsigned int pending_flags;
      struct wayland_output_state pending;
-@@ -380,8 +380,10 @@ BOOL wayland_process_init(void);
+@@ -378,6 +402,8 @@ BOOL wayland_process_init(void);
  BOOL wayland_output_create(uint32_t id, uint32_t version);
  void wayland_output_destroy(struct wayland_output *output);
  void wayland_output_use_xdg_extension(struct wayland_output *output);
@@ -660,6 +677,4 @@ index af3982d1..5330f975 100644
 +void wayland_color_manager_init(void);
  struct wayland_output *wayland_output_for_rect(const RECT *rect);
  
- /**********************************************************************
-  *          Wayland surface
-  */
+ struct output_info

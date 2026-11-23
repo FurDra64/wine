@@ -6,30 +6,29 @@ Subject: [PATCH 078/285] winewayland: Add support for xdg-toplevel-tag-v1.
 
 Proton specific
 ---
- dlls/winewayland.drv/Makefile.in             |  3 +-
- dlls/winewayland.drv/wayland.c               |  8 ++
- dlls/winewayland.drv/wayland_surface.c       | 12 +++
+dlls/winewayland.drv/Makefile.in             |  3 +-
+ dlls/winewayland.drv/wayland.c               |  8 +++
+ dlls/winewayland.drv/wayland_surface.c       | 12 ++++
  dlls/winewayland.drv/waylanddrv.h            |  2 +
- dlls/winewayland.drv/xdg-toplevel-tag-v1.xml | 85 ++++++++++++++++++++
- 5 files changed, 109 insertions(+), 1 deletion(-)
- create mode 100644 dlls/winewayland.drv/xdg-toplevel-tag-v1.xml
+ dlls/winewayland.drv/xdg-toplevel-tag-v1.xml | 85 ++++++++++++++++++++++++++++
+create mode 100644 dlls/winewayland.drv/xdg-toplevel-tag-v1.xml
 
 diff --git a/dlls/winewayland.drv/Makefile.in b/dlls/winewayland.drv/Makefile.in
-index cc4409c5..e88f327d 100644
+index 0e1efbc..80816a0 100644
 --- a/dlls/winewayland.drv/Makefile.in
 +++ b/dlls/winewayland.drv/Makefile.in
-@@ -34,4 +34,5 @@ SOURCES = \
- 	wlr-data-control-unstable-v1.xml \
+@@ -35,4 +35,5 @@ SOURCES = \
+ 	wlr-layer-shell-unstable-v1.xml \
  	xdg-output-unstable-v1.xml \
  	xdg-shell.xml \
 -	xdg-toplevel-icon-v1.xml
 +	xdg-toplevel-icon-v1.xml \
 +	xdg-toplevel-tag-v1.xml
 diff --git a/dlls/winewayland.drv/wayland.c b/dlls/winewayland.drv/wayland.c
-index 4b5f0db0..26a9b57b 100644
+index 45065cd..54a635a 100644
 --- a/dlls/winewayland.drv/wayland.c
 +++ b/dlls/winewayland.drv/wayland.c
-@@ -276,6 +276,11 @@ static void registry_handle_global_remove(void *data, struct wl_registry *regist
+@@ -282,6 +282,11 @@ static void registry_handle_global_remove(void *data, struct wl_registry *regist
          seat->global_id = 0;
          pthread_mutex_unlock(&seat->mutex);
      }
@@ -41,7 +40,7 @@ index 4b5f0db0..26a9b57b 100644
  }
  
  static const struct wl_registry_listener registry_listener = {
-@@ -395,6 +400,9 @@ BOOL wayland_process_init(void)
+@@ -398,6 +403,9 @@ BOOL wayland_process_init(void)
      if (process_wayland.wp_color_manager_v1) color_management_init();
      else WARN("Wayland compositor doesn't support wp_color_manager_v1 (color management will be broken)\n");
  
@@ -52,10 +51,10 @@ index 4b5f0db0..26a9b57b 100644
  
      return TRUE;
 diff --git a/dlls/winewayland.drv/wayland_surface.c b/dlls/winewayland.drv/wayland_surface.c
-index 8181820f..b22c133c 100644
+index 9a88f64..e37a692 100644
 --- a/dlls/winewayland.drv/wayland_surface.c
 +++ b/dlls/winewayland.drv/wayland_surface.c
-@@ -440,6 +440,18 @@ void wayland_surface_make_toplevel(struct wayland_surface *surface)
+@@ -493,6 +493,18 @@ void wayland_surface_make_toplevel(struct wayland_surface *surface)
      if (process_name)
          xdg_toplevel_set_app_id(surface->xdg_toplevel, process_name);
  
@@ -75,7 +74,7 @@ index 8181820f..b22c133c 100644
          text[0] = 0;
      wayland_surface_set_title(surface, text);
 diff --git a/dlls/winewayland.drv/waylanddrv.h b/dlls/winewayland.drv/waylanddrv.h
-index 2376c266..76d9036d 100644
+index 7c59a8e..58b601a 100644
 --- a/dlls/winewayland.drv/waylanddrv.h
 +++ b/dlls/winewayland.drv/waylanddrv.h
 @@ -42,6 +42,7 @@
@@ -86,7 +85,7 @@ index 2376c266..76d9036d 100644
  #include "color-management-v1-client-protocol.h"
  
  #include "windef.h"
-@@ -200,6 +201,7 @@ struct wayland
+@@ -209,6 +210,7 @@ struct wayland
      struct wayland_keyboard keyboard;
      struct wayland_pointer pointer;
      struct wayland_text_input text_input;
@@ -96,7 +95,7 @@ index 2376c266..76d9036d 100644
      struct wl_fixes *wl_fixes;
 diff --git a/dlls/winewayland.drv/xdg-toplevel-tag-v1.xml b/dlls/winewayland.drv/xdg-toplevel-tag-v1.xml
 new file mode 100644
-index 00000000..5e20bdf4
+index 0000000..5e20bdf
 --- /dev/null
 +++ b/dlls/winewayland.drv/xdg-toplevel-tag-v1.xml
 @@ -0,0 +1,85 @@

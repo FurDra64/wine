@@ -5,56 +5,44 @@ Date: Mon, 9 Jun 2025 09:07:33 -0400
 Subject: [PATCH 097/285] winewayland: Implement support for FlashWindow.
 
 ---
- dlls/winewayland.drv/Makefile.in           |   1 +
- dlls/winewayland.drv/wayland.c             |   8 +
- dlls/winewayland.drv/wayland_surface.c     |  44 +++++
+dlls/winewayland.drv/Makefile.in           |   1 +
+ dlls/winewayland.drv/wayland.c             |   8 ++
+ dlls/winewayland.drv/wayland_surface.c     |  44 +++++++
  dlls/winewayland.drv/waylanddrv.h          |   4 +
  dlls/winewayland.drv/waylanddrv_main.c     |   1 +
- dlls/winewayland.drv/window.c              |  17 ++
- dlls/winewayland.drv/xdg-activation-v1.xml | 200 +++++++++++++++++++++
- 7 files changed, 275 insertions(+)
- create mode 100644 dlls/winewayland.drv/xdg-activation-v1.xml
+ dlls/winewayland.drv/window.c              |  17 +++
+ dlls/winewayland.drv/xdg-activation-v1.xml | 200 +++++++++++++++++++++++++++++
+create mode 100644 dlls/winewayland.drv/xdg-activation-v1.xml
 
 diff --git a/dlls/winewayland.drv/Makefile.in b/dlls/winewayland.drv/Makefile.in
-index b01d9e64..80fb6b77 100644
+index 218b578..bc0ca0a 100644
 --- a/dlls/winewayland.drv/Makefile.in
 +++ b/dlls/winewayland.drv/Makefile.in
-@@ -32,8 +32,9 @@ SOURCES = \
- 	waylanddrv_main.c \
+@@ -33,6 +33,7 @@ SOURCES = \
  	window.c \
  	window_surface.c \
  	wlr-data-control-unstable-v1.xml \
 +	xdg-activation-v1.xml \
  	xdg-decoration-unstable-v1.xml \
+ 	wlr-layer-shell-unstable-v1.xml \
  	xdg-output-unstable-v1.xml \
- 	xdg-shell.xml \
- 	xdg-toplevel-icon-v1.xml \
 diff --git a/dlls/winewayland.drv/wayland.c b/dlls/winewayland.drv/wayland.c
-index 4b96ad46..a6ded432 100644
+index 26a50f5..b1ee36c 100644
 --- a/dlls/winewayland.drv/wayland.c
 +++ b/dlls/winewayland.drv/wayland.c
-@@ -240,12 +240,17 @@ static void registry_handle_global(void *data, struct wl_registry *registry,
+@@ -264,6 +264,11 @@ static void registry_handle_global(void *data, struct wl_registry *registry,
+         wl_list_for_each(output, &process_wayland.output_list, link)
+             wayland_output_use_image_description(output);
      }
- #ifdef WL_FIXES_ACK_GLOBAL_REMOVE
-     else if (strcmp(interface, "wl_fixes") == 0)
-     {
-         if (version < 2)
-             return;
- 
-         process_wayland.wl_fixes =
-             wl_registry_bind(registry, id, &wl_fixes_interface, 2);
-     }
- #endif
 +    else if (strcmp(interface, "xdg_activation_v1") == 0)
 +    {
 +        process_wayland.xdg_activation_v1 =
 +            wl_registry_bind(registry, id, &xdg_activation_v1_interface, 1);
 +    }
  }
-@@ -438,8 +438,11 @@ BOOL wayland_process_init(void)
-     if (!process_wayland.wp_content_type_manager_v1)
-         WARN("Wayland compositor doesn't support optional wp_content_type_manager_v1!\n");
  
+ static void registry_handle_global_remove(void *data, struct wl_registry *registry,
+@@ -443,6 +448,9 @@ BOOL wayland_process_init(void)
      if (!process_wayland.zxdg_decoration_manager_v1)
          WARN("Wayland compositor doesn't support optional zxdg_decoration_manager_v1!\n");
  
@@ -63,11 +51,12 @@ index 4b96ad46..a6ded432 100644
 +
      process_wayland.initialized = TRUE;
  
+     return TRUE;
 diff --git a/dlls/winewayland.drv/wayland_surface.c b/dlls/winewayland.drv/wayland_surface.c
-index 8b8579e9..4445d880 100644
+index 18c60bd..61bdfc1 100644
 --- a/dlls/winewayland.drv/wayland_surface.c
 +++ b/dlls/winewayland.drv/wayland_surface.c
-@@ -1663,3 +1663,47 @@ void wayland_surface_set_opacity(struct wayland_surface *surface, BYTE alpha, UI
+@@ -2055,3 +2055,47 @@ void wayland_surface_set_opacity(struct wayland_surface *surface, BYTE alpha, UI
          wl_display_flush(process_wayland.wl_display);
      }
  }
@@ -116,7 +105,7 @@ index 8b8579e9..4445d880 100644
 +    }
 +}
 diff --git a/dlls/winewayland.drv/waylanddrv.h b/dlls/winewayland.drv/waylanddrv.h
-index 42fb4a9f..1fd3c23e 100644
+index f8eb2bb..a8f6b7b 100644
 --- a/dlls/winewayland.drv/waylanddrv.h
 +++ b/dlls/winewayland.drv/waylanddrv.h
 @@ -46,6 +46,7 @@
@@ -127,7 +116,7 @@ index 42fb4a9f..1fd3c23e 100644
  
  #include "windef.h"
  #include "winbase.h"
-@@ -198,6 +199,7 @@ struct wayland
+@@ -230,6 +231,7 @@ struct wayland
      struct wp_pointer_warp_v1 *wp_pointer_warp_v1;
      struct wp_alpha_modifier_v1 *wp_alpha_modifier_v1;
      struct wp_color_manager_v1 *wp_color_manager_v1;
@@ -135,7 +124,7 @@ index 42fb4a9f..1fd3c23e 100644
      struct wayland_seat seat;
      struct wayland_keyboard keyboard;
      struct wayland_pointer pointer;
-@@ -374,6 +376,7 @@ void wayland_surface_set_title(struct wayland_surface *surface, LPCWSTR title);
+@@ -450,6 +452,7 @@ void wayland_surface_set_title(struct wayland_surface *surface, LPCWSTR title);
  void wayland_surface_assign_icon(struct wayland_surface *surface);
  void wayland_surface_set_icon_buffer(struct wayland_surface *surface, UINT type, const ICONINFO *ii);
  void wayland_surface_set_opacity(struct wayland_surface *surface, BYTE alpha, UINT flags);
@@ -143,7 +132,7 @@ index 42fb4a9f..1fd3c23e 100644
  
  static inline BOOL wayland_surface_is_toplevel(struct wayland_surface *surface)
  {
-@@ -483,6 +486,7 @@ LRESULT WAYLAND_ClipboardWindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM l
+@@ -581,6 +584,7 @@ LRESULT WAYLAND_ClipboardWindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM l
  BOOL WAYLAND_ClipCursor(const RECT *clip, BOOL reset);
  LRESULT WAYLAND_DesktopWindowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp);
  void WAYLAND_DestroyWindow(HWND hwnd);
@@ -152,7 +141,7 @@ index 42fb4a9f..1fd3c23e 100644
  void WAYLAND_SetCursor(HWND hwnd, HCURSOR hcursor);
  BOOL WAYLAND_SetCursorPos(INT x, INT y);
 diff --git a/dlls/winewayland.drv/waylanddrv_main.c b/dlls/winewayland.drv/waylanddrv_main.c
-index f9d0ac5b..1c1bb952 100644
+index 1b420e4..c2f07f9 100644
 --- a/dlls/winewayland.drv/waylanddrv_main.c
 +++ b/dlls/winewayland.drv/waylanddrv_main.c
 @@ -38,6 +38,7 @@ static const struct user_driver_funcs waylanddrv_funcs =
@@ -164,10 +153,10 @@ index f9d0ac5b..1c1bb952 100644
      .pKbdLayerDescriptor = WAYLAND_KbdLayerDescriptor,
      .pReleaseKbdTables = WAYLAND_ReleaseKbdTables,
 diff --git a/dlls/winewayland.drv/window.c b/dlls/winewayland.drv/window.c
-index 78dbf806..7b93821f 100644
+index fd5ed3e..9c42366 100644
 --- a/dlls/winewayland.drv/window.c
 +++ b/dlls/winewayland.drv/window.c
-@@ -859,6 +859,23 @@ void WAYLAND_UpdateLayeredWindow(HWND hwnd, BYTE alpha, UINT flags)
+@@ -1052,6 +1052,23 @@ void WAYLAND_UpdateLayeredWindow(HWND hwnd, BYTE alpha, UINT flags)
      wayland_win_data_release(data);
  }
  
@@ -193,7 +182,7 @@ index 78dbf806..7b93821f 100644
   */
 diff --git a/dlls/winewayland.drv/xdg-activation-v1.xml b/dlls/winewayland.drv/xdg-activation-v1.xml
 new file mode 100644
-index 00000000..9adcc274
+index 0000000..9adcc27
 --- /dev/null
 +++ b/dlls/winewayland.drv/xdg-activation-v1.xml
 @@ -0,0 +1,200 @@
