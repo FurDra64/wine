@@ -6,10 +6,15 @@ Subject: [PATCH 029/285] winewayland: Implement exclusive fullscreen ensure
  contents.
 
 ---
+dlls/winewayland.drv/wayland_surface.c | 142 +++++++++++++++++++--------------
+ dlls/winewayland.drv/waylanddrv.h      |  10 ++-
+ dlls/winewayland.drv/window.c          |   4 +
+
 diff --git a/dlls/winewayland.drv/wayland_surface.c b/dlls/winewayland.drv/wayland_surface.c
+index c645912..9a88f64 100644
 --- a/dlls/winewayland.drv/wayland_surface.c
 +++ b/dlls/winewayland.drv/wayland_surface.c
-@@ -315,7 +315,8 @@ struct wayland_surface *wayland_surface_create(HWND hwnd)
+@@ -369,6 +369,7 @@ struct wayland_surface *wayland_surface_create(HWND hwnd)
      }
  
      surface->window.scale = 1.0;
@@ -17,9 +22,7 @@ diff --git a/dlls/winewayland.drv/wayland_surface.c b/dlls/winewayland.drv/wayla
  
      return surface;
  
- err:
-@@ -567,7 +567,8 @@ void wayland_surface_clear_role(struct wayland_surface *surface)
-     wl_surface_commit(surface->wl_surface);
+@@ -800,6 +801,7 @@ void wayland_surface_clear_role(struct wayland_surface *surface)
  
      surface->content_width = 0;
      surface->content_height = 0;
@@ -27,9 +30,9 @@ diff --git a/dlls/winewayland.drv/wayland_surface.c b/dlls/winewayland.drv/wayla
  
      wl_display_flush(process_wayland.wl_display);
  }
-@@ -1286,5 +1286,85 @@ static void wayland_client_surface_update(struct client_surface *client)
- 
-     wayland_win_data_release(data);
+@@ -1519,6 +1521,86 @@ RECT map_rect_from_surface(struct wayland_surface *surface, RECT rect)
+     rect.bottom  = round(rect.bottom * surface->window.scale);
+     return rect;
  }
 +static void dummy_buffer_release(void *data, struct wl_buffer *buffer)
 +{
@@ -112,15 +115,21 @@ diff --git a/dlls/winewayland.drv/wayland_surface.c b/dlls/winewayland.drv/wayla
 +}
 +
  
- static void wayland_client_surface_present(struct client_surface *client, HDC hdc)
-@@ -1299,5 +1299,5 @@ static void wayland_client_surface_present(struct client_surface *client, HDC hdc)
+ /**********************************************************************
+  *          map_point_from_surface
+@@ -1588,7 +1670,7 @@ static void wayland_client_surface_present(struct client_surface *client, HDC hd
+ 
      if ((wayland_surface = data->wayland_surface))
      {
 -        wayland_surface_ensure_contents(wayland_surface);
 +        wayland_surface_ensure_contents(wayland_surface, data->is_fullscreen);
  
          /* Handle any processed configure request, to ensure the related
-@@ -1462,61 +1462,3 @@ void wayland_surface_set_title(struct wayland_surface *surface, LPCWSTR title)
+          * surface state is applied by the compositor. */
+@@ -1749,64 +1831,6 @@ done:
+     wayland_win_data_release(toplevel_data);
+ }
+ 
 -static void dummy_buffer_release(void *data, struct wl_buffer *buffer)
 -{
 -    struct wayland_shm_buffer *shm_buffer = data;
@@ -183,49 +192,73 @@ diff --git a/dlls/winewayland.drv/wayland_surface.c b/dlls/winewayland.drv/wayla
  /**********************************************************************
   *          wayland_surface_set_title
 diff --git a/dlls/winewayland.drv/waylanddrv.h b/dlls/winewayland.drv/waylanddrv.h
+index c47b094..cdd65d4 100644
 --- a/dlls/winewayland.drv/waylanddrv.h
 +++ b/dlls/winewayland.drv/waylanddrv.h
-@@ -87,5 +87,12 @@ enum wayland_surface_role
-     WAYLAND_SURFACE_ROLE_TOPLEVEL,
-     WAYLAND_SURFACE_ROLE_SUBSURFACE,
+@@ -90,6 +90,13 @@ enum wayland_surface_role
+     WAYLAND_SURFACE_ROLE_LAYER,
  };
-+
+ 
 +enum wayland_surface_ensure_type
 +{
 +    WAYLAND_SURFACE_NOT_ENSURED = 0,
 +    WAYLAND_SURFACE_ENSURED_FLUSH,
 +    WAYLAND_SURFACE_ENSURED_DUMMY_BUFFER,
 +};
- 
++
  struct wayland_keyboard
-@@ -308,4 +308,5 @@ struct wayland_surface
+ {
+     struct wl_keyboard *wl_keyboard;
+@@ -252,6 +259,7 @@ struct wayland_window_config
+     BOOL managed;
+     BOOL minimized;
+     BOOL resizeable;
++    RECT client_rect;
+ };
+ 
+ struct wayland_client_surface
+@@ -313,6 +321,7 @@ struct wayland_surface
+     struct wayland_surface_config pending, requested, processing, current;
      BOOL resizing;
      struct wayland_window_config window;
 +    enum wayland_surface_ensure_type ensured_contents;
      int content_width, content_height;
      HCURSOR hcursor;
-@@ -352,4 +352,3 @@ RECT map_rect_from_surface(struct wayland_surface *surface, RECT rect)
+ };
+@@ -366,7 +375,6 @@ POINT map_point_to_surface(struct wayland_surface *surface, POINT point);
+ RECT map_rect_from_surface(struct wayland_surface *surface, RECT rect);
+ POINT map_point_from_surface(struct wayland_surface *surface, POINT point);
  void wayland_client_surface_attach(struct wayland_client_surface *client, HWND toplevel, const RECT *rect);
 -void wayland_surface_ensure_contents(struct wayland_surface *surface);
  void wayland_surface_set_title(struct wayland_surface *surface, LPCWSTR title);
  void wayland_surface_assign_icon(struct wayland_surface *surface);
+ void wayland_surface_set_icon_buffer(struct wayland_surface *surface, UINT type, const ICONINFO *ii);
 diff --git a/dlls/winewayland.drv/window.c b/dlls/winewayland.drv/window.c
+index 669e104..7f7bf57 100644
 --- a/dlls/winewayland.drv/window.c
 +++ b/dlls/winewayland.drv/window.c
-@@ -210,5 +210,7 @@ static BOOL wayland_win_data_create_wayland_surface(struct wayland_win_data *data
+@@ -166,6 +166,7 @@ static void wayland_win_data_get_config(struct wayland_win_data *data,
+     conf->state = window_state;
+     conf->visible = (style & WS_VISIBLE) == WS_VISIBLE;
+     conf->managed = data->managed;
++    conf->client_rect = data->rects.client;
+ }
+ 
+ static void reapply_cursor_clipping(void)
+@@ -218,6 +219,8 @@ static BOOL wayland_win_data_create_wayland_surface(struct wayland_win_data *dat
      wl_surface_set_input_region(surface->wl_surface, input_region);
      if (input_region) wl_region_destroy(input_region);
-+
-+    surface->ensured_contents = WAYLAND_SURFACE_NOT_ENSURED;
  
++    surface->ensured_contents = WAYLAND_SURFACE_NOT_ENSURED;
++
      /* If the window is a visible toplevel make it a wayland
       * xdg_toplevel. Otherwise keep it role-less to avoid polluting the
-@@ -851,5 +851,6 @@ BOOL set_window_surface_contents(HWND hwnd, struct wayland_shm_buffer *shm_buffer, HRGN damage_region)
+      * compositor with empty xdg_toplevels. */
+@@ -1041,6 +1044,7 @@ BOOL set_window_surface_contents(HWND hwnd, struct wayland_shm_buffer *shm_buffe
          {
              wayland_surface_attach_shm(wayland_surface, shm_buffer, damage_region);
              wl_surface_commit(wayland_surface->wl_surface);
 +            wayland_surface->ensured_contents = WAYLAND_SURFACE_ENSURED_FLUSH;
              committed = TRUE;
          }
--- 
-2.55.0
+         else

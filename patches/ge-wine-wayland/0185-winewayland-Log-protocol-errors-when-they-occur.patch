@@ -5,29 +5,31 @@ Date: Mon, 13 Jul 2026 00:48:41 -0400
 Subject: [PATCH 185/285] winewayland: Log protocol errors when they occur.
 
 ---
- dlls/winewayland.drv/waylanddrv_main.c | 19 +++++++++++++++++++
- 1 file changed, 19 insertions(+)
+ dlls/winewayland.drv/waylanddrv_main.c | 21 +++++++++++++++++++++
+ 1 file changed, 21 insertions(+)
 
 diff --git a/dlls/winewayland.drv/waylanddrv_main.c b/dlls/winewayland.drv/waylanddrv_main.c
-index 275a3907..ee706d29 100644
+index 8484aa5b2c3..0c97d5ee007 100644
 --- a/dlls/winewayland.drv/waylanddrv_main.c
 +++ b/dlls/winewayland.drv/waylanddrv_main.c
-@@ -25,11 +25,14 @@
+@@ -25,11 +25,16 @@
  #include "config.h"
  
  #include <stdlib.h>
 +#include <errno.h>
  
  #include "ntstatus.h"
- 
+
  #include "waylanddrv.h"
- 
+
++#include "wine/debug.h"
++
 +WINE_DEFAULT_DEBUG_CHANNEL(waylanddrv);
 +
  char *process_name = NULL;
  
  static const struct user_driver_funcs waylanddrv_funcs =
-@@ -106,11 +109,27 @@ err:
+@@ -109,11 +112,27 @@ err:
  
  static NTSTATUS waylanddrv_unix_read_events(void *arg)
  {
@@ -57,3 +59,4 @@ index 275a3907..ee706d29 100644
  
 -- 
 2.55.0
+

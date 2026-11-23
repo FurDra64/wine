@@ -5,12 +5,12 @@ Date: Sun, 28 Jun 2026 20:48:33 -0400
 Subject: [PATCH 170/285] ntoskrnl: Implement PsGetProcessDebugPort.
 
 ---
+
 diff --git a/dlls/ntoskrnl.exe/ntoskrnl.c b/dlls/ntoskrnl.exe/ntoskrnl.c
-index b4058c07..0edeb41e 100644
+index 6e94d17..f7f086d 100644
 --- a/dlls/ntoskrnl.exe/ntoskrnl.c
 +++ b/dlls/ntoskrnl.exe/ntoskrnl.c
-@@ -2552,7 +2552,10 @@ static void *create_process_object( HANDLE handle )
-     get_process_image_file_name( handle, process );
+@@ -2519,6 +2519,9 @@ static void *create_process_object( HANDLE handle )
      status = NtQueryInformationProcess( handle, ProcessWow64Information, &process->peb32, sizeof(process->peb32), NULL );
      if (status) process->peb32 = NULL;
  
@@ -20,8 +20,8 @@ index b4058c07..0edeb41e 100644
      return process;
  }
  
-@@ -2638,6 +2641,15 @@ LONGLONG WINAPI PsGetProcessCreateTimeQuadPart( PEPROCESS process )
-     return process->times.CreateTime.QuadPart;
+@@ -2615,6 +2618,15 @@ const char *WINAPI PsGetProcessImageFileName( PEPROCESS process )
+     return process->image_name;
  }
  
 +/*********************************************************************
@@ -34,10 +34,10 @@ index b4058c07..0edeb41e 100644
 +}
 +
  /*********************************************************************
-  *           PsGetProcessImageFileName    (NTOSKRNL.@)
+  *           PsGetProcessExitStatus    (NTOSKRNL.@)
   */
 diff --git a/dlls/ntoskrnl.exe/ntoskrnl.exe.spec b/dlls/ntoskrnl.exe/ntoskrnl.exe.spec
-index 785f511d..39fb7d93 100644
+index 3b34f13..fcefabe 100644
 --- a/dlls/ntoskrnl.exe/ntoskrnl.exe.spec
 +++ b/dlls/ntoskrnl.exe/ntoskrnl.exe.spec
 @@ -927,7 +927,7 @@
@@ -50,14 +50,14 @@ index 785f511d..39fb7d93 100644
  @ stdcall PsGetProcessExitStatus(ptr)
  @ stub PsGetProcessExitTime
 diff --git a/dlls/ntoskrnl.exe/ntoskrnl_private.h b/dlls/ntoskrnl.exe/ntoskrnl_private.h
-index 4bbf26c6..309e5fed 100644
+index 01a2958..3f5181e 100644
 --- a/dlls/ntoskrnl.exe/ntoskrnl_private.h
 +++ b/dlls/ntoskrnl.exe/ntoskrnl_private.h
 @@ -57,6 +57,7 @@ struct _EPROCESS
-     DISPATCHER_HEADER header;
      PROCESS_BASIC_INFORMATION info;
      KERNEL_USER_TIMES times;
-+    DWORD_PTR debug_port;
      PEB32 *peb32;
++    DWORD_PTR debug_port;
      ULONG session_id;
      char image_name[15];
+ };

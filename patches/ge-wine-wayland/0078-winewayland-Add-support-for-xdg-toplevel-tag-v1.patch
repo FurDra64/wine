@@ -25,22 +25,22 @@ index 0e1efbc..80816a0 100644
 +	xdg-toplevel-icon-v1.xml \
 +	xdg-toplevel-tag-v1.xml
 diff --git a/dlls/winewayland.drv/wayland.c b/dlls/winewayland.drv/wayland.c
-index 45065cd..54a635a 100644
+index 8ab204e..dde9ef2 100644
 --- a/dlls/winewayland.drv/wayland.c
 +++ b/dlls/winewayland.drv/wayland.c
-@@ -282,6 +282,11 @@ static void registry_handle_global_remove(void *data, struct wl_registry *regist
-         seat->global_id = 0;
-         pthread_mutex_unlock(&seat->mutex);
+@@ -233,6 +233,11 @@ static void registry_handle_global(void *data, struct wl_registry *registry,
+         wp_color_manager_v1_add_listener(process_wayland.wp_color_manager_v1,
+                                          &color_manager_listener, NULL);
      }
 +    else if (strcmp(interface, "xdg_toplevel_tag_manager_v1") == 0)
 +    {
 +        process_wayland.xdg_toplevel_tag_manager_v1 =
 +            wl_registry_bind(registry, id, &xdg_toplevel_tag_manager_v1_interface, 1);
 +    }
- }
- 
- static const struct wl_registry_listener registry_listener = {
-@@ -398,6 +403,9 @@ BOOL wayland_process_init(void)
+ #ifdef WL_FIXES_ACK_GLOBAL_REMOVE
+     else if (strcmp(interface, "wl_fixes") == 0)
+     {
+@@ -397,6 +402,9 @@ BOOL wayland_process_init(void)
      if (process_wayland.wp_color_manager_v1) color_management_init();
      else WARN("Wayland compositor doesn't support wp_color_manager_v1 (color management will be broken)\n");
  
@@ -51,10 +51,10 @@ index 45065cd..54a635a 100644
  
      return TRUE;
 diff --git a/dlls/winewayland.drv/wayland_surface.c b/dlls/winewayland.drv/wayland_surface.c
-index 9a88f64..e37a692 100644
+index 7e6ae81..f1dabd9 100644
 --- a/dlls/winewayland.drv/wayland_surface.c
 +++ b/dlls/winewayland.drv/wayland_surface.c
-@@ -493,6 +493,18 @@ void wayland_surface_make_toplevel(struct wayland_surface *surface)
+@@ -566,6 +566,18 @@ void wayland_surface_make_toplevel(struct wayland_surface *surface)
      if (process_name)
          xdg_toplevel_set_app_id(surface->xdg_toplevel, process_name);
  
@@ -74,10 +74,10 @@ index 9a88f64..e37a692 100644
          text[0] = 0;
      wayland_surface_set_title(surface, text);
 diff --git a/dlls/winewayland.drv/waylanddrv.h b/dlls/winewayland.drv/waylanddrv.h
-index 7c59a8e..58b601a 100644
+index 23e1884..7324f9d 100644
 --- a/dlls/winewayland.drv/waylanddrv.h
 +++ b/dlls/winewayland.drv/waylanddrv.h
-@@ -42,6 +42,7 @@
+@@ -43,6 +43,7 @@
  #include "pointer-warp-v1-client-protocol.h"
  #include "alpha-modifier-v1-client-protocol.h"
  #include "fractional-scale-v1-client-protocol.h"
@@ -85,7 +85,7 @@ index 7c59a8e..58b601a 100644
  #include "color-management-v1-client-protocol.h"
  
  #include "windef.h"
-@@ -209,6 +210,7 @@ struct wayland
+@@ -210,6 +211,7 @@ struct wayland
      struct wayland_keyboard keyboard;
      struct wayland_pointer pointer;
      struct wayland_text_input text_input;

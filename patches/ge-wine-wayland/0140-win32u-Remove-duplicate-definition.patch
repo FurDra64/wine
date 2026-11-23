@@ -1,0 +1,20 @@
+From 1b381cb0a5197794aa3193450bb3902a535a0583 Mon Sep 17 00:00:00 2001
+From: Etaash Mathamsetty
+ <45927311+Etaash-mathamsetty@users.noreply.github.com>
+Date: Sun, 7 Jun 2026 23:08:43 -0400
+Subject: [PATCH 140/285] win32u: Remove duplicate definition.
+
+---
+
+diff --git a/include/wine/gdi_driver.h b/include/wine/gdi_driver.h
+index 239db3e154e1b32de09e45d3a4d229a2ea2075e7..5b35ed72aba72c75e17d201b3b6dfd0fa25fa135 100644
+--- a/include/wine/gdi_driver.h
++++ b/include/wine/gdi_driver.h
+@@ -336,7 +336,6 @@ W32KAPI struct window_surface *window_surface_create( const struct window_surfac
+ W32KAPI void window_surface_add_ref( struct window_surface *surface );
+ W32KAPI void window_surface_release( struct window_surface *surface );
+ W32KAPI void window_surface_set_shape( struct window_surface *surface, HRGN shape_region );
+-W32KAPI void window_surface_set_layered( struct window_surface *surface, COLORREF color_key, UINT alpha_bits, UINT alpha_mask );
+ W32KAPI struct window_surface *window_surface_get( HWND hwnd );
+ 
+ /* display manager interface, used to initialize display device registry data */

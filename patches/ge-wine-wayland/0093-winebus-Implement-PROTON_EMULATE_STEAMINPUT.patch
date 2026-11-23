@@ -5,14 +5,12 @@ Date: Sun, 19 Apr 2026 22:59:47 -0500
 Subject: [PATCH 093/285] winebus: Implement PROTON_EMULATE_STEAMINPUT.
 
 ---
- dlls/winebus.sys/bus_sdl.c | 14 ++++++++++++++
- 1 file changed, 14 insertions(+)
 
 diff --git a/dlls/winebus.sys/bus_sdl.c b/dlls/winebus.sys/bus_sdl.c
-index 9225efbc..7555490f 100644
+index 97f0fd3b8bfb24b0db60093fd6698782d971e9d7..1a942a2b05eedb0ca3009a0be18460ea40bbe2cc 100644
 --- a/dlls/winebus.sys/bus_sdl.c
 +++ b/dlls/winebus.sys/bus_sdl.c
-@@ -926,6 +926,12 @@ static BOOL set_report_from_controller_event(struct sdl_device *impl, SDL_Event
+@@ -944,6 +944,12 @@ BOOL is_sdl_ignored_device(WORD vid, WORD pid)
      return FALSE;
  }
  
@@ -25,8 +23,8 @@ index 9225efbc..7555490f 100644
  static void sdl_add_device(unsigned int index)
  {
      struct device_desc desc =
-@@ -975,6 +981,14 @@ static void sdl_add_device(unsigned int index)
-         desc.version = 0;
+@@ -1001,6 +1007,14 @@ static void sdl_add_device(unsigned int index)
+         return;
      }
  
 +    if (is_emulating_steaminput())

@@ -5,14 +5,13 @@ Date: Wed, 1 Jul 2026 15:55:30 -0400
 Subject: [PATCH 172/285] win32u: Remove FSR3_UPGRADE support.
 
 ---
- dlls/win32u/d3dkmt.c | 4 ----
- 1 file changed, 4 deletions(-)
+dlls/win32u/d3dkmt.c | 4 ----
 
 diff --git a/dlls/win32u/d3dkmt.c b/dlls/win32u/d3dkmt.c
-index 7ecb1d2fa25..9c257c6c77d 100644
+index 93763ea..d7018c0 100644
 --- a/dlls/win32u/d3dkmt.c
 +++ b/dlls/win32u/d3dkmt.c
-@@ -771,10 +771,6 @@ NTSTATUS WINAPI NtGdiDdDDIQueryAdapterInfo( D3DKMT_QUERYADAPTERINFO *desc )
+@@ -1007,10 +1007,6 @@ NTSTATUS WINAPI NtGdiDdDDIQueryAdapterInfo( D3DKMT_QUERYADAPTERINFO *desc )
  
          TRACE("size %x\n", desc->PrivateDriverDataSize);
  
@@ -20,9 +19,6 @@ index 7ecb1d2fa25..9c257c6c77d 100644
 -        if ((e = getenv("FSR3_UPGRADE")) && *e == '1')
 -            return STATUS_NOT_IMPLEMENTED;
 -
-         if (!(adapter = get_d3dkmt_object( desc->hAdapter, D3DKMT_ADAPTER ))) return STATUS_INVALID_PARAMETER;
+         if (!(adapter = get_d3dkmt_adapter( desc->hAdapter ))) return STATUS_INVALID_PARAMETER;
          if (!(physical_device = adapter->physical_device)) return STATUS_INVALID_PARAMETER;
          instance = physical_device->instance;
--- 
-2.55.0
-

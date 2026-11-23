@@ -1,0 +1,29 @@
+From 88fa5a1d892f8e2fbd697226a351e8d56d5c3728 Mon Sep 17 00:00:00 2001
+From: Etaash Mathamsetty
+ <45927311+Etaash-mathamsetty@users.noreply.github.com>
+Date: Fri, 5 Jun 2026 14:18:04 -0400
+Subject: [PATCH 030/285] winewayland: Fix formatting issues.
+
+The cursor clipping whitespace fix is already present.
+Retarget the remaining icon formatting hunk only.
+---
+ dlls/winewayland.drv/window.c | 3 +--
+ 1 file changed, 1 insertion(+), 2 deletions(-)
+
+diff --git a/dlls/winewayland.drv/window.c b/dlls/winewayland.drv/window.c
+index aea8551..e482967 100644
+--- a/dlls/winewayland.drv/window.c
++++ b/dlls/winewayland.drv/window.c
+@@ -883,8 +883,7 @@ void WAYLAND_SetWindowIcons(HWND hwnd, HICON icon, const ICONINFO *ii, HICON ico
+             {
+                 wayland_surface_set_icon_buffer(surface, ICON_BIG, ii);
+                 if (icon_small) wayland_surface_set_icon_buffer(surface, ICON_SMALL, ii_small);
+-                if (wayland_surface_is_toplevel(surface))
+-                    wayland_surface_assign_icon(surface);
++                if (wayland_surface_is_toplevel(surface)) wayland_surface_assign_icon(surface);
+             }
+             wayland_win_data_release(data);
+         }
+-- 
+2.55.0
+

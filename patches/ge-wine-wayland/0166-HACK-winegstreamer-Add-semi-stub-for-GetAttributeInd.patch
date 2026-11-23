@@ -7,14 +7,14 @@ Subject: [PATCH 166/285] HACK: winegstreamer: Add semi-stub for
 
 fixes gta iv independence radio scan
 ---
- dlls/winegstreamer/wm_reader.c | 64 ++++++++++++++++++++++++++++++++--
+ dlls/winedmo/wm_reader.c | 64 ++++++++++++++++++++++++++++++++--
  1 file changed, 62 insertions(+), 2 deletions(-)
 
-diff --git a/dlls/winegstreamer/wm_reader.c b/dlls/winegstreamer/wm_reader.c
-index d305ae3a894..fea9be08e01 100644
---- a/dlls/winegstreamer/wm_reader.c
-+++ b/dlls/winegstreamer/wm_reader.c
-@@ -1201,11 +1201,34 @@ static HRESULT WINAPI header_info_GetAttributeCountEx(IWMHeaderInfo3 *iface, WOR
+diff --git a/dlls/winedmo/wm_reader.c b/b/dlls/winedmo/wm_reader.c
+index 571a5a5..7b97661 100644
+--- a/dlls/winedmo/wm_reader.c
++++ b/dlls/winedmo/wm_reader.c
+@@ -1884,11 +1884,34 @@ static HRESULT WINAPI header_info_GetAttributeCountEx(IWMHeaderInfo3 *iface, WOR
      return E_NOTIMPL;
  }
  
@@ -50,7 +50,7 @@ index d305ae3a894..fea9be08e01 100644
      return E_NOTIMPL;
  }
  
-@@ -1213,9 +1236,46 @@ static HRESULT WINAPI header_info_GetAttributeByIndexEx(IWMHeaderInfo3 *iface,
+@@ -1896,9 +1919,46 @@ static HRESULT WINAPI header_info_GetAttributeByIndexEx(IWMHeaderInfo3 *iface,
          WORD stream_number, WORD index, WCHAR *name, WORD *name_len,
          WMT_ATTR_DATATYPE *type, WORD *lang_index, BYTE *value, DWORD *size)
  {
@@ -100,4 +100,3 @@ index d305ae3a894..fea9be08e01 100644
  
 -- 
 2.55.0
-

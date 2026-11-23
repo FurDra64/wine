@@ -6,14 +6,14 @@ Subject: [PATCH 146/285] win32u: Implement
  NtGdiDdDDIQueryAdapterInfo(KMTQAITYPE_UMDRIVERPRIVATE) for FSR4
 
 ---
- dlls/win32u/d3dkmt.c | 59 ++++++++++++++++++++++++++++++++++++++++++++
- 1 file changed, 59 insertions(+)
+dlls/win32u/d3dkmt.c | 59 ++++++++++++++++++++++++++++++++++++++++++++++++++++
+
 diff --git a/dlls/win32u/d3dkmt.c b/dlls/win32u/d3dkmt.c
-index 11a2997d..71f91353 100644
+index 84f12d3..4181445 100644
 --- a/dlls/win32u/d3dkmt.c
 +++ b/dlls/win32u/d3dkmt.c
-@@ -838,6 +838,65 @@ NTSTATUS WINAPI NtGdiDdDDIQueryAdapterInfo( D3DKMT_QUERYADAPTERINFO *desc )
-         *value = KMT_DRIVERVERSION_WDDM_3_1;
+@@ -995,6 +995,65 @@ NTSTATUS WINAPI NtGdiDdDDIQueryAdapterInfo( D3DKMT_QUERYADAPTERINFO *desc )
+ 
          return STATUS_SUCCESS;
      }
 +    case KMTQAITYPE_UMDRIVERPRIVATE:
@@ -32,7 +32,7 @@ index 11a2997d..71f91353 100644
 +        if ((e = getenv("FSR3_UPGRADE")) && *e == '1')
 +            return STATUS_NOT_IMPLEMENTED;
 +
-+        if (!(adapter = get_d3dkmt_object( desc->hAdapter, D3DKMT_ADAPTER ))) return STATUS_INVALID_PARAMETER;
++        if (!(adapter = get_d3dkmt_adapter( desc->hAdapter ))) return STATUS_INVALID_PARAMETER;
 +        if (!(physical_device = adapter->physical_device)) return STATUS_INVALID_PARAMETER;
 +        instance = physical_device->instance;
 +

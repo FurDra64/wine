@@ -5,16 +5,14 @@ Date: Sun, 29 Mar 2026 03:07:24 -0500
 Subject: [PATCH 088/285] winewayland: Implement minimize & restore of windows.
 
 ---
- dlls/winewayland.drv/wayland_keyboard.c | 31 ++++++++++++++++++++++---
- dlls/winewayland.drv/waylanddrv.h       |  1 +
- dlls/winewayland.drv/window.c           | 27 +++++++++++++++++++--
- 3 files changed, 54 insertions(+), 5 deletions(-)
+dlls/winewayland.drv/wayland_keyboard.c | 33 ++++++++++++++++++++++++++++++---
+ dlls/winewayland.drv/window.c           | 20 +++++++++++++-------
 
 diff --git a/dlls/winewayland.drv/wayland_keyboard.c b/dlls/winewayland.drv/wayland_keyboard.c
-index 5154e03c..ecc839e1 100644
+index 82fb9ab..2886aee 100644
 --- a/dlls/winewayland.drv/wayland_keyboard.c
 +++ b/dlls/winewayland.drv/wayland_keyboard.c
-@@ -816,15 +816,22 @@ static void keyboard_handle_enter(void *private, struct wl_keyboard *wl_keyboard
+@@ -816,7 +816,12 @@ static void keyboard_handle_enter(void *private, struct wl_keyboard *wl_keyboard
           * foreground window when both the old and new foreground windows
           * are in the same non-current thread. */
          if (surface->window.managed)
@@ -27,6 +25,8 @@ index 5154e03c..ecc839e1 100644
 +        }
      }
  
+     if (wayland_is_layer_menu_hwnd(hwnd))
+@@ -825,9 +830,11 @@ static void keyboard_handle_enter(void *private, struct wl_keyboard *wl_keyboard
      wayland_win_data_release(data);
  }
  
@@ -39,11 +39,13 @@ index 5154e03c..ecc839e1 100644
      struct wayland_keyboard *keyboard = &process_wayland.keyboard;
      HWND hwnd;
  
-@@ -846,7 +853,25 @@ static void keyboard_handle_leave(void *data, struct wl_keyboard *wl_keyboard,
-      * and for any key repetition to stop. */
-     release_all_keys(hwnd);
- 
--    /* FIXME: update foreground window as well */
+@@ -852,8 +859,28 @@ static void keyboard_handle_leave(void *data, struct wl_keyboard *wl_keyboard,
+     if (wayland_is_layer_menu_hwnd(hwnd))
+     {
+         wayland_cancel_layer_menu(hwnd);
++        return;
++    }
++
 +    if (hwnd == NtUserGetForegroundWindow())
 +    {
 +        if (!(NtUserGetWindowLongW(hwnd, GWL_STYLE) & WS_MINIMIZE))
@@ -62,73 +64,57 @@ index 5154e03c..ecc839e1 100644
 +        }
 +
 +        wayland_win_data_release(data);
-+    }
+     }
+-    /* FIXME: update foreground window as well */
  }
  
  static void send_right_control(HWND hwnd, uint32_t state)
-diff --git a/dlls/winewayland.drv/waylanddrv.h b/dlls/winewayland.drv/waylanddrv.h
-index 47ab8ab5..39971822 100644
---- a/dlls/winewayland.drv/waylanddrv.h
-+++ b/dlls/winewayland.drv/waylanddrv.h
-@@ -262,6 +262,7 @@ struct wayland_window_config
-     BOOL managed;
-     BOOL minimized;
-     BOOL resizeable;
-+    BOOL minimized;
- };
- 
- struct wayland_client_surface
 diff --git a/dlls/winewayland.drv/window.c b/dlls/winewayland.drv/window.c
-index 9857f1af..78dbf806 100644
+index d5f1107..373be79 100644
 --- a/dlls/winewayland.drv/window.c
 +++ b/dlls/winewayland.drv/window.c
-@@ -145,8 +145,14 @@ static void wayland_win_data_get_config(struct wayland_win_data *data,
- 
+@@ -152,14 +152,14 @@ static void wayland_win_data_get_config(struct wayland_win_data *data,
      conf->minimized = !!(style & WS_MINIMIZE);
  
-+    conf->minimized = FALSE;
-+
-+    if (style & WS_MINIMIZE)
-+    {
-+        conf->minimized = TRUE;
-+    }
      /* The fullscreen state is implied by the window position and style. */
 -    if (data->is_fullscreen)
-+    else if (data->is_fullscreen)
++    if (!conf->minimized && data->is_fullscreen)
      {
          if ((style & WS_MAXIMIZE) && (style & WS_CAPTION) == WS_CAPTION)
              window_state |= WAYLAND_SURFACE_CONFIG_STATE_MAXIMIZED;
-@@ -306,6 +312,10 @@ static void wayland_surface_update_state_toplevel(struct wayland_surface *surfac
-         {
-             xdg_toplevel_set_minimized(surface->xdg_toplevel);
-         }
-+        if (surface->window.minimized)
-+        {
-+            xdg_toplevel_set_minimized(surface->xdg_toplevel);
-+        }
+         else if (!(style & WS_MINIMIZE))
+             window_state |= WAYLAND_SURFACE_CONFIG_STATE_FULLSCREEN;
      }
-     else
+-    else if (style & WS_MAXIMIZE)
++    else if (!conf->minimized && (style & WS_MAXIMIZE))
      {
-@@ -653,8 +663,21 @@ LRESULT WAYLAND_WindowMessage(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
-         wayland_configure_window(hwnd);
-         return 0;
-     case WM_WAYLAND_SET_FOREGROUND:
--        NtUserSetForegroundWindowInternal(hwnd);
-+    {
-+        HWND focused;
+         window_state |= WAYLAND_SURFACE_CONFIG_STATE_MAXIMIZED;
+     }
+@@ -828,16 +828,22 @@ LRESULT WAYLAND_WindowMessage(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
+     {
+         HWND focused, restore;
+ 
 +        pthread_mutex_lock(&process_wayland.keyboard.mutex);
 +        focused = process_wayland.keyboard.focused_hwnd;
 +        pthread_mutex_unlock(&process_wayland.keyboard.mutex);
-+        /* if the focused hwnd is already == hwnd, this was a spurious leave event. */
-+        if (wp && NtUserGetForegroundWindow() == hwnd && focused != hwnd)
-+            NtUserSetForegroundWindowInternal(NtUserGetDesktopWindow());
-+        /* the same applies here */
-+        else if (!wp && focused == hwnd)
-+            NtUserSetForegroundWindowInternal(hwnd);
-+        else
-+            WARN("Ignoring stale %s message\n", wp ? "focus loss" : "focus gain");
-         return 0;
-+    }
-     default:
-         FIXME("got window msg %x hwnd %p wp %lx lp %lx\n", msg, hwnd, (long)wp, lp);
-         return 0;
++
+         if (!wayland_is_layer_menu_hwnd(hwnd))
+         {
+-            NtUserSetForegroundWindowInternal(hwnd);
++            /* Ignore stale focus events already superseded by the compositor. */
++            if (wp && NtUserGetForegroundWindow() == hwnd && focused != hwnd)
++                NtUserSetForegroundWindowInternal(NtUserGetDesktopWindow());
++            else if (!wp && focused == hwnd)
++                NtUserSetForegroundWindowInternal(hwnd);
++            else
++                WARN("Ignoring stale %s message\n", wp ? "focus loss" : "focus gain");
+             return 0;
+         }
+ 
+-        pthread_mutex_lock(&process_wayland.keyboard.mutex);
+-        focused = process_wayland.keyboard.focused_hwnd;
+-        pthread_mutex_unlock(&process_wayland.keyboard.mutex);
+-
+         if (wp)
+         {
+             /* On host focus loss, do not reactivate the menu's owner over the

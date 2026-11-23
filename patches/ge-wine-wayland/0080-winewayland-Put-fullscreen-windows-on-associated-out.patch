@@ -6,13 +6,9 @@ Subject: [PATCH 080/285] winewayland: Put fullscreen windows on associated
  output.
 
 ---
-dlls/winewayland.drv/display.c         | 79 ++++++++++++++++++++++++++++------
- dlls/winewayland.drv/wayland_surface.c |  2 +
- dlls/winewayland.drv/waylanddrv.h      |  2 +
- dlls/winewayland.drv/window.c          | 29 +++++++++++--
 
 diff --git a/dlls/winewayland.drv/display.c b/dlls/winewayland.drv/display.c
-index 85910d7..bafe16a 100644
+index 85910d7d934c219605f50a42870177972a6553b2..bafe16a471fd9939f3bdf265d40762c2b16e1287 100644
 --- a/dlls/winewayland.drv/display.c
 +++ b/dlls/winewayland.drv/display.c
 @@ -368,31 +368,86 @@ static void wayland_add_device_modes(const struct gdi_device_manager *device_man
@@ -115,10 +111,10 @@ index 85910d7..bafe16a 100644
      /* Populate GDI devices. */
      wayland_add_device_gpu(device_manager, param);
 diff --git a/dlls/winewayland.drv/wayland_surface.c b/dlls/winewayland.drv/wayland_surface.c
-index 36c9dcd..52976b0 100644
+index c2c907087ec693ec5ca9d5678a1a0bd03c17c112..6d484e877bb67a045a92df17a6561195a8f9f6e7 100644
 --- a/dlls/winewayland.drv/wayland_surface.c
 +++ b/dlls/winewayland.drv/wayland_surface.c
-@@ -914,6 +914,8 @@ void wayland_surface_clear_role(struct wayland_surface *surface)
+@@ -915,6 +915,8 @@ void wayland_surface_clear_role(struct wayland_surface *surface)
              xdg_surface_destroy(surface->xdg_surface);
              surface->xdg_surface = NULL;
          }
@@ -126,12 +122,12 @@ index 36c9dcd..52976b0 100644
 +        surface->requested_output = NULL;
          break;
  
-     case WAYLAND_SURFACE_ROLE_SUBSURFACE:
+     case WAYLAND_SURFACE_ROLE_LAYER:
 diff --git a/dlls/winewayland.drv/waylanddrv.h b/dlls/winewayland.drv/waylanddrv.h
-index 7925cb9..4860d9c 100644
+index 16de74df179fb2574215579f1eb7a247ae0061ca..d665bdad5ea9cf58a439ffe4a0b19df738bf7134 100644
 --- a/dlls/winewayland.drv/waylanddrv.h
 +++ b/dlls/winewayland.drv/waylanddrv.h
-@@ -320,6 +320,7 @@ struct wayland_surface
+@@ -321,6 +321,7 @@ struct wayland_surface
          {
              struct xdg_toplevel *xdg_toplevel;
              struct xdg_toplevel_icon_v1 *xdg_toplevel_icon;
@@ -139,7 +135,7 @@ index 7925cb9..4860d9c 100644
          };
          struct
          {
-@@ -353,6 +354,7 @@ BOOL wayland_process_init(void);
+@@ -354,6 +355,7 @@ BOOL wayland_process_init(void);
  BOOL wayland_output_create(uint32_t id, uint32_t version);
  void wayland_output_destroy(struct wayland_output *output);
  void wayland_output_use_xdg_extension(struct wayland_output *output);
@@ -148,10 +144,10 @@ index 7925cb9..4860d9c 100644
  struct output_info
  {
 diff --git a/dlls/winewayland.drv/window.c b/dlls/winewayland.drv/window.c
-index 6192af2..62bb26e 100644
+index 7aa31b68fa04811beac11c93faaad6daeb5d3d11..3242d719c34eabfa65d7e87158b8338448e76c41 100644
 --- a/dlls/winewayland.drv/window.c
 +++ b/dlls/winewayland.drv/window.c
-@@ -252,6 +252,7 @@ static BOOL wayland_win_data_create_wayland_surface(struct wayland_win_data *dat
+@@ -254,6 +254,7 @@ static BOOL wayland_win_data_create_wayland_surface(struct wayland_win_data *dat
  
  static void wayland_surface_update_state_toplevel(struct wayland_surface *surface)
  {
@@ -159,7 +155,7 @@ index 6192af2..62bb26e 100644
      BOOL processing_config = surface->processing.serial &&
                               !surface->processing.processed;
  
-@@ -280,6 +281,7 @@ static void wayland_surface_update_state_toplevel(struct wayland_surface *surfac
+@@ -282,6 +283,7 @@ static void wayland_surface_update_state_toplevel(struct wayland_surface *surfac
              !surface->window.minimized)
          {
              xdg_toplevel_unset_fullscreen(surface->xdg_toplevel);
@@ -167,7 +163,7 @@ index 6192af2..62bb26e 100644
          }
  
          if ((surface->window.state & WAYLAND_SURFACE_CONFIG_STATE_MAXIMIZED) &&
-@@ -287,10 +289,31 @@ static void wayland_surface_update_state_toplevel(struct wayland_surface *surfac
+@@ -289,10 +291,31 @@ static void wayland_surface_update_state_toplevel(struct wayland_surface *surfac
          {
              xdg_toplevel_set_maximized(surface->xdg_toplevel);
          }
