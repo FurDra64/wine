@@ -63,8 +63,8 @@ index 3923e68e530..ac7cd771bd3 100644
 +    {
 +        /* block syscall user dispatch, if it was already blocked we wont be in this handler */
 +        __asm__ (
-+            "movq %%gs:0x30,%%r13\\n\\t"
-+            "movb $0, 0x340(%%r13)\\n\\t"
++            "movq %%gs:0x30,%%r13\n\t"
++            "movb $0, 0x340(%%r13)\n\t"
 +            ::: "r13"
 +        );
 +
@@ -74,8 +74,8 @@ index 3923e68e530..ac7cd771bd3 100644
 +
 +        /* restore syscall user dispatch state */
 +        __asm__ (
-+            "movq %%gs:0x30,%%r13\\n\\t"
-+            "movb $1, 0x340(%%r13)\\n\\t"
++            "movq %%gs:0x30,%%r13\n\t"
++            "movb $1, 0x340(%%r13)\n\t"
 +            ::: "r13"
 +        );
 +        return;
