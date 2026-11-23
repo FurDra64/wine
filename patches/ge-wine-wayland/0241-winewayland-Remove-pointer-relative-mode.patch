@@ -5,16 +5,20 @@ Date: Tue, 28 Jul 2026 00:31:35 -0400
 Subject: [PATCH 241/285] winewayland: Remove pointer relative mode.
 
 Windows always tracks an absolute pointer position.
+
+Wine retarget: follow the original Proton 061e2df33 sequence (0089 then
+0241). Unwrap the Wine-specific relative_mode guard around relative-frame
+accumulation when removing the now-unused flag.
 ---
- dlls/winewayland.drv/wayland_pointer.c | 34 ++++----------------------
+ dlls/winewayland.drv/wayland_pointer.c | 42 ++++++++--------------------------
  dlls/winewayland.drv/waylanddrv.h      |  1 -
- 2 files changed, 5 insertions(+), 30 deletions(-)
+ 2 files changed, 10 insertions(+), 33 deletions(-)
 
 diff --git a/dlls/winewayland.drv/wayland_pointer.c b/dlls/winewayland.drv/wayland_pointer.c
-index 36dc5e45042..49e22afcfe4 100644
+index 0f6c5cee862aa1135a7af13feb3500d598e057e8..d7512485beddcf8a7f0d25e3ce51fa3dbe94bfc3 100644
 --- a/dlls/winewayland.drv/wayland_pointer.c
 +++ b/dlls/winewayland.drv/wayland_pointer.c
-@@ -182,8 +182,8 @@ static void pointer_handle_motion(void *data, struct wl_pointer *wl_pointer,
+@@ -183,8 +183,8 @@ static void pointer_handle_motion(void *data, struct wl_pointer *wl_pointer,
  {
      struct wayland_pointer *pointer = &process_wayland.pointer;
  
@@ -25,7 +29,28 @@ index 36dc5e45042..49e22afcfe4 100644
  
      pointer_handle_motion_internal(sx, sy);
  }
-@@ -999,7 +999,7 @@ static void wayland_pointer_update_constraint(struct wl_surface *wl_surface,
+@@ -528,15 +528,12 @@ static void relative_pointer_v1_relative_motion(void *private,
+ 
+     pthread_mutex_lock(&pointer->mutex);
+ 
+-    if (pointer->relative_mode)
+-    {
+-        frame->dx_raw += raw_x;
+-        frame->dy_raw += raw_y;
+-        frame->dx += screen_x;
+-        frame->dy += screen_y;
++    frame->dx_raw += raw_x;
++    frame->dy_raw += raw_y;
++    frame->dx += screen_x;
++    frame->dy += screen_y;
+ 
+-        frame->flags |= WAYLAND_POINTER_FRAME_RELATIVE;
+-    }
++    frame->flags |= WAYLAND_POINTER_FRAME_RELATIVE;
+ 
+     pthread_mutex_unlock(&pointer->mutex);
+ 
+@@ -1007,7 +1004,7 @@ static void wayland_pointer_update_constraint(struct wl_surface *wl_surface,
                                                BOOL force_lock)
  {
      struct wayland_pointer *pointer = &process_wayland.pointer;
@@ -34,7 +59,7 @@ index 36dc5e45042..49e22afcfe4 100644
      static unsigned int once;
  
      if (!process_wayland.zwp_pointer_constraints_v1)
-@@ -1119,21 +1119,7 @@ static void wayland_pointer_update_constraint(struct wl_surface *wl_surface,
+@@ -1097,21 +1094,7 @@ static void wayland_pointer_update_constraint(struct wl_surface *wl_surface,
          }
      }
  
@@ -57,7 +82,7 @@ index 36dc5e45042..49e22afcfe4 100644
  }
  
  void wayland_pointer_clear_constraint(void)
-@@ -1134,11 +1115,6 @@ BOOL WAYLAND_SetCursorPos(INT x, INT y)
+@@ -1137,11 +1120,6 @@ BOOL WAYLAND_SetCursorPos(INT x, INT y)
      struct wayland_pointer *pointer = &process_wayland.pointer;
  
      pthread_mutex_lock(&pointer->mutex);
@@ -69,7 +94,7 @@ index 36dc5e45042..49e22afcfe4 100644
      pointer->pending_warp = TRUE;
      pointer->warp.x = x;
      pointer->warp.y = y;
-@@ -1196,7 +1172,7 @@ BOOL WAYLAND_ClipCursor(const RECT *clip, BOOL reset)
+@@ -1199,7 +1177,7 @@ BOOL WAYLAND_ClipCursor(const RECT *clip, BOOL reset)
                      wl_fixed_from_int(warp.y),
                      pointer->enter_serial);
              TRACE("warp_pointer hwnd=%p wayland_xy=%s screen_xy=%s\n",
@@ -79,17 +104,14 @@ index 36dc5e45042..49e22afcfe4 100644
          else
          {
 diff --git a/dlls/winewayland.drv/waylanddrv.h b/dlls/winewayland.drv/waylanddrv.h
-index 0b4f2be6357..9f7501723bd 100644
+index 5644e38e3e9f244397a1e48c709aae85b5dd9a51..8507dbabf3bf4152b6a78281861c44196d21ed1c 100644
 --- a/dlls/winewayland.drv/waylanddrv.h
 +++ b/dlls/winewayland.drv/waylanddrv.h
-@@ -150,7 +150,6 @@ struct wayland_pointer
+@@ -162,7 +162,6 @@ struct wayland_pointer
+     struct wp_cursor_shape_device_v1 *wp_cursor_shape_device_v1;
+     HWND focused_hwnd;
      HWND constraint_hwnd;
 -    BOOL relative_mode;
      BOOL pending_warp;
      POINT warp;
      uint32_t enter_serial;
-     uint32_t button_serial;
-     struct wayland_cursor cursor;
--- 
-2.55.0
-

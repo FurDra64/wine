@@ -14,10 +14,10 @@ diff --git a/dlls/winewayland.drv/wayland_surface.c b/dlls/winewayland.drv/wayla
 index 9c2f7512a22..d172390e118 100644
 --- a/dlls/winewayland.drv/wayland_surface.c
 +++ b/dlls/winewayland.drv/wayland_surface.c
-@@ -125,16 +125,6 @@ void color_management_init(void)
+@@ -123,16 +123,6 @@
      TRACE("Initialized image descriptors, scRGB %p BT.2100 %p\n", scrgb_desc, bt2100_desc);
  }
- 
+
 -/* rountrip through WindowPosChanged to refresh the host window state */
 -static void update_window_state(HWND hwnd)
 -{
@@ -31,25 +31,25 @@ index 9c2f7512a22..d172390e118 100644
  static void xdg_surface_handle_configure(void *private, struct xdg_surface *xdg_surface,
                                           uint32_t serial)
  {
-@@ -285,8 +275,8 @@ static void xdg_popup_handle_done(void *data, struct xdg_popup *xdg_popup)
+@@ -293,9 +283,8 @@ static void xdg_popup_handle_done(void *private, struct xdg_popup *xdg_popup)
+         wayland_surface_clear_role(surface);
      }
      wayland_win_data_release(data);
- 
+
 -    update_window_state(hwnd);
 -    NtUserExposeWindowSurface(hwnd, 0, NULL);
 +    NtUserPostMessage(hwnd, WM_WINE_UPDATEWINDOWSTATE, 0, 0);
-+    NtUserExposeWindowSurface(hwnd, 0, NULL);
  }
- 
+
  static void xdg_popup_handle_reposition(void *private, struct xdg_popup *xdg_popup, uint32_t token)
-@@ -336,6 +326,6 @@ void wp_fractional_scale_handle_scale(void* user_data,
+@@ -389,7 +378,7 @@ void wp_fractional_scale_handle_scale(void* user_data,
      wayland_win_data_release(data);
- 
+
+     NtUserExposeWindowSurface(hwnd, 0, NULL);
 -    update_window_state(hwnd);
 +    NtUserPostMessage(hwnd, WM_WINE_UPDATEWINDOWSTATE, 0, 0);
  }
- 
- static const struct wp_fractional_scale_v1_listener wp_fractional_scale_listener =
--- 
-2.55.0
 
+ static const struct wp_fractional_scale_v1_listener wp_fractional_scale_listener =
+--
+2.55.0

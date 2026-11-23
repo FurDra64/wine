@@ -8,11 +8,12 @@ Subject: [PATCH 247/285] win32u: Use the window rect if the client rect beyond
 ---
  dlls/win32u/window.c | 4 ++++
  1 file changed, 4 insertions(+)
+
 diff --git a/dlls/win32u/window.c b/dlls/win32u/window.c
-index 4f0610c2..9df115a6 100644
+index ac2a0ae1e2e3c975221675d39efe8c8c5ea6ff0a..6f0a32212d769dcce5bc21cbdcd1ca59943f6ed6 100644
 --- a/dlls/win32u/window.c
 +++ b/dlls/win32u/window.c
-@@ -2166,6 +2166,10 @@ static RECT get_visible_rect( HWND hwnd, BOOL shaped, UINT style, UINT ex_style,
+@@ -2192,6 +2192,10 @@ static RECT get_visible_rect( HWND hwnd, BOOL shaped, UINT style, UINT ex_style,
          rects->client.bottom > visible_rect.bottom || rects->client.right > visible_rect.right)
          visible_rect = rects->window;
  
