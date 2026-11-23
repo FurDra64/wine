@@ -6,10 +6,12 @@ Subject: [PATCH 089/285] winewayland: Move pointer input processing to frame
  event.
 
 Also implements raw input
+
+Wine retarget: keep the win32u motion flush after processing each frame.
 ---
- dlls/winewayland.drv/wayland_pointer.c | 140 ++++++++++++++++++++++++---------
+ dlls/winewayland.drv/wayland_pointer.c | 144 ++++++++++++++++++++++++--------
  dlls/winewayland.drv/waylanddrv.h      |  21 ++++-
- 2 files changed, 124 insertions(+), 37 deletions(-)
+ 2 files changed, 128 insertions(+), 37 deletions(-)
 diff --git a/dlls/winewayland.drv/wayland_pointer.c b/dlls/winewayland.drv/wayland_pointer.c
 index 6c604f7e..1ce829d7 100644
 --- a/dlls/winewayland.drv/wayland_pointer.c
@@ -85,12 +87,13 @@ index 6c604f7e..1ce829d7 100644
  }
  
  static void pointer_handle_leave(void *data, struct wl_pointer *wl_pointer,
-@@ -277,8 +293,66 @@ static void pointer_handle_axis(void *data, struct wl_pointer *wl_pointer,
+@@ -277,8 +293,70 @@ static void pointer_handle_axis(void *data, struct wl_pointer *wl_pointer,
  
  static void pointer_handle_frame(void *data, struct wl_pointer *wl_pointer)
  {
 -    static const INPUT input = { .type = INPUT_MOUSE, .mi.dwFlags = MOUSEEVENTF_MOVE_NOCOALESCE };
 -    NtUserSendHardwareInput(NULL, SEND_HWMSG_RAWINPUT, &input, 0); /* flush win32u accumulated motion */
++    static const INPUT flush = { .type = INPUT_MOUSE, .mi.dwFlags = MOUSEEVENTF_MOVE_NOCOALESCE };
 +    INPUT input = {0};
 +    HWND hwnd;
 +    struct wayland_pointer *pointer = &process_wayland.pointer;
@@ -151,10 +154,13 @@ index 6c604f7e..1ce829d7 100644
 +    frame->flags = 0;
 +    frame->scroll = frame->horz_scroll = 0;
 +    pthread_mutex_unlock(&pointer->mutex);
++
++    /* Wine still accumulates motion in win32u; deliver it at the end of this frame. */
++    NtUserSendHardwareInput(NULL, SEND_HWMSG_RAWINPUT, &flush, 0);
  }
  
  static void pointer_handle_axis_source(void *data, struct wl_pointer *wl_pointer,
-@@ -294,29 +368,28 @@ static void pointer_handle_axis_stop(void *data, struct wl_pointer *wl_pointer,
+@@ -294,29 +372,28 @@ static void pointer_handle_axis_stop(void *data, struct wl_pointer *wl_pointer,
  static void pointer_handle_axis_value120(void *data, struct wl_pointer *wl_pointer,
                                           uint32_t axis, int32_t value120)
  {
@@ -192,7 +198,7 @@ index 6c604f7e..1ce829d7 100644
  }
  
  static void pointer_handle_axis_discrete(void *data, struct wl_pointer *wl_pointer,
-@@ -360,13 +433,12 @@ static void relative_pointer_v1_relative_motion(void *private,
+@@ -360,13 +437,12 @@ static void relative_pointer_v1_relative_motion(void *private,
                                                  wl_fixed_t dx, wl_fixed_t dy,
                                                  wl_fixed_t dx_unaccel, wl_fixed_t dy_unaccel)
  {
@@ -208,7 +214,7 @@ index 6c604f7e..1ce829d7 100644
  
      if (!(hwnd = wayland_pointer_get_focused_hwnd())) return;
      if (!(data = wayland_win_data_get(hwnd))) return;
-@@ -377,28 +449,25 @@ static void relative_pointer_v1_relative_motion(void *private,
+@@ -377,28 +453,25 @@ static void relative_pointer_v1_relative_motion(void *private,
                                     &screen_x, &screen_y);
      wayland_win_data_release(data);
  
