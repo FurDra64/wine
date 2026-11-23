@@ -10,10 +10,10 @@ Subject: [PATCH] winewayland: Reset size hint iff the committed and window
  1 file changed, 9 insertions(+), 5 deletions(-)
 
 diff --git a/dlls/winewayland.drv/window.c b/dlls/winewayland.drv/window.c
-index c9cb7cf11ae..7cad44c3882 100644
+index 2792c0a..d216531 100644
 --- a/dlls/winewayland.drv/window.c
 +++ b/dlls/winewayland.drv/window.c
-@@ -330,11 +330,16 @@ static void wayland_surface_update_state_toplevel(struct wayland_surface *surfac
+@@ -341,11 +341,16 @@ static void wayland_surface_update_state_toplevel(struct wayland_surface *surfac
              xdg_toplevel_set_minimized(surface->xdg_toplevel);
          }
  
@@ -34,11 +34,11 @@ index c9cb7cf11ae..7cad44c3882 100644
      }
      else
      {
-@@ -613,7 +618,6 @@ static void wayland_configure_window(HWND hwnd)
+@@ -789,7 +794,6 @@ static void wayland_configure_window(HWND hwnd)
+         send_message(hwnd, WM_SYSCOMMAND, SC_RESTORE, 0);
+         return;
+     }
+-    /* TODO: Move window based on which outputs it is mapped on */
      SetRect(&rect, 0, 0, width, height);
      OffsetRect(&rect, data->rects.window.left, data->rects.window.top);
      if (!IsRectEmpty(&rect)) rect = window_rect_from_visible(&data->rects, rect);
--    /* TODO: Move window based on which outputs it is mapped on */
-     wayland_win_data_release(data);
- 
-     TRACE("hwnd=%p processing=%s,%#x\n", hwnd, wine_dbgstr_rect(&rect), state);

@@ -6,15 +6,22 @@ Subject: [PATCH 084/285] win32u: Track swapchain/opengl reference of client
  surface.
 
 ---
- dlls/win32u/opengl.c      |  2 ++
+ dlls/win32u/opengl.c      | 12 ++++++++++--
  dlls/win32u/vulkan.c      | 11 +++++++++++
  include/wine/gdi_driver.h |  1 +
- 3 files changed, 14 insertions(+)
+ 3 files changed, 22 insertions(+), 2 deletions(-)
+
 diff --git a/dlls/win32u/opengl.c b/dlls/win32u/opengl.c
-index fa65ca40..c0369b7d 100644
+index 03346f5b5f6..bb3a2e0eae0 100644
 --- a/dlls/win32u/opengl.c
 +++ b/dlls/win32u/opengl.c
-@@ -377,6 +377,7 @@ void *opengl_drawable_create( const struct opengl_drawable_funcs *funcs, int for
+@@ -374,15 +374,16 @@ void *opengl_drawable_create( const struct opengl_drawable_funcs *funcs, int fo
+     drawable->stereo = !!(pixel_formats[format - 1].pfd.dwFlags & PFD_STEREO);
+     drawable->srgb = !!(pixel_formats[format - 1].framebuffer_srgb_capable);
+ 
+     if (!(drawable->client = client)) drawable->virtual_size = drawable->monitor_size = *size;
+     else
+     {
          drawable->hwnd = get_client_surface_window( client );
          client_surface_get_size( client, &drawable->virtual_size, &drawable->monitor_size );
          client_surface_add_ref( client );
@@ -22,19 +29,27 @@ index fa65ca40..c0369b7d 100644
      }
  
      opengl_drawable_map_buffer( drawable, GL_FRONT_LEFT, GL_FRONT_LEFT );
-@@ -420,6 +421,7 @@ void opengl_drawable_release( struct opengl_drawable *drawable )
+     opengl_drawable_map_buffer( drawable, GL_FRONT, GL_FRONT );
+     opengl_drawable_map_buffer( drawable, GL_LEFT, GL_LEFT );
+     opengl_drawable_map_buffer( drawable, GL_FRONT_AND_BACK, GL_FRONT_AND_BACK );
+@@ -422,9 +422,10 @@ void opengl_drawable_release( struct opengl_drawable *drawable )
+ 
+         drawable->funcs->destroy( drawable );
          if (drawable->surface) funcs->p_eglDestroySurface( egl->display, drawable->surface );
          if (drawable->client)
          {
-+            InterlockedDecrement( &drawable->client->busy_ref );
              use_window_client_surface( drawable->client, FALSE );
++            InterlockedDecrement( &drawable->client->busy_ref );
              client_surface_release( drawable->client );
          }
+         free( drawable );
+     }
+ }
 diff --git a/dlls/win32u/vulkan.c b/dlls/win32u/vulkan.c
-index 3265d746..6a1f9201 100644
+index 911db797e49..8e2137f6824 100644
 --- a/dlls/win32u/vulkan.c
 +++ b/dlls/win32u/vulkan.c
-@@ -141,6 +141,7 @@ struct surface
+@@ -144,6 +144,7 @@ struct surface
  {
      struct vulkan_surface obj;
      struct client_surface *client;
@@ -42,9 +57,9 @@ index 3265d746..6a1f9201 100644
      HWND hwnd;
  };
  
-@@ -1922,14 +1923,18 @@ static VkResult win32u_vkCreateSwapchainKHR( VkDevice client_device, const VkSwa
- 
-     if (!(swapchain = calloc( 1, sizeof(*swapchain) ))) return VK_ERROR_OUT_OF_HOST_MEMORY;
+@@ -2598,14 +2599,18 @@ static VkResult win32u_vkCreateSwapchainKHR( VkDevice client_device, const VkSwa
+                    create_info_host.imageFormat );
+     }
  
 +    InterlockedIncrement( &surface->client->busy_ref );
 +
@@ -61,7 +76,7 @@ index 3265d746..6a1f9201 100644
      swapchain->extents = create_info->imageExtent;
      instance->p_insert_object( instance, &swapchain->obj.obj );
  
-@@ -1943,11 +1948,17 @@ static void win32u_vkDestroySwapchainKHR( VkDevice client_device, VkSwapchainKHR
+@@ -2641,6 +2646,7 @@ void win32u_vkDestroySwapchainKHR( VkDevice client_device, VkSwapchainKHR client
      struct vulkan_device *device = vulkan_device_from_handle( client_device );
      struct vulkan_instance *instance = device->physical_device->instance;
      struct swapchain *swapchain = swapchain_from_handle( client_swapchain );
@@ -69,6 +84,8 @@ index 3265d746..6a1f9201 100644
  
      if (allocator) FIXME( "Support for allocation callbacks not implemented yet\n" );
      if (!swapchain) return;
+@@ -2668,6 +2674,11 @@ void win32u_vkDestroySwapchainKHR( VkDevice client_device, VkSwapchainKHR client
+     }
  
      device->p_vkDestroySwapchainKHR( device->host.device, swapchain->obj.host.swapchain, NULL );
 +    if ((surface = swapchain->surface))
@@ -80,14 +97,16 @@ index 3265d746..6a1f9201 100644
  
      free( swapchain );
 diff --git a/include/wine/gdi_driver.h b/include/wine/gdi_driver.h
-index 1b431fe1..b9c766a6 100644
+index 154c4aecd8f..eb7dae51826 100644
 --- a/include/wine/gdi_driver.h
 +++ b/include/wine/gdi_driver.h
-@@ -272,6 +272,7 @@ struct client_surface
-     const struct client_surface_funcs *funcs;
+@@ -273,5 +273,6 @@ struct client_surface
      struct list                        entry;          /* entry in win32u managed list */
      LONG                               ref;            /* reference count */
 +    LONG                               busy_ref;       /* count of drawables/swapchains referencing this surface */
      HWND                               hwnd;           /* window the surface was created for */
      int                                format;         /* pixel format of the surface */
      LONG                               updated;        /* has been moved / resized / reparented */
+-- 
+2.55.0
+

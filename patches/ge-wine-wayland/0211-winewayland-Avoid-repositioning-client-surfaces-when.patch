@@ -7,15 +7,15 @@ Subject: [PATCH 211/285] winewayland: Avoid repositioning client surfaces when
 
 See mahkoh(slash)jay(slash)issues(slash)1124#issuecomment-5039483751
 ---
- dlls/winewayland.drv/wayland_surface.c | 27 +++++++++++++++++++-------
+ dlls/winewayland.drv/wayland_surface.c | 27 ++++++++++++++++++++-------
  dlls/winewayland.drv/waylanddrv.h      |  1 +
  2 files changed, 21 insertions(+), 7 deletions(-)
 
 diff --git a/dlls/winewayland.drv/wayland_surface.c b/dlls/winewayland.drv/wayland_surface.c
-index e66bfc2c0f1..82d9b2b7143 100644
+index 45b87b944a152f1eeb7ae81a2dde0a0bc12524cf..1c1c1899f27b0811d1d8a919ca0f01e728bb4774 100644
 --- a/dlls/winewayland.drv/wayland_surface.c
 +++ b/dlls/winewayland.drv/wayland_surface.c
-@@ -943,7 +943,7 @@ static void wayland_surface_reconfigure_size(struct wayland_surface *surface,
+@@ -1264,7 +1264,7 @@ static void wayland_surface_reconfigure_size(struct wayland_surface *surface,
   *
   * Reconfigures the subsurface covering the client area.
   */
@@ -24,7 +24,7 @@ index e66bfc2c0f1..82d9b2b7143 100644
                                                 struct wayland_client_surface *client,
                                                 const RECT *client_rect)
  {
-@@ -957,16 +957,18 @@ static void wayland_surface_reconfigure_client(struct wayland_surface *surface,
+@@ -1275,11 +1275,11 @@ static void wayland_surface_reconfigure_client(struct wayland_surface *surface,
  
      TRACE("hwnd=%p rect=%s\n", surface->hwnd, wine_dbgstr_rect(&rect));
  
@@ -39,23 +39,25 @@ index e66bfc2c0f1..82d9b2b7143 100644
  
      if (rect.left != rect.right && rect.top != rect.bottom)
          wp_viewport_set_destination(client->wp_viewport, rect.right - rect.left, rect.bottom - rect.top);
-     else /* We can't have a 0x0 destination, use 1x1 instead. */
+@@ -1287,6 +1287,8 @@ static void wayland_surface_reconfigure_client(struct wayland_surface *surface,
          wp_viewport_set_destination(client->wp_viewport, 1, 1);
+ 
+     client->rect = *client_rect;
 +
 +    return TRUE;
  }
  
- /**********************************************************************
-@@ -1640,6 +1642,8 @@ struct wayland_client_surface *wayland_client_surface_create(HWND hwnd)
+ static BOOL wayland_surface_reconfigure_layer(struct wayland_surface *surface)
+@@ -2060,6 +2062,8 @@ struct client_surface *WAYLAND_CreateClientSurface(HWND hwnd, int pixel_format,
          }
      }
  
 +    SetRect(&client->viewport_rect, -INT32_MAX, 0, -INT32_MAX, 0);
 +
-     return client;
+     return &client->client;
  
  err:
-@@ -1662,6 +1666,7 @@ void wayland_client_surface_attach(struct wayland_client_surface *client, HWND t
+@@ -2080,6 +2084,7 @@ void wayland_client_surface_attach(struct wayland_client_surface *client, HWND t
              client->wl_subsurface = NULL;
          }
  
@@ -63,7 +65,7 @@ index e66bfc2c0f1..82d9b2b7143 100644
          client->toplevel = 0;
          return;
      }
-@@ -1682,6 +1687,12 @@ void wayland_client_surface_attach(struct wayland_client_surface *client, HWND t
+@@ -2100,6 +2105,12 @@ void wayland_client_surface_attach(struct wayland_client_surface *client, HWND t
                                              surface->wl_surface);
          if (!client->wl_subsurface) goto done;
  
@@ -76,14 +78,14 @@ index e66bfc2c0f1..82d9b2b7143 100644
          /* Present contents independently of the parent surface. */
          wl_subsurface_set_desync(client->wl_subsurface);
  
-@@ -1693,9 +1704,11 @@ void wayland_client_surface_attach(struct wayland_client_surface *client, HWND t
-     NtUserGetClientRect(hwnd, &client_rect, NtUserGetWinMonitorDpi(hwnd, MDT_RAW_DPI));
-     NtUserMapWindowPoints(hwnd, toplevel, (POINT *)&client_rect, 2, NtUserGetWinMonitorDpi(hwnd, MDT_RAW_DPI));
+@@ -2108,9 +2119,11 @@ void wayland_client_surface_attach(struct wayland_client_surface *client, HWND t
+         TRACE("Created subsurface for toplevel=%p\n", toplevel);
+     }
  
--    wayland_surface_reconfigure_client(surface, client, &client_rect);
+-    wayland_surface_reconfigure_client(surface, client, rect);
 -    /* Commit to apply subsurface positioning. */
 -    wl_surface_commit(surface->wl_surface);
-+    if (wayland_surface_reconfigure_client(surface, client, &client_rect))
++    if (wayland_surface_reconfigure_client(surface, client, rect))
 +    {
 +        /* Commit to apply subsurface positioning. */
 +        wl_surface_commit(surface->wl_surface);
@@ -92,17 +94,14 @@ index e66bfc2c0f1..82d9b2b7143 100644
  done:
      wayland_win_data_release(toplevel_data);
 diff --git a/dlls/winewayland.drv/waylanddrv.h b/dlls/winewayland.drv/waylanddrv.h
-index aa2ccfe93c5..675c357ce35 100644
+index 052ca68802bacd6072454c987b0852e0a3b47233..418217e02809a997858048673c99458b3ad09020 100644
 --- a/dlls/winewayland.drv/waylanddrv.h
 +++ b/dlls/winewayland.drv/waylanddrv.h
-@@ -362,6 +362,7 @@ struct wayland_client_surface
-     struct client_surface client;
-     HWND toplevel;
+@@ -370,6 +370,7 @@ struct wayland_client_surface
      HANDLE throttle;
-+    RECT viewport_rect;
      struct wl_callback *wl_callback;
+     RECT rect;
++    RECT viewport_rect;
      struct wl_surface *wl_surface;
      struct wl_subsurface *wl_subsurface;
--- 
-2.55.0
-
+     struct wp_viewport *wp_viewport;

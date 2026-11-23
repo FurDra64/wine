@@ -6,22 +6,21 @@ Subject: [PATCH 130/285] winewayland: Do not unmap SLWA windows with no
  attributes set.
 
 ---
- dlls/winewayland.drv/window.c | 15 ++++++++++-----
- 1 file changed, 10 insertions(+), 5 deletions(-)
+dlls/winewayland.drv/window.c | 15 ++++++++++-----
 
 diff --git a/dlls/winewayland.drv/window.c b/dlls/winewayland.drv/window.c
-index ee8706705c0..66f00fddffb 100644
+index 0141cc6..83134b1 100644
 --- a/dlls/winewayland.drv/window.c
 +++ b/dlls/winewayland.drv/window.c
-@@ -168,7 +168,6 @@ static void wayland_win_data_get_config(struct wayland_win_data *data,
+@@ -166,7 +166,6 @@ static void wayland_win_data_get_config(struct wayland_win_data *data,
  
      conf->resizeable = data->resizeable;
      conf->state = window_state;
 -    conf->visible = (style & WS_VISIBLE) == WS_VISIBLE;
      conf->managed = data->managed;
+     conf->client_rect = data->rects.client;
  }
- 
-@@ -184,22 +183,27 @@ static BOOL wayland_win_data_create_wayland_surface(struct wayland_win_data *dat
+@@ -186,15 +185,20 @@ static BOOL wayland_win_data_create_wayland_surface(struct wayland_win_data *dat
  {
      struct wayland_surface *surface;
      enum wayland_surface_role role;
@@ -44,7 +43,8 @@ index ee8706705c0..66f00fddffb 100644
 +        visible = visible && layer_set;
  
      if (!visible) role = WAYLAND_SURFACE_ROLE_NONE;
-     else if (owner_surface) role = WAYLAND_SURFACE_ROLE_POPUP;
+     else if (use_layer_shell) role = WAYLAND_SURFACE_ROLE_LAYER;
+@@ -202,7 +206,7 @@ static BOOL wayland_win_data_create_wayland_surface(struct wayland_win_data *dat
      else role = WAYLAND_SURFACE_ROLE_TOPLEVEL;
  
      /* we can temporarily clear the role of a surface but cannot assign a different one after it's set */
@@ -53,14 +53,11 @@ index ee8706705c0..66f00fddffb 100644
      {
          /* Make sure any attached client surface is detached before we destroy the surface.
           * They will be reattached when win32u updates them again after WindowPosChanged.
-@@ -227,6 +231,7 @@ static BOOL wayland_win_data_create_wayland_surface(struct wayland_win_data *dat
-         server_decor = TRUE;
-     }
+@@ -224,6 +228,7 @@ static BOOL wayland_win_data_create_wayland_surface(struct wayland_win_data *dat
+ 
+     surface->ensured_contents = WAYLAND_SURFACE_NOT_ENSURED;
  
 +    surface->window.visible = visible;
      wayland_win_data_get_config(data, &surface->window);
  
-     /* If the window is a visible toplevel make it a wayland
--- 
-2.55.0
-
+     if (!EqualRect(&data->rects.visible, &data->rects.window)

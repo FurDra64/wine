@@ -11,10 +11,10 @@ Subject: [PATCH 213/285] winewayland: Change vulkan debug channel to
  2 files changed, 5 insertions(+), 4 deletions(-)
 
 diff --git a/dlls/winewayland.drv/vulkan.c b/dlls/winewayland.drv/vulkan.c
-index 203887229ac..4d84f33ae62 100644
+index 3d1ec57e2e36a196507d691b6ff5b34f4ef6124a..a5292ee41c34f916f2d8f46a8dbf89dbb8251cd2 100644
 --- a/dlls/winewayland.drv/vulkan.c
 +++ b/dlls/winewayland.drv/vulkan.c
-@@ -35,7 +35,7 @@
+@@ -34,7 +34,7 @@
  #include "wine/vulkan.h"
  #include "wine/vulkan_driver.h"
  
@@ -23,7 +23,7 @@ index 203887229ac..4d84f33ae62 100644
  
  static const struct vulkan_driver_funcs wayland_vulkan_driver_funcs;
  
-@@ -146,11 +146,13 @@ static VkColorSpaceKHR wayland_vulkan_map_colorspace(VkColorSpaceKHR colorspace,
+@@ -96,11 +96,13 @@ static VkColorSpaceKHR wayland_vulkan_map_colorspace(VkColorSpaceKHR colorspace,
      struct wp_image_description_v1 *wp_image_description_v1 = NULL;
      VkColorSpaceKHR new = colorspace;
  
@@ -38,7 +38,7 @@ index 203887229ac..4d84f33ae62 100644
      if (!client) return new;
      if (new == colorspace)
      {
-@@ -172,8 +174,6 @@ static VkColorSpaceKHR wayland_vulkan_map_colorspace(VkColorSpaceKHR colorspace,
+@@ -122,8 +124,6 @@ static VkColorSpaceKHR wayland_vulkan_map_colorspace(VkColorSpaceKHR colorspace,
  
      if (!wp_image_description_v1) goto err;
  
@@ -48,17 +48,14 @@ index 203887229ac..4d84f33ae62 100644
  
      return new;
 diff --git a/dlls/winewayland.drv/wayland_surface.c b/dlls/winewayland.drv/wayland_surface.c
-index a72acb20310..a2ed320a886 100644
+index b77c48ce7ccb8058abed2166973dee5a7a56ff14..07435003265d906580f719db9c7e5b69236a42fd 100644
 --- a/dlls/winewayland.drv/wayland_surface.c
 +++ b/dlls/winewayland.drv/wayland_surface.c
-@@ -1774,6 +1774,7 @@ void wayland_client_surface_attach_image_description(struct wayland_client_surfa
-             wp_color_management_surface_v1_destroy(surface->wp_color_management_surface_v1);
-             surface->wp_color_management_surface_v1 = NULL;
+@@ -2188,6 +2188,7 @@ void wayland_client_surface_attach_image_description(struct wayland_client_surfa
+             wp_color_management_surface_v1_destroy(surface->color_management);
+             surface->color_management = NULL;
          }
 +        wl_display_flush(process_wayland.wl_display);
          return;
      }
  
--- 
-2.55.0
-

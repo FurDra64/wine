@@ -5,11 +5,9 @@ Subject: [PATCH 116/285] loader: Add Keyboard Layouts registry enteries.
 
 Signed-off-by: Alistair Leslie-Hughes <leslie_alistair@hotmail.com>
 ---
- loader/wine.inf.in | 206 +++++++++++++++++++++++++++++++++++++++++++++
- 1 file changed, 206 insertions(+)
 
 diff --git a/loader/wine.inf.in b/loader/wine.inf.in
-index 9288b580..fc3437da 100644
+index 4d3c12bad8854c87c83443950ac1e07935d95ab8..b410749392c65416739c4612774240d348229b08 100644
 --- a/loader/wine.inf.in
 +++ b/loader/wine.inf.in
 @@ -64,6 +64,7 @@ AddReg=\
@@ -19,8 +17,8 @@ index 9288b580..fc3437da 100644
 +    KeyboardLayouts,\
      MCI,\
      Misc,\
-     OLE,\
-@@ -646,6 +647,211 @@ HKCU,Software\Microsoft\Windows\Shell\Associations\UrlAssociations\ftp\UserChoic
+     NVIDIANGX, \
+@@ -691,6 +692,211 @@ HKCU,Software\Microsoft\Windows\Shell\Associations\UrlAssociations\ftp\UserChoic
  HKCU,Software\Microsoft\Windows\Shell\Associations\UrlAssociations\http\UserChoice,"ProgId",,"http"
  HKCU,Software\Microsoft\Windows\Shell\Associations\UrlAssociations\https\UserChoice,"ProgId",,"https"
  

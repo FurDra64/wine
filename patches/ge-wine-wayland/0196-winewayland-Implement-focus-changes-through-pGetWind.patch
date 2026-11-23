@@ -6,18 +6,17 @@ Subject: [PATCH] winewayland: Implement focus changes through
  pGetWindowStateUpdates.
 
 ---
- dlls/win32u/message.c                   | 10 ++---
- dlls/winewayland.drv/wayland_keyboard.c | 42 +++-----------------
- dlls/winewayland.drv/waylanddrv.h       |  2 +-
+dlls/win32u/message.c                   | 10 ++++----
+ dlls/winewayland.drv/wayland_keyboard.c | 42 ++++-----------------------------
+ dlls/winewayland.drv/waylanddrv.h       |  1 +
  dlls/winewayland.drv/waylanddrv_main.c  |  1 +
- dlls/winewayland.drv/window.c           | 53 +++++++++++++++++--------
- 5 files changed, 48 insertions(+), 60 deletions(-)
+ dlls/winewayland.drv/window.c           | 36 ++++++++++++++++++++++++++++
 
 diff --git a/dlls/win32u/message.c b/dlls/win32u/message.c
-index 518bd3cfbb6..6a07c192271 100644
+index 61fe3f9..1dc3cca 100644
 --- a/dlls/win32u/message.c
 +++ b/dlls/win32u/message.c
-@@ -2243,9 +2243,9 @@ static LRESULT handle_internal_message( HWND hwnd, UINT msg, WPARAM wparam, LPAR
+@@ -2293,9 +2293,9 @@ static LRESULT handle_internal_message( HWND hwnd, UINT msg, WPARAM wparam, LPAR
      }
      case WM_WINE_WINDOW_STATE_CHANGED:
      {
@@ -30,9 +29,9 @@ index 518bd3cfbb6..6a07c192271 100644
  
          if (!user_driver->pGetWindowStateUpdates( hwnd, &state_cmd, &swp_flags, &window_rect, &foreground )) goto unlock;
          window_rect = map_rect_raw_to_virt( window_rect, get_thread_dpi() );
-@@ -2244,8 +2244,8 @@ static LRESULT handle_internal_message( HWND hwnd, UINT msg, WPARAM wparam, LPAR
+@@ -2306,8 +2306,8 @@ static LRESULT handle_internal_message( HWND hwnd, UINT msg, WPARAM wparam, LPAR
          case SC_RESTORE:
-             if (HIWORD(state_cmd)) NtUserSetActiveWindow( hwnd );
+             if (HIWORD(state_cmd) && !foreground) set_foreground_window( hwnd, FALSE, TRUE );
  
 -            /* make the win32 window restore to the current host window config */
 -            set_window_normal_placement( hwnd, window_rect );
@@ -42,10 +41,10 @@ index 518bd3cfbb6..6a07c192271 100644
              /* fallthrough */
          default:
 diff --git a/dlls/winewayland.drv/wayland_keyboard.c b/dlls/winewayland.drv/wayland_keyboard.c
-index 6d5a4ef332f..8bf449aa3d6 100644
+index 830364c..2792135 100644
 --- a/dlls/winewayland.drv/wayland_keyboard.c
 +++ b/dlls/winewayland.drv/wayland_keyboard.c
-@@ -920,8 +920,6 @@ static void keyboard_handle_enter(void *private, struct wl_keyboard *wl_keyboard
+@@ -965,8 +965,6 @@ static void keyboard_handle_enter(void *private, struct wl_keyboard *wl_keyboard
                                    struct wl_array *keys)
  {
      struct wayland_keyboard *keyboard = &process_wayland.keyboard;
@@ -54,7 +53,7 @@ index 6d5a4ef332f..8bf449aa3d6 100644
      HWND hwnd;
  
      InterlockedExchange(&process_wayland.input_serial, serial);
-@@ -937,27 +935,8 @@ static void keyboard_handle_enter(void *private, struct wl_keyboard *wl_keyboard
+@@ -982,30 +980,11 @@ static void keyboard_handle_enter(void *private, struct wl_keyboard *wl_keyboard
      keyboard->focused_hwnd = hwnd;
      pthread_mutex_unlock(&keyboard->mutex);
  
@@ -77,14 +76,17 @@ index 6d5a4ef332f..8bf449aa3d6 100644
 -                NtUserPostMessage(hwnd, WM_WAYLAND_SET_FOREGROUND, 0, 0);
 -        }
 -    }
--
--    wayland_win_data_release(data);
 +    NtUserPostMessage(hwnd, WM_INPUTLANGCHANGEREQUEST, 0 /*FIXME*/, (LPARAM)keyboard_hkl);
 +    NtUserPostMessage(hwnd, WM_WINE_WINDOW_STATE_CHANGED, 0, 0);
+ 
+     if (wayland_is_layer_menu_hwnd(hwnd))
+         NtUserPostMessage(hwnd, WM_WAYLAND_SET_FOREGROUND, 0, 0);
+-
+-    wayland_win_data_release(data);
  }
  
  static BOOL wayland_disable_focus_loss(void)
-@@ -977,8 +956,6 @@ static BOOL wayland_disable_focus_loss(void)
+@@ -1025,8 +1004,6 @@ static BOOL wayland_disable_focus_loss(void)
  static void keyboard_handle_leave(void *private, struct wl_keyboard *wl_keyboard,
                                    uint32_t serial, struct wl_surface *wl_surface)
  {
@@ -93,7 +95,7 @@ index 6d5a4ef332f..8bf449aa3d6 100644
      struct wayland_keyboard *keyboard = &process_wayland.keyboard;
      HWND hwnd;
  
-@@ -1005,19 +982,10 @@ static void keyboard_handle_leave(void *private, struct wl_keyboard *wl_keyboard
+@@ -1059,19 +1036,8 @@ static void keyboard_handle_leave(void *private, struct wl_keyboard *wl_keyboard
          if (!(NtUserGetWindowLongW(hwnd, GWL_STYLE) & WS_MINIMIZE))
              send_message(hwnd, WM_CANCELMODE, 0, 0);
  
@@ -108,8 +110,7 @@ index 6d5a4ef332f..8bf449aa3d6 100644
 -            if (surface->window.managed && !wayland_disable_focus_loss())
 -                NtUserPostMessage(hwnd, WM_WAYLAND_SET_FOREGROUND, 1, 0);
 -        }
-+        if (hwnd != NtUserGetForegroundWindow()) return;
- 
+-
 -        wayland_win_data_release(data);
 +        if (!wayland_disable_focus_loss())
 +            NtUserPostMessage(hwnd, WM_WINE_WINDOW_STATE_CHANGED, 0, 0);
@@ -117,19 +118,10 @@ index 6d5a4ef332f..8bf449aa3d6 100644
  }
  
 diff --git a/dlls/winewayland.drv/waylanddrv.h b/dlls/winewayland.drv/waylanddrv.h
-index 92c18f51a34..0e2fb5577f8 100644
+index f916b32..a1fbda0 100644
 --- a/dlls/winewayland.drv/waylanddrv.h
 +++ b/dlls/winewayland.drv/waylanddrv.h
-@@ -81,7 +81,6 @@ enum wayland_window_message
- {
-     WM_WAYLAND_INIT_DISPLAY_DEVICES = WM_WINE_FIRST_DRIVER_MSG,
-     WM_WAYLAND_CONFIGURE,
--    WM_WAYLAND_SET_FOREGROUND,
- };
- 
- enum wayland_surface_config_state
-@@ -588,7 +588,8 @@ void WAYLAND_WindowPosChanged(HWND hwnd, HWND insert_after, HWND owner_hint, UIN
- BOOL WAYLAND_WindowPosChanging(HWND hwnd, UINT swp_flags, BOOL shaped, const struct window_rects *rects);
+@@ -656,6 +656,7 @@ BOOL WAYLAND_WindowPosChanging(HWND hwnd, UINT swp_flags, BOOL shaped, const str
  struct client_surface *WAYLAND_CreateClientSurface(HWND hwnd, int pixel_format, BOOL raw);
  BOOL WAYLAND_CreateWindowSurface(HWND hwnd, BOOL layered, const RECT *surface_rect, struct window_surface **surface);
  BOOL WAYLAND_GetWindowStyleMasks(HWND hwnd,  UINT style, UINT ex_style, UINT *style_mask, UINT *ex_style_mask);
@@ -138,11 +130,10 @@ index 92c18f51a34..0e2fb5577f8 100644
  UINT WAYLAND_VulkanInit(UINT version, void *vulkan_handle, const struct vulkan_driver_funcs **driver_funcs);
  UINT WAYLAND_OpenGLInit(UINT version, const struct opengl_funcs *opengl_funcs, const struct opengl_driver_funcs **driver_funcs);
 diff --git a/dlls/winewayland.drv/waylanddrv_main.c b/dlls/winewayland.drv/waylanddrv_main.c
-index 0c97d5ee007..4b379fdb340 100644
+index a2413b6..d86ae82 100644
 --- a/dlls/winewayland.drv/waylanddrv_main.c
 +++ b/dlls/winewayland.drv/waylanddrv_main.c
-@@ -59,7 +59,8 @@ static const struct user_driver_funcs waylanddrv_funcs =
-     .pWindowPosChanging = WAYLAND_WindowPosChanging,
+@@ -62,6 +62,7 @@ static const struct user_driver_funcs waylanddrv_funcs =
      .pCreateClientSurface = WAYLAND_CreateClientSurface,
      .pCreateWindowSurface = WAYLAND_CreateWindowSurface,
      .pGetWindowStyleMasks = WAYLAND_GetWindowStyleMasks,
@@ -151,34 +142,10 @@ index 0c97d5ee007..4b379fdb340 100644
      .pVulkanInit = WAYLAND_VulkanInit,
      .pOpenGLInit = WAYLAND_OpenGLInit,
 diff --git a/dlls/winewayland.drv/window.c b/dlls/winewayland.drv/window.c
-index 3a7125c9e28..238091087ec 100644
+index 6d05cdc..9ca89f4 100644
 --- a/dlls/winewayland.drv/window.c
 +++ b/dlls/winewayland.drv/window.c
-@@ -669,23 +669,6 @@ LRESULT WAYLAND_WindowMessage(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
-     case WM_WAYLAND_CONFIGURE:
-         wayland_configure_window(hwnd);
-         return 0;
--    case WM_WAYLAND_SET_FOREGROUND:
--    {
--        HWND focused;
--        pthread_mutex_lock(&process_wayland.keyboard.mutex);
--        focused = process_wayland.keyboard.focused_hwnd;
--        pthread_mutex_unlock(&process_wayland.keyboard.mutex);
--        /* if the focused hwnd is already == hwnd, this was a spurious leave event. */
--        if (wp && NtUserGetForegroundWindow() == hwnd && focused != hwnd)
--            NtUserSetForegroundWindowInternal(NtUserGetDesktopWindow());
--        /* the same applies here */
--        else if (!wp && focused == hwnd)
--            NtUserSetForegroundWindowInternal(hwnd);
--        else
--            WARN("focused %p hwnd %p, Ignoring stale %s message\n",
--                 focused, hwnd, wp ? "focus loss" : "focus gain");
--        return 0;
--    }
-     default:
-         FIXME("got window msg %x hwnd %p wp %lx lp %lx\n", msg, hwnd, (long)wp, lp);
-         return 0;
-@@ -921,6 +904,42 @@ BOOL WAYLAND_GetWindowStyleMasks(HWND hwnd, UINT style, UINT ex_style, UINT *sty
+@@ -1132,6 +1132,42 @@ BOOL WAYLAND_GetWindowStyleMasks(HWND hwnd, UINT style, UINT ex_style, UINT *sty
      return ret;
  }
  
@@ -218,6 +185,6 @@ index 3a7125c9e28..238091087ec 100644
 +    return TRUE;
 +}
 +
- void set_client_surface(HWND hwnd, struct wayland_client_surface *new_client)
+ BOOL set_window_surface_contents(HWND hwnd, struct wayland_shm_buffer *shm_buffer, HRGN damage_region)
  {
-     HWND toplevel = new_client->client.toplevel;
+     struct wayland_surface *wayland_surface;

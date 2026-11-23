@@ -5,37 +5,31 @@ Date: Tue, 2 Jun 2026 20:00:51 -0400
 Subject: [PATCH 139/285] winewayland: Add missing traces for client surfaces.
 
 ---
- dlls/winewayland.drv/wayland_surface.c | 6 ++++++
- 1 file changed, 6 insertions(+)
+ dlls/winewayland.drv/wayland_surface.c | 4 ++++
+ 1 file changed, 4 insertions(+)
 
 diff --git a/dlls/winewayland.drv/wayland_surface.c b/dlls/winewayland.drv/wayland_surface.c
-index 658eb00f..4312bdf1 100644
+index 5c9e93aa096..3e06636072e 100644
 --- a/dlls/winewayland.drv/wayland_surface.c
 +++ b/dlls/winewayland.drv/wayland_surface.c
-@@ -1300,6 +1300,8 @@ static void wayland_client_surface_detach(struct client_surface *client)
+@@ -1847,6 +1847,8 @@ static void wayland_client_surface_detach(struct client_surface *client)
      struct wayland_client_surface *surface = impl_from_client_surface(client);
      struct wayland_win_data *data;
- 
+
 +    TRACE("%s\n", debugstr_client_surface(client));
 +
      if ((data = wayland_win_data_get(client->hwnd)))
      {
          if (data->client_surface == surface) data->client_surface = NULL;
-@@ -1314,6 +1316,8 @@ static void wayland_client_surface_update(struct client_surface *client)
-     HWND hwnd = client->hwnd, toplevel = client->toplevel;
-     struct wayland_win_data *data;
-     BOOL visible = FALSE;
-+    TRACE("%s\n", debugstr_client_surface(client));
-+
- 
-     TRACE("%s\n", debugstr_client_surface(client));
-     if(toplevel) visible = NtUserIsWindowVisible(hwnd);
-@@ -1489,6 +1493,8 @@ void wayland_client_surface_attach(struct wayland_client_surface *client, HWND t
+@@ -2129,7 +2131,9 @@ void wayland_client_surface_attach(struct wayland_client_surface *client, HWND t
+         /* Present contents independently of the parent surface. */
          wl_subsurface_set_desync(client->wl_subsurface);
- 
+
          client->toplevel = toplevel;
 +
 +        TRACE("Created subsurface for toplevel=%p\n", toplevel);
      }
- 
+
      wayland_surface_reconfigure_client(surface, client, rect);
+--
+2.55.0

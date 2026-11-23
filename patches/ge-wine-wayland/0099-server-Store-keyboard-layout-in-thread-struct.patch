@@ -5,19 +5,19 @@ Date: Thu, 27 Nov 2025 16:38:54 -0600
 Subject: [PATCH 099/285] server: Store keyboard layout in thread struct.
 
 ---
- include/wine/server_protocol.h | 31 ++++++++++++++++++++++++++++++-
+include/wine/server_protocol.h | 31 ++++++++++++++++++++++++++++++-
  server/protocol.def            | 12 ++++++++++++
  server/request_handlers.h      | 11 +++++++++++
  server/request_trace.h         | 22 ++++++++++++++++++++++
  server/thread.c                |  1 +
  server/thread.h                |  1 +
  server/winstation.c            | 21 +++++++++++++++++++++
- 7 files changed, 98 insertions(+), 1 deletion(-)
+
 diff --git a/include/wine/server_protocol.h b/include/wine/server_protocol.h
-index b70cafdf..052b3e00 100644
+index 8834989..f2b49d3 100644
 --- a/include/wine/server_protocol.h
 +++ b/include/wine/server_protocol.h
-@@ -4227,6 +4227,29 @@ struct get_thread_desktop_reply
+@@ -4299,6 +4299,29 @@ struct get_thread_desktop_reply
  };
  
  
@@ -47,7 +47,7 @@ index b70cafdf..052b3e00 100644
  
  struct set_thread_desktop_request
  {
-@@ -6446,6 +6469,8 @@ enum request
+@@ -6551,6 +6574,8 @@ enum request
      REQ_set_input_desktop,
      REQ_close_desktop,
      REQ_get_thread_desktop,
@@ -56,7 +56,7 @@ index b70cafdf..052b3e00 100644
      REQ_set_thread_desktop,
      REQ_set_user_object_info,
      REQ_register_hotkey,
-@@ -6762,6 +6787,8 @@ union generic_request
+@@ -6870,6 +6895,8 @@ union generic_request
      struct set_input_desktop_request set_input_desktop_request;
      struct close_desktop_request close_desktop_request;
      struct get_thread_desktop_request get_thread_desktop_request;
@@ -65,7 +65,7 @@ index b70cafdf..052b3e00 100644
      struct set_thread_desktop_request set_thread_desktop_request;
      struct set_user_object_info_request set_user_object_info_request;
      struct register_hotkey_request register_hotkey_request;
-@@ -7076,6 +7103,8 @@ union generic_reply
+@@ -7187,6 +7214,8 @@ union generic_reply
      struct set_input_desktop_reply set_input_desktop_reply;
      struct close_desktop_reply close_desktop_reply;
      struct get_thread_desktop_reply get_thread_desktop_reply;
@@ -74,19 +74,19 @@ index b70cafdf..052b3e00 100644
      struct set_thread_desktop_reply set_thread_desktop_reply;
      struct set_user_object_info_reply set_user_object_info_reply;
      struct register_hotkey_reply register_hotkey_reply;
-@@ -7202,6 +7231,6 @@ union generic_reply
-     struct alpc_create_port_reply alpc_create_port_reply;
+@@ -7314,6 +7343,6 @@ union generic_reply
+     struct fsync_free_shm_idx_reply fsync_free_shm_idx_reply;
  };
  
--#define SERVER_PROTOCOL_VERSION 968
-+#define SERVER_PROTOCOL_VERSION 969
+-#define SERVER_PROTOCOL_VERSION 980
++#define SERVER_PROTOCOL_VERSION 981
  
  #endif /* __WINE_WINE_SERVER_PROTOCOL_H */
 diff --git a/server/protocol.def b/server/protocol.def
-index 63b5cfd9..f278d205 100644
+index 76e36ba..6adb4e9 100644
 --- a/server/protocol.def
 +++ b/server/protocol.def
-@@ -3099,6 +3099,18 @@ enum coords_relative
+@@ -3160,6 +3160,18 @@ enum coords_relative
      obj_handle_t   handle;        /* handle to the desktop */
  @END
  
@@ -106,10 +106,10 @@ index 63b5cfd9..f278d205 100644
  /* Set the thread current desktop */
  @REQ(set_thread_desktop)
 diff --git a/server/request_handlers.h b/server/request_handlers.h
-index ea1a5e39..ae96d085 100644
+index 9662f4d..c527a14 100644
 --- a/server/request_handlers.h
 +++ b/server/request_handlers.h
-@@ -192,6 +192,8 @@ DECL_HANDLER(open_input_desktop);
+@@ -194,6 +194,8 @@ DECL_HANDLER(open_input_desktop);
  DECL_HANDLER(set_input_desktop);
  DECL_HANDLER(close_desktop);
  DECL_HANDLER(get_thread_desktop);
@@ -118,7 +118,7 @@ index ea1a5e39..ae96d085 100644
  DECL_HANDLER(set_thread_desktop);
  DECL_HANDLER(set_user_object_info);
  DECL_HANDLER(register_hotkey);
-@@ -505,6 +507,8 @@ static const req_handler req_handlers[REQ_NB_REQUESTS] =
+@@ -510,6 +512,8 @@ static const req_handler req_handlers[REQ_NB_REQUESTS] =
      (req_handler)req_set_input_desktop,
      (req_handler)req_close_desktop,
      (req_handler)req_get_thread_desktop,
@@ -127,7 +127,7 @@ index ea1a5e39..ae96d085 100644
      (req_handler)req_set_thread_desktop,
      (req_handler)req_set_user_object_info,
      (req_handler)req_register_hotkey,
-@@ -1724,6 +1728,13 @@ C_ASSERT( sizeof(struct get_thread_desktop_request) == 16 );
+@@ -1751,6 +1755,13 @@ C_ASSERT( sizeof(struct get_thread_desktop_request) == 16 );
  C_ASSERT( offsetof(struct get_thread_desktop_reply, locator) == 8 );
  C_ASSERT( offsetof(struct get_thread_desktop_reply, handle) == 24 );
  C_ASSERT( sizeof(struct get_thread_desktop_reply) == 32 );
@@ -142,10 +142,10 @@ index ea1a5e39..ae96d085 100644
  C_ASSERT( sizeof(struct set_thread_desktop_request) == 16 );
  C_ASSERT( offsetof(struct set_thread_desktop_reply, locator) == 8 );
 diff --git a/server/request_trace.h b/server/request_trace.h
-index cb3a7e65..16d1d4d1 100644
+index 541505f..5ebdba2 100644
 --- a/server/request_trace.h
 +++ b/server/request_trace.h
-@@ -2165,6 +2165,22 @@ static void dump_get_thread_desktop_reply( const struct get_thread_desktop_reply
+@@ -2210,6 +2210,22 @@ static void dump_get_thread_desktop_reply( const struct get_thread_desktop_reply
      fprintf( stderr, ", handle=%04x", req->handle );
  }
  
@@ -168,7 +168,7 @@ index cb3a7e65..16d1d4d1 100644
  static void dump_set_thread_desktop_request( const struct set_thread_desktop_request *req )
  {
      fprintf( stderr, " handle=%04x", req->handle );
-@@ -3732,6 +3748,8 @@ static const dump_func req_dumpers[REQ_NB_REQUESTS] =
+@@ -3794,6 +3810,8 @@ static const dump_func req_dumpers[REQ_NB_REQUESTS] =
      (dump_func)dump_set_input_desktop_request,
      (dump_func)dump_close_desktop_request,
      (dump_func)dump_get_thread_desktop_request,
@@ -177,7 +177,7 @@ index cb3a7e65..16d1d4d1 100644
      (dump_func)dump_set_thread_desktop_request,
      (dump_func)dump_set_user_object_info_request,
      (dump_func)dump_register_hotkey_request,
-@@ -4045,6 +4063,8 @@ static const dump_func reply_dumpers[REQ_NB_REQUESTS] =
+@@ -4110,6 +4128,8 @@ static const dump_func reply_dumpers[REQ_NB_REQUESTS] =
      NULL,
      NULL,
      (dump_func)dump_get_thread_desktop_reply,
@@ -186,7 +186,7 @@ index cb3a7e65..16d1d4d1 100644
      (dump_func)dump_set_thread_desktop_reply,
      (dump_func)dump_set_user_object_info_reply,
      (dump_func)dump_register_hotkey_reply,
-@@ -4358,6 +4378,8 @@ static const char * const req_names[REQ_NB_REQUESTS] =
+@@ -4426,6 +4446,8 @@ static const char * const req_names[REQ_NB_REQUESTS] =
      "set_input_desktop",
      "close_desktop",
      "get_thread_desktop",
@@ -196,10 +196,10 @@ index cb3a7e65..16d1d4d1 100644
      "set_user_object_info",
      "register_hotkey",
 diff --git a/server/thread.c b/server/thread.c
-index bb9728f6..95a2bd5b 100644
+index b694df0..949dc69 100644
 --- a/server/thread.c
 +++ b/server/thread.c
-@@ -377,6 +377,7 @@ static inline void init_thread_structure( struct thread *thread )
+@@ -378,6 +378,7 @@ static inline void init_thread_structure( struct thread *thread )
      thread->token           = NULL;
      thread->desc            = NULL;
      thread->desc_len        = 0;
@@ -208,7 +208,7 @@ index bb9728f6..95a2bd5b 100644
      thread->creation_time = current_time;
      thread->exit_time     = 0;
 diff --git a/server/thread.h b/server/thread.h
-index 96c643c6..cfced767 100644
+index 96c643c..cfced76 100644
 --- a/server/thread.h
 +++ b/server/thread.h
 @@ -92,6 +92,7 @@ struct thread
@@ -220,7 +220,7 @@ index 96c643c6..cfced767 100644
      timeout_t              creation_time; /* Thread creation time */
      timeout_t              exit_time;     /* Thread exit time */
 diff --git a/server/winstation.c b/server/winstation.c
-index e2aad1ed..3dd17404 100644
+index 5006b16..a67e42a 100644
 --- a/server/winstation.c
 +++ b/server/winstation.c
 @@ -812,6 +812,27 @@ DECL_HANDLER(get_thread_desktop)

@@ -4,18 +4,12 @@ Date: Sun, 31 May 2026 02:13:44 -0400
 Subject: [PATCH 191/285] winewayland: Implement touch input.
 
 ---
- dlls/winewayland.drv/Makefile.in     |   1 +
- dlls/winewayland.drv/wayland.c       |   7 +
- dlls/winewayland.drv/wayland_touch.c | 245 +++++++++++++++++++++++++++
- dlls/winewayland.drv/waylanddrv.h    |  22 +++
- 4 files changed, 275 insertions(+)
- create mode 100644 dlls/winewayland.drv/wayland_touch.c
 
 diff --git a/dlls/winewayland.drv/Makefile.in b/dlls/winewayland.drv/Makefile.in
-index b45582ea797..739aaa372c0 100644
+index 5efbd72e5799d7180e10e5bcb203f4e751d19481..0600a830246bf9bcaa4ab1c8cdd5db15789583ad 100644
 --- a/dlls/winewayland.drv/Makefile.in
 +++ b/dlls/winewayland.drv/Makefile.in
-@@ -29,6 +29,7 @@ SOURCES = \
+@@ -30,6 +30,7 @@ SOURCES = \
  	wayland_pointer.c \
  	wayland_surface.c \
  	wayland_text_input.c \
@@ -24,7 +18,7 @@ index b45582ea797..739aaa372c0 100644
  	window.c \
  	window_surface.c \
 diff --git a/dlls/winewayland.drv/wayland.c b/dlls/winewayland.drv/wayland.c
-index 0ea7b27f9a8..7f866ed64a9 100644
+index a7eae16abd2f457bf669533adb12238b1dcd22a9..cebed5101d7f914b7b819b6cc23b001344844b3b 100644
 --- a/dlls/winewayland.drv/wayland.c
 +++ b/dlls/winewayland.drv/wayland.c
 @@ -37,6 +37,8 @@ struct wayland process_wayland =
@@ -50,7 +44,7 @@ index 0ea7b27f9a8..7f866ed64a9 100644
  static void wl_seat_handle_name(void *data, struct wl_seat *seat, const char *name)
 diff --git a/dlls/winewayland.drv/wayland_touch.c b/dlls/winewayland.drv/wayland_touch.c
 new file mode 100644
-index 00000000000..e9a57f75738
+index 0000000000000000000000000000000000000000..e9a57f757389f1c026053e372d80baac79699880
 --- /dev/null
 +++ b/dlls/winewayland.drv/wayland_touch.c
 @@ -0,0 +1,245 @@
@@ -300,10 +294,10 @@ index 00000000000..e9a57f75738
 +    }
 +}
 diff --git a/dlls/winewayland.drv/waylanddrv.h b/dlls/winewayland.drv/waylanddrv.h
-index 12d80671192..00e87515dd5 100644
+index bc7f3d78c5036195f335b179327a49fca7cb0901..f12d85ad492f86ab69755a9c950e75499e280477 100644
 --- a/dlls/winewayland.drv/waylanddrv.h
 +++ b/dlls/winewayland.drv/waylanddrv.h
-@@ -168,6 +168,20 @@ struct wayland_pointer
+@@ -170,6 +170,20 @@ struct wayland_pointer
      pthread_mutex_t mutex;
  };
  
@@ -324,7 +318,7 @@ index 12d80671192..00e87515dd5 100644
  struct wayland_text_input
  {
      struct zwp_text_input_v3 *zwp_text_input_v3;
-@@ -212,12 +226,13 @@ struct wayland
+@@ -246,6 +260,7 @@ struct wayland
      struct wayland_seat seat;
      struct wayland_keyboard keyboard;
      struct wayland_pointer pointer;
@@ -332,13 +326,7 @@ index 12d80671192..00e87515dd5 100644
      struct wayland_text_input text_input;
      struct xdg_toplevel_tag_manager_v1 *xdg_toplevel_tag_manager_v1;
      struct wp_content_type_manager_v1 *wp_content_type_manager_v1;
-     struct zxdg_decoration_manager_v1 *zxdg_decoration_manager_v1;
-     struct wayland_data_device data_device;
- #ifdef WL_FIXES_ACK_GLOBAL_REMOVE
-     struct wl_fixes *wl_fixes;
- #endif
-     struct wl_list output_list;
-@@ -523,6 +538,13 @@ void wayland_pointer_init(struct wl_pointer *wl_pointer);
+@@ -560,6 +575,13 @@ void wayland_pointer_init(struct wl_pointer *wl_pointer);
  void wayland_pointer_deinit(void);
  void wayland_pointer_clear_constraint(void);
  
@@ -352,6 +340,3 @@ index 12d80671192..00e87515dd5 100644
  /**********************************************************************
   *          Wayland text input
   */
--- 
-2.55.0
-

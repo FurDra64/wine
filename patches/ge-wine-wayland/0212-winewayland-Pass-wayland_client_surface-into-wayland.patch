@@ -12,10 +12,10 @@ Subject: [PATCH 212/285] winewayland: Pass wayland_client_surface into
  3 files changed, 5 insertions(+), 6 deletions(-)
 
 diff --git a/dlls/winewayland.drv/vulkan.c b/dlls/winewayland.drv/vulkan.c
-index 2eb2bdfb0d3..203887229ac 100644
+index 393039c26cc13c0894ede97c402efb4294e857c5..3d1ec57e2e36a196507d691b6ff5b34f4ef6124a 100644
 --- a/dlls/winewayland.drv/vulkan.c
 +++ b/dlls/winewayland.drv/vulkan.c
-@@ -142,6 +142,7 @@ static void wayland_map_device_extensions(struct vulkan_device_extensions *exten
+@@ -92,6 +92,7 @@ static void wayland_map_device_extensions(struct vulkan_device_extensions *exten
  
  static VkColorSpaceKHR wayland_vulkan_map_colorspace(VkColorSpaceKHR colorspace, struct client_surface *client)
  {
@@ -23,7 +23,7 @@ index 2eb2bdfb0d3..203887229ac 100644
      struct wp_image_description_v1 *wp_image_description_v1 = NULL;
      VkColorSpaceKHR new = colorspace;
  
-@@ -153,7 +154,7 @@ static VkColorSpaceKHR wayland_vulkan_map_colorspace(VkColorSpaceKHR colorspace,
+@@ -103,7 +104,7 @@ static VkColorSpaceKHR wayland_vulkan_map_colorspace(VkColorSpaceKHR colorspace,
      if (!client) return new;
      if (new == colorspace)
      {
@@ -32,7 +32,7 @@ index 2eb2bdfb0d3..203887229ac 100644
          return colorspace;
      }
  
-@@ -173,7 +174,7 @@ static VkColorSpaceKHR wayland_vulkan_map_colorspace(VkColorSpaceKHR colorspace,
+@@ -123,7 +124,7 @@ static VkColorSpaceKHR wayland_vulkan_map_colorspace(VkColorSpaceKHR colorspace,
  
      TRACE("mapping colorspace %u => %u\n", colorspace, new);
  
@@ -42,10 +42,10 @@ index 2eb2bdfb0d3..203887229ac 100644
      return new;
  err:
 diff --git a/dlls/winewayland.drv/wayland_surface.c b/dlls/winewayland.drv/wayland_surface.c
-index 82d9b2b7143..a72acb20310 100644
+index 1c1c1899f27b0811d1d8a919ca0f01e728bb4774..b77c48ce7ccb8058abed2166973dee5a7a56ff14 100644
 --- a/dlls/winewayland.drv/wayland_surface.c
 +++ b/dlls/winewayland.drv/wayland_surface.c
-@@ -1764,11 +1764,9 @@ static const struct wp_image_description_v1_listener image_description_listener
+@@ -2178,11 +2178,9 @@ static const struct wp_image_description_v1_listener client_image_description_li
      wayland_image_description_v1_ready2
  };
  
@@ -57,20 +57,17 @@ index 82d9b2b7143..a72acb20310 100644
 -
      if (!image_desc)
      {
-         if (surface->wp_color_management_surface_v1)
+         if (surface->color_management)
 diff --git a/dlls/winewayland.drv/waylanddrv.h b/dlls/winewayland.drv/waylanddrv.h
-index 675c357ce35..0b4f2be6357 100644
+index 418217e02809a997858048673c99458b3ad09020..5644e38e3e9f244397a1e48c709aae85b5dd9a51 100644
 --- a/dlls/winewayland.drv/waylanddrv.h
 +++ b/dlls/winewayland.drv/waylanddrv.h
-@@ -469,7 +469,7 @@ RECT map_rect_from_surface(struct wayland_surface *surface, RECT rect);
+@@ -488,7 +488,7 @@ POINT map_point_to_surface(struct wayland_surface *surface, POINT point);
+ RECT map_rect_from_surface(struct wayland_surface *surface, RECT rect);
  POINT map_point_from_surface(struct wayland_surface *surface, POINT point);
- struct wayland_client_surface *wayland_client_surface_create(HWND hwnd);
- void wayland_client_surface_attach(struct wayland_client_surface *client, HWND toplevel);
+ void wayland_client_surface_attach(struct wayland_client_surface *client, HWND toplevel, const RECT *rect);
 -void wayland_client_surface_attach_image_description(struct client_surface *client,
 +void wayland_client_surface_attach_image_description(struct wayland_client_surface *surface,
                                                       struct wp_image_description_v1 *image_desc);
- struct wayland_client_surface *impl_from_client_surface(struct client_surface *client);
  void wayland_surface_set_title(struct wayland_surface *surface, LPCWSTR title);
--- 
-2.55.0
-
+ void wayland_surface_assign_icon(struct wayland_surface *surface);

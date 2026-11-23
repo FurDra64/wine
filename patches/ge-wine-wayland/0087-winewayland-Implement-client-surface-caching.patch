@@ -1,0 +1,40 @@
+From 508b956d6447384d15a04e1b96d3522fc58c4135 Mon Sep 17 00:00:00 2001
+From: Etaash Mathamsetty
+ <45927311+Etaash-mathamsetty@users.noreply.github.com>
+Date: Sat, 18 Apr 2026 19:05:16 -0500
+Subject: [PATCH 087/285] winewayland: Implement client surface caching.
+
+Requires: https://gitlab.freedesktop.org/mesa/mesa/-/merge_requests/34918
+---
+ dlls/winewayland.drv/waylanddrv.h | 2 ++
+ dlls/winewayland.drv/window.c     | 1 +
+ 2 files changed, 3 insertions(+)
+
+diff --git a/dlls/winewayland.drv/waylanddrv.h b/dlls/winewayland.drv/waylanddrv.h
+index aa659fd8e57..31a29bace7e 100644
+--- a/dlls/winewayland.drv/waylanddrv.h
++++ b/dlls/winewayland.drv/waylanddrv.h
+@@ -412,6 +412,8 @@ struct wayland_win_data
+     struct wayland_surface *wayland_surface;
+     /* wayland client surface (if any) for this window */
+     struct wayland_client_surface *client_surface;
++    /* track a stale client surface to ensure DMABUF modifiers stay valid */
++    struct wayland_client_surface *stashed_client;
+     /* window rects, relative to parent client area */
+     struct window_rects rects;
+     BOOL is_fullscreen;
+diff --git a/dlls/winewayland.drv/window.c b/dlls/winewayland.drv/window.c
+index 90ff1dd27bf..f900f2f94b7 100644
+--- a/dlls/winewayland.drv/window.c
++++ b/dlls/winewayland.drv/window.c
+@@ -100,6 +100,7 @@ static void wayland_win_data_destroy(struct wayland_win_data *data)
+ 
+     pthread_mutex_unlock(&win_data_mutex);
+ 
++    if (data->stashed_client) client_surface_release(&data->stashed_client->client);
+     if (data->wayland_surface) wayland_surface_destroy(data->wayland_surface);
+     if (data->window_contents) wayland_shm_buffer_unref(data->window_contents);
+     free(data);
+-- 
+2.55.0
+

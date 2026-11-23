@@ -6,14 +6,12 @@ Subject: [PATCH 118/285] winewayland: Implement monitor ranking to determine
  primary.
 
 ---
- dlls/winewayland.drv/display.c | 34 ++++++++++++++++++++++++++++++++++
- 1 file changed, 34 insertions(+)
 
 diff --git a/dlls/winewayland.drv/display.c b/dlls/winewayland.drv/display.c
-index fe0bfca1b6c..aa21d42722c 100644
+index b6b1adda0b69ac59c3faae022a1c2a418d39454d..6341d68a6325d390ce3d925b0500edb344ceaeaf 100644
 --- a/dlls/winewayland.drv/display.c
 +++ b/dlls/winewayland.drv/display.c
-@@ -161,6 +161,37 @@ static BOOL output_info_array_resolve_overlaps(struct wl_array *output_info_arra
+@@ -154,6 +154,37 @@ static BOOL output_info_array_resolve_overlaps(struct wl_array *output_info_arra
      return found_overlap;
  }
  
@@ -48,10 +46,10 @@ index fe0bfca1b6c..aa21d42722c 100644
 +    }
 +}
 +
- static void output_info_array_arrange_physical_coords(struct wl_array *output_info_array)
+ void output_info_array_arrange_physical_coords(struct wl_array *output_info_array)
  {
      struct output_info *info;
-@@ -180,6 +211,9 @@ static void output_info_array_arrange_physical_coords(struct wl_array *output_in
+@@ -173,6 +204,9 @@ void output_info_array_arrange_physical_coords(struct wl_array *output_info_arra
             ++steps < num_outputs)
          continue;
  
@@ -61,6 +59,3 @@ index fe0bfca1b6c..aa21d42722c 100644
      /* Now that we have our physical pixel coordinates, sort from physical left
       * to right, but ensure the primary output is first. */
      qsort(output_info_array->data, num_outputs, sizeof(struct output_info),
--- 
-2.55.0
-

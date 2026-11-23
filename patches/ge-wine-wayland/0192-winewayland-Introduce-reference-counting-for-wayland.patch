@@ -5,15 +5,12 @@ Subject: [PATCH 192/285] winewayland: Introduce reference counting for
  wayland_output.
 
 ---
- dlls/winewayland.drv/wayland.c        |    2 +-
- dlls/winewayland.drv/wayland_output.c |   31 +++++++++++++++++++++++++------
- dlls/winewayland.drv/waylanddrv.h     |    8 +++++---
- 3 files changed, 31 insertions(+), 10 deletions(-)
 
 diff --git a/dlls/winewayland.drv/wayland.c b/dlls/winewayland.drv/wayland.c
+index cebed5101d7f914b7b819b6cc23b001344844b3b..c319e393b9dc9351868197dae6d2a3492fd78b6b 100644
 --- a/dlls/winewayland.drv/wayland.c
 +++ b/dlls/winewayland.drv/wayland.c
-@@ -264,7 +264,7 @@ static void registry_handle_global_remove(void *data, struct wl_registry *regist
+@@ -305,7 +305,7 @@ static void registry_handle_global_remove(void *data, struct wl_registry *regist
          if (output->global_id == id)
          {
              TRACE("removing output->name=%s\n", output->current.name);
@@ -23,18 +20,19 @@ diff --git a/dlls/winewayland.drv/wayland.c b/dlls/winewayland.drv/wayland.c
          }
      }
 diff --git a/dlls/winewayland.drv/wayland_output.c b/dlls/winewayland.drv/wayland_output.c
+index dd783f9647bb52c2091b6e49ae7f2e6b0e694009..2f9cab1c8bc96a8549127139344bac8dd4f62244 100644
 --- a/dlls/winewayland.drv/wayland_output.c
 +++ b/dlls/winewayland.drv/wayland_output.c
-@@ -383,6 +383,8 @@ BOOL wayland_output_create(uint32_t id, uint32_t version)
-     if (process_wayland.zxdg_output_manager_v1)
-         wayland_output_use_xdg_extension(output);
+@@ -675,6 +675,8 @@ BOOL wayland_output_create(uint32_t id, uint32_t version)
+     if (process_wayland.wp_color_manager_v1)
+         wayland_output_use_image_description(output);
  
 +    output->ref = 1;
 +
      pthread_mutex_lock(&process_wayland.output_mutex);
      wl_list_insert(process_wayland.output_list.prev, &output->link);
      pthread_mutex_unlock(&process_wayland.output_mutex);
-@@ -390,7 +392,7 @@ BOOL wayland_output_create(uint32_t id, uint32_t version)
+@@ -682,7 +684,7 @@ BOOL wayland_output_create(uint32_t id, uint32_t version)
      return TRUE;
  
  err:
@@ -43,7 +41,7 @@ diff --git a/dlls/winewayland.drv/wayland_output.c b/dlls/winewayland.drv/waylan
      return FALSE;
  }
  
-@@ -401,24 +403,41 @@ static void wayland_output_state_deinit(struct wayland_output_state *state)
+@@ -693,16 +695,35 @@ static void wayland_output_state_deinit(struct wayland_output_state *state)
  }
  
  /**********************************************************************
@@ -81,7 +79,8 @@ diff --git a/dlls/winewayland.drv/wayland_output.c b/dlls/winewayland.drv/waylan
 +
      wayland_output_state_deinit(&output->pending);
      wayland_output_state_deinit(&output->current);
-     if (output->zxdg_output_v1)
+     if (output->wp_color_management_output_v1)
+@@ -715,8 +736,6 @@ void wayland_output_destroy(struct wayland_output *output)
          zxdg_output_v1_destroy(output->zxdg_output_v1);
      wl_output_destroy(output->wl_output);
      free(output);
@@ -91,10 +90,11 @@ diff --git a/dlls/winewayland.drv/wayland_output.c b/dlls/winewayland.drv/waylan
  
  /**********************************************************************
 diff --git a/dlls/winewayland.drv/waylanddrv.h b/dlls/winewayland.drv/waylanddrv.h
+index f12d85ad492f86ab69755a9c950e75499e280477..cf2a374396afd2cc810acbad119a675754c03631 100644
 --- a/dlls/winewayland.drv/waylanddrv.h
 +++ b/dlls/winewayland.drv/waylanddrv.h
-@@ -257,8 +257,8 @@ struct wayland_output
-     struct zxdg_output_v1 *zxdg_output_v1;
+@@ -329,8 +329,8 @@ struct wayland_output
+     struct wp_color_management_output_v1 *wp_color_management_output_v1;
      uint32_t global_id;
      unsigned int pending_flags;
 -    struct wayland_output_state pending;
@@ -104,7 +104,7 @@ diff --git a/dlls/winewayland.drv/waylanddrv.h b/dlls/winewayland.drv/waylanddrv
  };
  
  struct wayland_surface_config
-@@ -356,8 +356,10 @@ BOOL wayland_process_init(void);
+@@ -436,8 +436,10 @@ BOOL wayland_process_init(void);
   *          Wayland output
   */
  
@@ -114,5 +114,5 @@ diff --git a/dlls/winewayland.drv/waylanddrv.h b/dlls/winewayland.drv/waylanddrv
 +void wayland_output_release(struct wayland_output *output);
 +void wayland_output_remove(struct wayland_output *output);
  void wayland_output_use_xdg_extension(struct wayland_output *output);
- struct wayland_output *wayland_output_for_rect(const RECT *rect);
- 
+ void wayland_output_use_image_description(struct wayland_output *output);
+ void wayland_color_manager_init(void);

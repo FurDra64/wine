@@ -8,24 +8,25 @@ we are so back!
  dlls/winewayland.drv/waylanddrv.h | 2 ++
  dlls/winewayland.drv/window.c     | 6 +++---
  2 files changed, 5 insertions(+), 3 deletions(-)
+
 diff --git a/dlls/winewayland.drv/waylanddrv.h b/dlls/winewayland.drv/waylanddrv.h
-index 1cb525b2..81c81d51 100644
+index 54cdbb7..0a709eb 100644
 --- a/dlls/winewayland.drv/waylanddrv.h
 +++ b/dlls/winewayland.drv/waylanddrv.h
-@@ -414,6 +414,8 @@ void WAYLAND_ReleaseKbdTables(const KBDTABLES *);
+@@ -570,6 +570,8 @@ void WAYLAND_ReleaseKbdTables(const KBDTABLES *);
  void activate_keyboard_hkl(HWND hwnd, BOOL ime);
  
  /**********************************************************************
-+    /* TODO: We can remove this once FSHack is implemented in opengl and vulkan upstream for all drivers.
-+     * The opengl implementation is already merged. Then we would only need to ensure contents via expose. */
++ * TODO: We can remove this once FSHack is implemented in opengl and vulkan upstream for all drivers.
++ * The opengl implementation is already merged. Then we would only need to ensure contents via expose.
   *          Wayland pointer
   */
  
 diff --git a/dlls/winewayland.drv/window.c b/dlls/winewayland.drv/window.c
-index 270fdfb4..f80a5ca1 100644
+index f214bc0..58c92f4 100644
 --- a/dlls/winewayland.drv/window.c
 +++ b/dlls/winewayland.drv/window.c
-@@ -492,9 +492,9 @@ static void wayland_configure_window(HWND hwnd)
+@@ -696,9 +696,9 @@ static void wayland_configure_window(HWND hwnd)
          return;
      }
  
@@ -37,12 +38,12 @@ index 270fdfb4..f80a5ca1 100644
          wayland_win_data_release(data);
          return;
      }
-@@ -576,7 +576,7 @@ static void wayland_configure_window(HWND hwnd)
+@@ -789,7 +789,7 @@ static void wayland_configure_window(HWND hwnd)
          send_message(hwnd, WM_SYSCOMMAND, SC_RESTORE, 0);
          return;
      }
 -
 +    /* TODO: Move window based on which outputs it is mapped on */
      SetRect(&rect, 0, 0, width, height);
-     rect = map_rect_from_surface(surface, rect);
      OffsetRect(&rect, data->rects.window.left, data->rects.window.top);
+     if (!IsRectEmpty(&rect)) rect = window_rect_from_visible(&data->rects, rect);

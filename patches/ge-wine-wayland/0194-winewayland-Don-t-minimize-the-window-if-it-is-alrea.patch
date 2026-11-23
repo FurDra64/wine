@@ -6,23 +6,23 @@ Subject: [PATCH 194/285] winewayland: Don't minimize the window if it is
  already minimized.
 
 ---
- dlls/winewayland.drv/wayland_surface.c | 4 ++++
+dlls/winewayland.drv/wayland_surface.c | 4 ++++
  dlls/winewayland.drv/waylanddrv.h      | 2 +-
  dlls/winewayland.drv/window.c          | 4 +++-
- 3 files changed, 8 insertions(+), 2 deletions(-)
 
 diff --git a/dlls/winewayland.drv/wayland_surface.c b/dlls/winewayland.drv/wayland_surface.c
-index 206002f7..bfe04826 100644
+index a187c4c..f575911 100644
 --- a/dlls/winewayland.drv/wayland_surface.c
 +++ b/dlls/winewayland.drv/wayland_surface.c
-@@ -317,5 +317,6 @@ struct wayland_surface *wayland_surface_create(HWND hwnd)
+@@ -468,6 +468,7 @@ struct wayland_surface *wayland_surface_create(HWND hwnd)
+     }
+ 
      surface->window.scale = 1.0;
 +    surface->comitted.scale = 0.0;
      surface->ensured_contents = WAYLAND_SURFACE_NOT_ENSURED;
  
      return surface;
- 
-@@ -564,6 +565,9 @@ void wayland_surface_clear_role(struct wayland_surface *surface)
+@@ -1016,6 +1017,9 @@ void wayland_surface_clear_role(struct wayland_surface *surface)
      memset(&surface->processing, 0, sizeof(surface->processing));
      memset(&surface->current, 0, sizeof(surface->current));
  
@@ -33,10 +33,11 @@ index 206002f7..bfe04826 100644
      wl_surface_attach(surface->wl_surface, NULL, 0, 0);
      wl_surface_commit(surface->wl_surface);
 diff --git a/dlls/winewayland.drv/waylanddrv.h b/dlls/winewayland.drv/waylanddrv.h
-index 55741525..dd081539 100644
+index ac2a4fa..f916b32 100644
 --- a/dlls/winewayland.drv/waylanddrv.h
 +++ b/dlls/winewayland.drv/waylanddrv.h
-@@ -345,6 +345,6 @@ struct wayland_surface
+@@ -426,7 +426,7 @@ struct wayland_surface
+ 
      struct wayland_surface_config pending, requested, processing, current;
      BOOL resizing;
 -    struct wayland_window_config window;
@@ -44,19 +45,13 @@ index 55741525..dd081539 100644
      enum wayland_surface_ensure_type ensured_contents;
      int content_width, content_height;
      HCURSOR hcursor;
- };
 diff --git a/dlls/winewayland.drv/window.c b/dlls/winewayland.drv/window.c
-index 35ee0a21..f2a015e2 100644
+index ae3aab3..6d05cdc 100644
 --- a/dlls/winewayland.drv/window.c
 +++ b/dlls/winewayland.drv/window.c
-@@ -304,13 +304,15 @@ static void wayland_surface_update_state_toplevel(struct wayland_surface *surfac
-         {
-             xdg_toplevel_set_fullscreen(surface->xdg_toplevel, NULL);
-         }
--        if (surface->window.minimized)
-+        if (surface->window.minimized && !surface->comitted.minimized)
-         {
-             xdg_toplevel_set_minimized(surface->xdg_toplevel);
+@@ -335,11 +335,13 @@ static void wayland_surface_update_state_toplevel(struct wayland_surface *surfac
+         skip_fullscreen:
+             if (output) wayland_output_release(output);
          }
 -        if (surface->window.minimized)
 +        if (surface->window.minimized && !surface->comitted.minimized)
@@ -67,5 +62,5 @@ index 35ee0a21..f2a015e2 100644
 +        surface->comitted.minimized = surface->window.minimized;
 +
          /* reset the size hint since we don't want to poison the next configure event with it */
--- 
-2.55.0
+         xdg_toplevel_set_min_size(surface->xdg_toplevel, 0, 0);
+         xdg_toplevel_set_max_size(surface->xdg_toplevel, 0, 0);

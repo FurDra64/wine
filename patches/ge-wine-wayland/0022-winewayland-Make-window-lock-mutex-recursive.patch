@@ -1,0 +1,29 @@
+From ada6f217692a15e91614bd97d1f5adc7babbdbbc Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?R=C3=A9mi=20Bernon?= <rbernon@codeweavers.com>
+Date: Sat, 20 Jun 2026 10:32:08 +0200
+Subject: [PATCH 022/285] winewayland: Make window lock mutex recursive.
+
+Every other driver does it, it will make life easier.
+
+Wine already carries the recursive mutex (d0ae5dd3e16) and
+initializes it once before registry population (a5bc758619d).
+Keep the initialization comment at that call; do not add a second call.
+---
+ dlls/winewayland.drv/wayland.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/dlls/winewayland.drv/wayland.c b/dlls/winewayland.drv/wayland.c
+index 0f300b1..9474e81 100644
+--- a/dlls/winewayland.drv/wayland.c
++++ b/dlls/winewayland.drv/wayland.c
+@@ -326,6 +326,7 @@ BOOL wayland_process_init(void)
+         return FALSE;
+     }
+ 
++    /* initialize win data mutex */
+     wayland_window_init();
+ 
+     /* Populate registry */
+-- 
+2.55.0
+

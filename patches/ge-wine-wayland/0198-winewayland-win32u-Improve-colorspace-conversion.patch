@@ -6,31 +6,21 @@ Subject: [PATCH 198/285] winewayland/win32u: Improve colorspace conversion.
 
 This does everything except expose the new colorspaces in vkGetPhysicalDeviceSurfaceCapabilities(2)KHR
 ---
- dlls/win32u/vulkan.c                   | 59 ++++++++++++++++----
+dlls/win32u/vulkan.c                   | 57 +++++++++++++++++++++----
  dlls/winemac.drv/vulkan.c              |  6 +--
- dlls/winewayland.drv/vulkan.c          | 39 +++++++-------
- dlls/winewayland.drv/wayland.c         | 59 +++++++++++++++++---
- dlls/winewayland.drv/wayland_output.c  | 74 +-------------------------
+ dlls/winewayland.drv/vulkan.c          | 39 +++++++++--------
+ dlls/winewayland.drv/wayland.c         | 61 +++++++++++++++++++++++----
+ dlls/winewayland.drv/wayland_output.c  | 76 +---------------------------------
  dlls/winewayland.drv/wayland_surface.c |  1 +
  dlls/winewayland.drv/waylanddrv.h      |  4 +-
  dlls/winex11.drv/vulkan.c              |  6 +--
- include/wine/vulkan_driver.h           |  2 +-
- 9 files changed, 133 insertions(+), 117 deletions(-)
+ include/wine/vulkan_driver.h           |  4 +-
 
 diff --git a/dlls/win32u/vulkan.c b/dlls/win32u/vulkan.c
-index c4153e2ce46..eeea5b517d9 100644
+index ecc1524..acb5530 100644
 --- a/dlls/win32u/vulkan.c
 +++ b/dlls/win32u/vulkan.c
-@@ -1965,7 +1965,7 @@ static VkResult win32u_vkGetPhysicalDeviceSurfaceFormatsKHR( VkPhysicalDevice cl
-     struct vulkan_instance *instance = physical_device->instance;
- 
-     return instance->p_vkGetPhysicalDeviceSurfaceFormatsKHR( physical_device->host.physical_device,
--                                                                surface->obj.host.surface, format_count, formats );
-+                                                             surface->obj.host.surface, format_count, formats );
- }
- 
- static VkResult win32u_vkGetPhysicalDeviceSurfaceFormats2KHR( VkPhysicalDevice client_physical_device, const VkPhysicalDeviceSurfaceInfo2KHR *surface_info,
-@@ -1882,7 +1882,9 @@ static VkResult win32u_vkCreateSwapchainKHR( VkDevice client_device, const VkSwa
+@@ -3626,6 +3626,8 @@ static VkResult win32u_vkCreateSwapchainKHR( VkDevice client_device, const VkSwa
      VkSwapchainCreateInfoKHR create_info_host = *create_info;
      VkSurfaceCapabilitiesKHR capabilities;
      VkSwapchainKHR host_swapchain;
@@ -39,8 +29,7 @@ index c4153e2ce46..eeea5b517d9 100644
      struct ratio raw_dpi;
      RECT client_rect;
      VkResult res;
- 
-@@ -2556,6 +2558,7 @@ static VkResult win32u_vkCreateSwapchainKHR( VkDevice client_device, const VkSwa
+@@ -3645,6 +3647,7 @@ static VkResult win32u_vkCreateSwapchainKHR( VkDevice client_device, const VkSwa
      res = instance->p_vkGetPhysicalDeviceSurfaceCapabilitiesKHR( physical_device->host.physical_device, surface->obj.host.surface, &capabilities );
      if (res) return res;
  
@@ -48,7 +37,7 @@ index c4153e2ce46..eeea5b517d9 100644
      create_info_host.imageExtent.width = max( create_info_host.imageExtent.width, capabilities.minImageExtent.width );
      create_info_host.imageExtent.height = max( create_info_host.imageExtent.height, capabilities.minImageExtent.height );
  
-@@ -2589,10 +2592,46 @@ static VkResult win32u_vkCreateSwapchainKHR( VkDevice client_device, const VkSwa
+@@ -3723,10 +3726,46 @@ static VkResult win32u_vkCreateSwapchainKHR( VkDevice client_device, const VkSwa
                     create_info_host.imageFormat );
      }
  
@@ -98,8 +87,8 @@ index c4153e2ce46..eeea5b517d9 100644
      }
  
      InterlockedIncrement( &surface->client->busy_ref );
-@@ -4013,9 +4052,9 @@ static VkResult nulldrv_vulkan_surface_create( HWND hwnd, BOOL raw, const struct
-     return res;
+@@ -5479,9 +5518,9 @@ static VkResult nulldrv_vulkan_surface_create( struct client_surface *client, co
+     return instance->p_vkCreateHeadlessSurfaceEXT( instance->host.instance, &create_info, NULL, surface );
  }
  
 -static VkResult nulldrv_vulkan_colorspace_configure( VkColorSpaceKHR *colorspace, struct client_surface *client )
@@ -110,7 +99,7 @@ index c4153e2ce46..eeea5b517d9 100644
  }
  
  static VkBool32 nulldrv_get_physical_device_presentation_support( struct vulkan_physical_device *physical_device, uint32_t queue )
-@@ -4044,7 +4083,7 @@ static void nulldrv_map_device_extensions( struct vulkan_device_extensions *exte
+@@ -5510,7 +5549,7 @@ static void nulldrv_map_device_extensions( struct vulkan_device_extensions *exte
  static const struct vulkan_driver_funcs nulldrv_funcs =
  {
      .p_vulkan_surface_create = nulldrv_vulkan_surface_create,
@@ -119,8 +108,8 @@ index c4153e2ce46..eeea5b517d9 100644
      .p_get_physical_device_presentation_support = nulldrv_get_physical_device_presentation_support,
      .p_map_instance_extensions = nulldrv_map_instance_extensions,
      .p_map_device_extensions = nulldrv_map_device_extensions,
-@@ -4077,10 +4116,10 @@ static VkResult lazydrv_vulkan_surface_create( HWND hwnd, BOOL raw, const struct
-     return driver_funcs->p_vulkan_surface_create( hwnd, raw, instance, surface, client );
+@@ -5542,10 +5581,10 @@ static VkResult lazydrv_vulkan_surface_create( struct client_surface *client, co
+     return driver_funcs->p_vulkan_surface_create( client, instance, surface );
  }
  
 -static VkResult lazydrv_vulkan_colorspace_configure( VkColorSpaceKHR *colorspace, struct client_surface *client )
@@ -132,7 +121,7 @@ index c4153e2ce46..eeea5b517d9 100644
  }
  
  static VkBool32 lazydrv_get_physical_device_presentation_support( struct vulkan_physical_device *physical_device, uint32_t queue )
-@@ -4104,7 +4143,7 @@ static void lazydrv_map_device_extensions( struct vulkan_device_extensions *exte
+@@ -5569,7 +5608,7 @@ static void lazydrv_map_device_extensions( struct vulkan_device_extensions *exte
  static const struct vulkan_driver_funcs lazydrv_funcs =
  {
      .p_vulkan_surface_create = lazydrv_vulkan_surface_create,
@@ -142,10 +131,10 @@ index c4153e2ce46..eeea5b517d9 100644
      .p_map_instance_extensions = lazydrv_map_instance_extensions,
      .p_map_device_extensions = lazydrv_map_device_extensions,
 diff --git a/dlls/winemac.drv/vulkan.c b/dlls/winemac.drv/vulkan.c
-index d9c83675e3b..187824d10d0 100644
+index 385aa9c..7a0fbeb 100644
 --- a/dlls/winemac.drv/vulkan.c
 +++ b/dlls/winemac.drv/vulkan.c
-@@ -68,7 +68,7 @@ static VkResult macdrv_vulkan_surface_create(struct client_surface *client,
+@@ -68,9 +68,9 @@ static VkResult macdrv_vulkan_surface_create(struct client_surface *client, cons
      return VK_SUCCESS;
  }
  
@@ -155,7 +144,9 @@ index d9c83675e3b..187824d10d0 100644
 -    return VK_SUCCESS;
 +    return colorspace;
  }
-@@ -126,7 +126,7 @@ static void macdrv_map_device_extensions(struct vulkan_device_extensions *extens
+ 
+ static VkBool32 macdrv_get_physical_device_presentation_support(struct vulkan_physical_device *physical_device,
+@@ -104,7 +104,7 @@ static void macdrv_map_device_extensions(struct vulkan_device_extensions *extens
  static const struct vulkan_driver_funcs macdrv_vulkan_driver_funcs =
  {
      .p_vulkan_surface_create = macdrv_vulkan_surface_create,
@@ -165,10 +156,10 @@ index d9c83675e3b..187824d10d0 100644
      .p_map_instance_extensions = macdrv_map_instance_extensions,
      .p_map_device_extensions = macdrv_map_device_extensions,
 diff --git a/dlls/winewayland.drv/vulkan.c b/dlls/winewayland.drv/vulkan.c
-index 54e22f142dd..c2439a78143 100644
+index 0d1a73e..a3f28c4 100644
 --- a/dlls/winewayland.drv/vulkan.c
 +++ b/dlls/winewayland.drv/vulkan.c
-@@ -140,44 +140,47 @@ static void wayland_map_device_extensions(struct vulkan_device_extensions *exten
+@@ -90,44 +90,47 @@ static void wayland_map_device_extensions(struct vulkan_device_extensions *exten
      if (extensions->has_VK_KHR_external_fence_fd) extensions->has_VK_KHR_external_fence_win32 = 1;
  }
  
@@ -235,7 +226,7 @@ index 54e22f142dd..c2439a78143 100644
      .p_map_instance_extensions = wayland_map_instance_extensions,
      .p_map_device_extensions = wayland_map_device_extensions,
 diff --git a/dlls/winewayland.drv/wayland.c b/dlls/winewayland.drv/wayland.c
-index 05e8f26a7c9..c1fde1db6e0 100644
+index 9214e24..3c75b41 100644
 --- a/dlls/winewayland.drv/wayland.c
 +++ b/dlls/winewayland.drv/wayland.c
 @@ -43,10 +43,6 @@ struct wayland process_wayland =
@@ -249,7 +240,7 @@ index 05e8f26a7c9..c1fde1db6e0 100644
  };
  
  /**********************************************************************
-@@ -97,6 +93,49 @@ static const struct wl_seat_listener seat_listener =
+@@ -97,6 +93,51 @@ static const struct wl_seat_listener seat_listener =
      wl_seat_handle_name
  };
  
@@ -261,6 +252,7 @@ index 05e8f26a7c9..c1fde1db6e0 100644
 +static void wayland_color_manager_handle_supported_feature(void *data,
 +    struct wp_color_manager_v1 *wp_color_manager_v1, uint32_t feature)
 +{
++    color_manager_listener.supported_feature(data, wp_color_manager_v1, feature);
 +    pthread_mutex_lock(&process_wayland.output_mutex);
 +
 +    TRACE("feature %u\n", feature);
@@ -286,6 +278,7 @@ index 05e8f26a7c9..c1fde1db6e0 100644
 +static void wayland_color_manager_handle_done(void *data,
 +                        struct wp_color_manager_v1 *wp_color_manager_v1)
 +{
++    color_manager_listener.done(data, wp_color_manager_v1);
 +}
 +
 +static const struct wp_color_manager_v1_listener wp_color_manager_listener = {
@@ -299,7 +292,7 @@ index 05e8f26a7c9..c1fde1db6e0 100644
  static int wayland_disable_ssd(void)
  {
      static int disabled = -1;
-@@ -270,8 +309,8 @@ static void registry_handle_global(void *data, struct wl_registry *registry,
+@@ -286,8 +327,8 @@ static void registry_handle_global(void *data, struct wl_registry *registry,
          process_wayland.wp_color_manager_v1 =
              wl_registry_bind(registry, id, &wp_color_manager_v1_interface,
                               version < 3 ? version : 3);
@@ -310,7 +303,7 @@ index 05e8f26a7c9..c1fde1db6e0 100644
          /* Add image descriptions to existing outputs. */
          wl_list_for_each(output, &process_wayland.output_list, link)
              wayland_output_use_image_description(output);
-@@ -443,7 +482,13 @@ BOOL wayland_process_init(void)
+@@ -469,7 +510,13 @@ BOOL wayland_process_init(void)
          WARN("Wayland compositor doesn't support optional zxdg_decoration_manager_v1!\n");
  
      if (!process_wayland.xdg_activation_v1)
@@ -326,7 +319,7 @@ index 05e8f26a7c9..c1fde1db6e0 100644
      process_wayland.initialized = TRUE;
  
 diff --git a/dlls/winewayland.drv/wayland_output.c b/dlls/winewayland.drv/wayland_output.c
-index 8a5e6b9a83f..070a96325ad 100644
+index 1cbab71..070a963 100644
 --- a/dlls/winewayland.drv/wayland_output.c
 +++ b/dlls/winewayland.drv/wayland_output.c
 @@ -216,16 +216,8 @@ static void wayland_output_done(struct wayland_output *output)
@@ -348,7 +341,7 @@ index 8a5e6b9a83f..070a96325ad 100644
  
      output->pending_flags = 0;
  
-@@ -801,65 +793,3 @@ void wayland_output_use_xdg_extension(struct wayland_output *output)
+@@ -801,67 +793,3 @@ void wayland_output_use_xdg_extension(struct wayland_output *output)
      zxdg_output_v1_add_listener(output->zxdg_output_v1, &zxdg_output_v1_listener,
                                  output);
  }
@@ -361,6 +354,7 @@ index 8a5e6b9a83f..070a96325ad 100644
 -static void wayland_color_manager_handle_supported_feature(void *data,
 -    struct wp_color_manager_v1 *wp_color_manager_v1, uint32_t feature)
 -{
+-    color_manager_listener.supported_feature(data, wp_color_manager_v1, feature);
 -    pthread_mutex_lock(&process_wayland.output_mutex);
 -
 -    TRACE("feature %u\n", feature);
@@ -396,6 +390,7 @@ index 8a5e6b9a83f..070a96325ad 100644
 -static void wayland_color_manager_handle_done(void *data,
 -                        struct wp_color_manager_v1 *wp_color_manager_v1)
 -{
+-    color_manager_listener.done(data, wp_color_manager_v1);
 -}
 -
 -static const struct wp_color_manager_v1_listener wp_color_manager_listener = {
@@ -415,22 +410,22 @@ index 8a5e6b9a83f..070a96325ad 100644
 -                                     &wp_color_manager_listener, NULL);
 -}
 diff --git a/dlls/winewayland.drv/wayland_surface.c b/dlls/winewayland.drv/wayland_surface.c
-index 3ffa8150b98..257b91356ec 100644
+index ee01256..ab2b8ac 100644
 --- a/dlls/winewayland.drv/wayland_surface.c
 +++ b/dlls/winewayland.drv/wayland_surface.c
-@@ -1750,6 +1750,7 @@ void wayland_client_surface_attach_image_description(struct client_surface *clie
+@@ -2164,6 +2164,7 @@ void wayland_client_surface_attach_image_description(struct client_surface *clie
                                                       struct wp_image_description_v1 *image_desc)
  {
      struct wayland_client_surface *surface = impl_from_client_surface(client);
 +
      if (!image_desc)
      {
-         if (surface->wp_color_management_surface_v1)
+         if (surface->color_management)
 diff --git a/dlls/winewayland.drv/waylanddrv.h b/dlls/winewayland.drv/waylanddrv.h
-index a7c208bc33e..2df573ae285 100644
+index f4ed0d9..156ccf0 100644
 --- a/dlls/winewayland.drv/waylanddrv.h
 +++ b/dlls/winewayland.drv/waylanddrv.h
-@@ -268,10 +268,8 @@ struct wayland
+@@ -275,10 +275,8 @@ struct wayland
      /* Protects the output_list, output_info_array, and the wayland_output.current states. */
      pthread_mutex_t output_mutex;
      LONG input_serial;
@@ -443,10 +438,10 @@ index a7c208bc33e..2df573ae285 100644
  
  struct wayland_output_mode
 diff --git a/dlls/winex11.drv/vulkan.c b/dlls/winex11.drv/vulkan.c
-index 12c42509245..ad5f0dd396c 100644
+index 6a81f97..c09ea47 100644
 --- a/dlls/winex11.drv/vulkan.c
 +++ b/dlls/winex11.drv/vulkan.c
-@@ -70,9 +70,9 @@ static VkResult X11DRV_vulkan_surface_create( HWND hwnd, BOOL raw, const struct
+@@ -65,9 +65,9 @@ static VkResult X11DRV_vulkan_surface_create( struct client_surface *client, con
      return VK_SUCCESS;
  }
  
@@ -458,7 +453,7 @@ index 12c42509245..ad5f0dd396c 100644
  }
  
  static VkBool32 X11DRV_get_physical_device_presentation_support( struct vulkan_physical_device *physical_device, uint32_t index )
-@@ -104,7 +104,7 @@ static void X11DRV_map_device_extensions( struct vulkan_device_extensions *exten
+@@ -99,7 +99,7 @@ static void X11DRV_map_device_extensions( struct vulkan_device_extensions *exten
  static const struct vulkan_driver_funcs x11drv_vulkan_driver_funcs =
  {
      .p_vulkan_surface_create = X11DRV_vulkan_surface_create,
@@ -468,10 +463,19 @@ index 12c42509245..ad5f0dd396c 100644
      .p_map_instance_extensions = X11DRV_map_instance_extensions,
      .p_map_device_extensions = X11DRV_map_device_extensions,
 diff --git a/include/wine/vulkan_driver.h b/include/wine/vulkan_driver.h
-index 3bf3688880f..33ec7aef655 100644
+index 02ca74c..f3aaa94 100644
 --- a/include/wine/vulkan_driver.h
 +++ b/include/wine/vulkan_driver.h
-@@ -358,7 +358,7 @@ struct client_surface;
+@@ -94,7 +94,7 @@ struct VkDevice_T
+ #include "wine/list.h"
+ 
+ /* Wine internal vulkan driver version, needs to be bumped upon vulkan_funcs changes. */
+-#define WINE_VULKAN_DRIVER_VERSION 48
++#define WINE_VULKAN_DRIVER_VERSION 49
+ 
+ struct vulkan_object
+ {
+@@ -392,7 +392,7 @@ struct client_surface;
  struct vulkan_driver_funcs
  {
      VkResult (*p_vulkan_surface_create)(struct client_surface *, const struct vulkan_instance *, VkSurfaceKHR *);
@@ -480,6 +484,3 @@ index 3bf3688880f..33ec7aef655 100644
      VkBool32 (*p_get_physical_device_presentation_support)(struct vulkan_physical_device *, uint32_t);
      void (*p_map_instance_extensions)( struct vulkan_instance_extensions *extensions );
      void (*p_map_device_extensions)( struct vulkan_device_extensions *extensions );
--- 
-2.55.0
-

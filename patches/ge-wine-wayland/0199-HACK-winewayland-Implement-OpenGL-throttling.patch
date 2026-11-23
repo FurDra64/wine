@@ -5,18 +5,21 @@ Date: Sat, 18 Jul 2026 02:21:38 -0400
 Subject: [PATCH 199/285] HACK: winewayland: Implement OpenGL throttling.
 
 Works around driver limitations.
+Retargeted onto current tree (was: egldrv_make_current / client-HWND
+surface_create / pre-viewport_rect waylanddrv.h); context now matches the
+shadow after wine-wayland prerequisites (steam overlay dispatch line,
+wp_color_management_surface_v1 destroy chain).
 ---
- dlls/win32u/opengl.c                   | 11 ++++++-
- dlls/winewayland.drv/opengl.c          | 41 ++++++++++++++++++++++++--
- dlls/winewayland.drv/wayland_surface.c |  6 +++-
- dlls/winewayland.drv/waylanddrv.h      |  3 ++
- 4 files changed, 57 insertions(+), 4 deletions(-)
+dlls/win32u/opengl.c                   | 11 ++++++++-
+ dlls/winewayland.drv/opengl.c          | 41 ++++++++++++++++++++++++++++++++--
+ dlls/winewayland.drv/wayland_surface.c |  4 ++++
+ dlls/winewayland.drv/waylanddrv.h      |  2 ++
 
 diff --git a/dlls/win32u/opengl.c b/dlls/win32u/opengl.c
-index bb3a2e0eae0..2f14eec6e85 100644
+index 1c73cd4..a00891c 100644
 --- a/dlls/win32u/opengl.c
 +++ b/dlls/win32u/opengl.c
-@@ -1604,10 +1604,19 @@ static BOOL egldrv_context_activate( struct opengl_context *context, struct open
+@@ -1717,10 +1717,19 @@ static BOOL egldrv_context_activate( struct opengl_context *context, struct open
  {
      const struct opengl_funcs *funcs = &display_funcs;
      const struct egl_platform *egl = &display_egl;
@@ -38,10 +41,11 @@ index bb3a2e0eae0..2f14eec6e85 100644
  
  static void egldrv_pbuffer_destroy( struct opengl_drawable *drawable )
 diff --git a/dlls/winewayland.drv/opengl.c b/dlls/winewayland.drv/opengl.c
-index 8a47f3d3e4b..80b0ec716ef 100644
+index 6a21cdc..fd46234 100644
 --- a/dlls/winewayland.drv/opengl.c
 +++ b/dlls/winewayland.drv/opengl.c
-@@ -105,5 +105,7 @@ static BOOL wayland_opengl_surface_create(struct client_surface *client, int for
+@@ -117,6 +117,8 @@ static BOOL wayland_opengl_surface_create(struct client_surface *client, int for
+     opengl_drawable_map_buffer(&gl->base, GL_FRONT_AND_BACK, GL_BACK);
      if (gl->base.stereo) opengl_drawable_map_buffer(&gl->base, GL_FRONT_RIGHT, GL_BACK_RIGHT);
  
 +    NtCreateEvent(&surface->throttle, EVENT_ALL_ACCESS, NULL, SynchronizationEvent, TRUE);
@@ -49,11 +53,8 @@ index 8a47f3d3e4b..80b0ec716ef 100644
      if (!(gl->wl_egl_window = wl_egl_window_create(surface->wl_surface, size.cx, size.cy))) goto err;
      if (!(gl->base.surface = funcs->p_eglCreateWindowSurface(egl->display, config, gl->wl_egl_window, attribs))) goto err;
      set_client_surface(hwnd, surface);
-@@ -129,20 +129,55 @@ static void wayland_drawable_flush(struct opengl_drawable *base, UINT flags)
- {
-     struct wayland_gl_drawable *gl = impl_from_opengl_drawable(base);
-     SIZE size = gl->base.client && gl->base.client->raw ? gl->base.monitor_size : gl->base.virtual_size;
-
+@@ -222,19 +224,54 @@ static void wayland_drawable_flush(struct opengl_drawable *base, UINT flags)
+ 
      TRACE("drawable %s, flags %#x\n", debugstr_opengl_drawable(base), flags);
  
 -    if (flags & GL_FLUSH_INTERVAL) funcs->p_eglSwapInterval(egl->display, abs(base->interval));
@@ -86,6 +87,7 @@ index 8a47f3d3e4b..80b0ec716ef 100644
      struct wayland_gl_drawable *gl = impl_from_opengl_drawable(base);
 +    struct wayland_client_surface *surface = impl_from_client_surface(base->client);
  
+     steam_overlay_opengl_dispatch( base );
      client_surface_present(base->client);
 +    if (base->interval && surface->toplevel)
 +    {
@@ -109,23 +111,25 @@ index 8a47f3d3e4b..80b0ec716ef 100644
  
      return TRUE;
 diff --git a/dlls/winewayland.drv/wayland_surface.c b/dlls/winewayland.drv/wayland_surface.c
-index 257b91356ec..9abfa5c435e 100644
+index ab2b8ac..bdef6ee 100644
 --- a/dlls/winewayland.drv/wayland_surface.c
 +++ b/dlls/winewayland.drv/wayland_surface.c
-@@ -1550,4 +1550,8 @@ static void wayland_client_surface_destroy(struct client_surface *client)
-
+@@ -1843,6 +1843,10 @@ static void wayland_client_surface_destroy(struct client_surface *client)
+ 
      TRACE("%s\n", debugstr_client_surface(client));
-
+ 
 +    if (surface->wl_callback)
 +        wl_callback_destroy(surface->wl_callback);
 +    if (surface->throttle)
 +        NtClose(surface->throttle);
+     if (surface->wp_content_type_v1)
+         wp_content_type_v1_destroy(surface->wp_content_type_v1);
      if (surface->color_management)
 diff --git a/dlls/winewayland.drv/waylanddrv.h b/dlls/winewayland.drv/waylanddrv.h
-index 2df573ae285..3d0c39d1650 100644
+index a4bdfe0..87cb52c 100644
 --- a/dlls/winewayland.drv/waylanddrv.h
 +++ b/dlls/winewayland.drv/waylanddrv.h
-@@ -363,7 +363,9 @@ struct wayland_client_surface
+@@ -365,6 +365,8 @@ struct wayland_client_surface
  {
      struct client_surface client;
      HWND toplevel;
@@ -134,7 +138,3 @@ index 2df573ae285..3d0c39d1650 100644
      RECT rect;
      struct wl_surface *wl_surface;
      struct wl_subsurface *wl_subsurface;
-     struct wp_color_management_surface_v1 *wp_color_management_surface_v1;
--- 
-2.55.0
-
