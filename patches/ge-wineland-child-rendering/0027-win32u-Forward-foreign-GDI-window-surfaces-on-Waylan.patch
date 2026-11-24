@@ -36,7 +36,7 @@ diff --git a/dlls/win32u/dce.c b/dlls/win32u/dce.c
 index 1f58163fc52..216ae9fa7f6 100644
 --- a/dlls/win32u/dce.c
 +++ b/dlls/win32u/dce.c
-@@ -24,12 +24,16 @@
+@@ -24,11 +24,15 @@
  #endif
  
  #include <assert.h>
@@ -44,7 +44,6 @@ index 1f58163fc52..216ae9fa7f6 100644
  #include <pthread.h>
 +#include <unistd.h>
  #include "ntstatus.h"
- #define WIN32_NO_STATUS
  #include "ntgdi_private.h"
  #include "ntuser_private.h"
 +#include "win32u_private.h"
@@ -492,7 +491,7 @@ index 1f58163fc52..216ae9fa7f6 100644
   * Dummy window surface for windows that shouldn't get painted.
   */
 @@ -858,6 +1293,7 @@ static void update_visible_region( struct dce *dce )
-     UINT raw_dpi;
+     struct ratio raw_dpi;
      DWORD layered_flags;
      WND *win;
 +    BOOL foreign = dce->hwnd && !is_current_process_window( dce->hwnd );
@@ -505,7 +504,7 @@ index 1f58163fc52..216ae9fa7f6 100644
      {
 +        struct window_surface *foreign_surface = NULL;
          RECT window_rect, toplevel_rect;
-         UINT dpi;
+         struct ratio dpi;
  
 +        if (foreign && user_driver->pUseForeignGdiBridge())
 +            foreign_surface = foreign_gdi_surface_get( dce->hwnd, &win_rect );
@@ -800,9 +799,9 @@ index 4612a14d30d..f93ae4cc8d3 100644
  static const struct user_driver_funcs waylanddrv_funcs =
  {
      .pActivateWindow = WAYLAND_ActivateWindow,
-@@ -62,6 +67,7 @@ static const struct user_driver_funcs waylanddrv_funcs =
-     .pWindowPosChanged = WAYLAND_WindowPosChanged,
+@@ -64,6 +64,7 @@ static const struct user_driver_funcs waylanddrv_funcs =
      .pWindowPosChanging = WAYLAND_WindowPosChanging,
+     .pCreateClientSurface = WAYLAND_CreateClientSurface,
      .pCreateWindowSurface = WAYLAND_CreateWindowSurface,
 +    .pUseForeignGdiBridge = WAYLAND_UseForeignGdiBridge,
      .pGetWindowStyleMasks = WAYLAND_GetWindowStyleMasks,
@@ -816,19 +815,19 @@ index 455e090512c..4e3c3d04d03 100644
  };
  
  /* increment this when you change the DC function table */
--#define WINE_GDI_DRIVER_VERSION 110
-+#define WINE_GDI_DRIVER_VERSION 111
+-#define WINE_GDI_DRIVER_VERSION 111
++#define WINE_GDI_DRIVER_VERSION 112
  
  #define GDI_PRIORITY_NULL_DRV        0  /* null driver */
  #define GDI_PRIORITY_FONT_DRV      100  /* any font driver */
-@@ -469,6 +469,7 @@ struct user_driver_funcs
+@@ -478,6 +478,7 @@ struct user_driver_funcs
      BOOL    (*pCreateWindowSurface)(HWND,BOOL,const RECT *,struct window_surface**);
      void    (*pMoveWindowBits)(HWND,const struct window_rects *,const struct window_rects *,const RECT *);
      void    (*pWindowPosChanged)(HWND,HWND,HWND,UINT,const struct window_rects*,struct window_surface*);
 +    BOOL    (*pUseForeignGdiBridge)(void);
+     BOOL    (*pHasWindowManager)(const char *name);
      /* system parameters */
      BOOL    (*pSystemParametersInfo)(UINT,UINT,void*,UINT);
-     /* wintab support */
 diff --git a/include/wine/hwnd_dmabuf.h b/include/wine/hwnd_dmabuf.h
 index 8646bb7dd09..25ce5fefa23 100644
 --- a/include/wine/hwnd_dmabuf.h

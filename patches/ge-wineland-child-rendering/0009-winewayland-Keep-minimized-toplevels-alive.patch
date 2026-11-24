@@ -19,10 +19,10 @@ diff --git a/dlls/winewayland.drv/wayland_surface.c b/dlls/winewayland.drv/wayla
 index d2db1574756..582716fa024 100644
 --- a/dlls/winewayland.drv/wayland_surface.c
 +++ b/dlls/winewayland.drv/wayland_surface.c
-@@ -3419,6 +3419,25 @@ err:
+@@ -3810,6 +3810,25 @@ err:
      return NULL;
  }
- 
+
 +static BOOL wayland_surface_has_live_role(struct wayland_surface *surface)
 +{
 +    switch (surface->role)
@@ -42,18 +42,18 @@ index d2db1574756..582716fa024 100644
 +    return FALSE;
 +}
 +
- void wayland_client_surface_attach(struct wayland_client_surface *client, HWND toplevel)
+ void wayland_client_surface_attach(struct wayland_client_surface *client, HWND toplevel, const RECT *rect)
  {
      struct wayland_win_data *toplevel_data;
-@@ -3441,7 +3460,7 @@ void wayland_client_surface_attach(struct wayland_client_surface *client, HWND t
- 
+@@ -3832,7 +3851,7 @@ void wayland_client_surface_attach(struct wayland_client_surface *client, HWND t
+
      if (!(toplevel_data = wayland_win_data_get(toplevel)) ||
          !(surface = toplevel_data->wayland_surface) ||
 -        surface->role == WAYLAND_SURFACE_ROLE_NONE)
 +        !wayland_surface_has_live_role(surface))
      {
          if (toplevel_data) wayland_win_data_release(toplevel_data);
-         return wayland_client_surface_attach(client, NULL);
+         return wayland_client_surface_attach(client, NULL, NULL);
 diff --git a/dlls/winewayland.drv/window.c b/dlls/winewayland.drv/window.c
 index ad2397bfb49..44c6c58af37 100644
 --- a/dlls/winewayland.drv/window.c
@@ -61,7 +61,7 @@ index ad2397bfb49..44c6c58af37 100644
 @@ -253,6 +253,15 @@ static BOOL rect_intersects_virtual_screen(const RECT *rect)
      return intersect_rect(&intersect, rect, &virtual_rect);
  }
- 
+
 +static BOOL should_keep_minimized_toplevel_mapped(struct wayland_surface *surface)
 +{
 +    if (!surface || surface->role != WAYLAND_SURFACE_ROLE_TOPLEVEL) return FALSE;
@@ -76,11 +76,11 @@ index ad2397bfb49..44c6c58af37 100644
                                                      struct wayland_surface *owner_surface,
 @@ -277,7 +286,8 @@ static BOOL wayland_win_data_create_wayland_surface(struct wayland_win_data *dat
          visible = visible && layer_set;
- 
+
      if (visible && !owner_surface && !use_layer_shell && !toplevel_surface &&
 -        !rect_intersects_virtual_screen(&data->rects.window))
 +        !rect_intersects_virtual_screen(&data->rects.window) &&
 +        !should_keep_minimized_toplevel_mapped(surface))
          visible = FALSE;
- 
+
      if (!visible) role = WAYLAND_SURFACE_ROLE_NONE;

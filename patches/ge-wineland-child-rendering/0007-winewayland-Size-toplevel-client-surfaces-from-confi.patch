@@ -10,32 +10,28 @@ reading the live Win32 client rect. This keeps the parent surface and
 client subsurface in the same geometry generation during configure/rawpos
 transitions, avoiding transient misplacement of custom frame controls.
 ---
- dlls/winewayland.drv/wayland_surface.c | 15 +++++++++++++--
- 1 file changed, 13 insertions(+), 2 deletions(-)
+ dlls/winewayland.drv/wayland_surface.c | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
 
 diff --git a/dlls/winewayland.drv/wayland_surface.c b/dlls/winewayland.drv/wayland_surface.c
 index 4247fe1629b..14c20cb9cb8 100644
 --- a/dlls/winewayland.drv/wayland_surface.c
 +++ b/dlls/winewayland.drv/wayland_surface.c
-@@ -3468,8 +3468,19 @@ void wayland_client_surface_attach(struct wayland_client_surface *client, HWND t
+@@ -3862,6 +3862,17 @@ void wayland_client_surface_attach(struct wayland_client_surface *client, HWND t
          TRACE("Created subsurface for toplevel=%p\n", toplevel);
      }
  
--    NtUserGetClientRect(hwnd, &client_rect, NtUserGetWinMonitorDpi(hwnd, MDT_RAW_DPI));
--    NtUserMapWindowPoints(hwnd, toplevel, (POINT *)&client_rect, 2, NtUserGetWinMonitorDpi(hwnd, MDT_RAW_DPI));
-+    if (hwnd == toplevel)
++    if (client->client.hwnd == toplevel)
 +    {
 +        /* Keep own-toplevel client surfaces in the same geometry generation as
 +         * the parent surface during xdg configure / rawpos transitions. */
-+        SetRect(&client_rect, 0, 0,
++        RECT configured_rect;
++        SetRect(&configured_rect, 0, 0,
 +                surface->window.client_rect.right - surface->window.client_rect.left,
 +                surface->window.client_rect.bottom - surface->window.client_rect.top);
++        rect = &configured_rect;
 +    }
-+    else
-+    {
-+        NtUserGetClientRect(hwnd, &client_rect, NtUserGetWinMonitorDpi(hwnd, MDT_RAW_DPI));
-+        NtUserMapWindowPoints(hwnd, toplevel, (POINT *)&client_rect, 2, NtUserGetWinMonitorDpi(hwnd, MDT_RAW_DPI));
-+    }
- 
-     if (wayland_surface_reconfigure_client(surface, client, &client_rect))
++
+     if (wayland_surface_reconfigure_client(surface, client, rect))
      {
+         /* Commit to apply subsurface positioning. */

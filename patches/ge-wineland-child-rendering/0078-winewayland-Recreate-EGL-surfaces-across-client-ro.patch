@@ -15,37 +15,43 @@ surface after a role transition while preserving and rebinding its current
 context. Also recover once from an unexpected EGL_BAD_SURFACE so later
 detach/reparent transitions cannot leave the drawable permanently unusable.
 ---
- dlls/winewayland.drv/opengl.c          | 105 +++++++++++++++++++--
+ dlls/winewayland.drv/opengl.c          | 118 ++++++++++++++++++++--
  dlls/winewayland.drv/wayland_surface.c |   3 +
  dlls/winewayland.drv/waylanddrv.h      |   1 +
- 3 files changed, 100 insertions(+), 9 deletions(-)
+ 3 files changed, 109 insertions(+), 15 deletions(-)
 
 diff --git a/dlls/winewayland.drv/opengl.c b/dlls/winewayland.drv/opengl.c
 index 91a336f..424c1eb 100644
 --- a/dlls/winewayland.drv/opengl.c
 +++ b/dlls/winewayland.drv/opengl.c
-@@ -114,6 +114,9 @@ struct wayland_gl_drawable
+@@ -114,6 +114,10 @@ struct wayland_gl_drawable
  {
      struct opengl_drawable base;
      struct wl_egl_window *wl_egl_window;
 +    EGLConfig config;
 +    LONG attachment_generation;
 +    BOOL present_opaque;
++    BOOL srgb_capable;
      BOOL swap_interval_initialized;
      BOOL manual_frame_throttle;
  };
-@@ -147,11 +150,80 @@ static void wayland_gl_drawable_sync_size(struct wayland_gl_drawable *gl)
+@@ -147,6 +151,81 @@ static void wayland_gl_drawable_sync_size(struct wayland_gl_drawable *gl)
      wl_egl_window_resize(gl->wl_egl_window, client_width, client_height, 0, 0);
  }
- 
+
 +static EGLSurface wayland_gl_drawable_create_egl_surface(struct wayland_gl_drawable *gl)
 +{
-+    EGLint attribs[4], *attrib = attribs;
++    EGLint attribs[5], *attrib = attribs;
 +
 +    if (gl->present_opaque)
 +    {
 +        *attrib++ = EGL_PRESENT_OPAQUE_EXT;
 +        *attrib++ = EGL_TRUE;
++    }
++    if (gl->srgb_capable)
++    {
++        *attrib++ = EGL_GL_COLORSPACE;
++        *attrib++ = EGL_GL_COLORSPACE_SRGB;
 +    }
 +    *attrib++ = EGL_NONE;
 +
@@ -108,54 +114,52 @@ index 91a336f..424c1eb 100644
 +    return TRUE;
 +}
 +
- static BOOL wayland_opengl_surface_create(HWND hwnd, BOOL raw, int format, struct opengl_drawable **drawable)
+ static BOOL wayland_opengl_surface_create(struct client_surface *client, int format, struct opengl_drawable **drawable)
  {
-     EGLConfig config = egl_config_for_format(format);
-     struct wayland_client_surface *client;
--    EGLint attribs[4], *attrib = attribs;
-     struct opengl_drawable *previous;
-     struct wayland_gl_drawable *gl;
-     RECT rect;
-@@ -166,12 +238,6 @@ static BOOL wayland_opengl_surface_create(HWND hwnd, BOOL raw, int format, struc
- 
-     if (!egl->has_EGL_EXT_present_opaque)
+     struct wayland_client_surface *surface = impl_from_client_surface(client);
+@@ -164,15 +242,4 @@ static BOOL wayland_opengl_surface_create(struct client_surface *client, int for
+     if (!egl->extensions[EGL_EXT_present_opaque])
          WARN("Missing EGL_EXT_present_opaque extension\n");
 -    else
 -    {
 -        *attrib++ = EGL_PRESENT_OPAQUE_EXT;
 -        *attrib++ = EGL_TRUE;
 -    }
+-    if (desc.framebuffer_srgb_capable)
+-    {
+-        *attrib++ = EGL_GL_COLORSPACE;
+-        *attrib++ = EGL_GL_COLORSPACE_SRGB;
+-    }
 -    *attrib++ = EGL_NONE;
- 
-     if (!(client = wayland_client_surface_create(hwnd))) return FALSE;
-     gl = opengl_drawable_create(sizeof(*gl), &wayland_drawable_funcs, format, &client->client);
-@@ -181,11 +247,14 @@ static BOOL wayland_opengl_surface_create(HWND hwnd, BOOL raw, int format, struc
-     gl->base.buffer_map[1] = GL_BACK_RIGHT;
-     gl->base.buffer_map[GL_FRONT - GL_FRONT_LEFT] = GL_BACK;
-     gl->base.buffer_map[GL_FRONT_AND_BACK - GL_FRONT_LEFT] = GL_BACK;
+
+     if (!(gl = opengl_drawable_create(&wayland_drawable_funcs, format, client, NULL))) return FALSE;
+@@ -182,9 +249,13 @@ static BOOL wayland_opengl_surface_create(struct client_surface *client, int for
+     opengl_drawable_map_buffer(&gl->base, GL_FRONT, GL_BACK);
+     opengl_drawable_map_buffer(&gl->base, GL_FRONT_AND_BACK, GL_BACK);
+     if (gl->base.stereo) opengl_drawable_map_buffer(&gl->base, GL_FRONT_RIGHT, GL_BACK_RIGHT);
 +    gl->config = config;
-+    gl->present_opaque = egl->has_EGL_EXT_present_opaque;
-+    gl->attachment_generation = ReadAcquire(&client->attachment_generation);
- 
-     NtCreateEvent(&client->throttle, EVENT_ALL_ACCESS, NULL, SynchronizationEvent, TRUE);
- 
-     if (!(gl->wl_egl_window = wl_egl_window_create(client->wl_surface, rect.right, rect.bottom))) goto err;
++    gl->present_opaque = egl->extensions[EGL_EXT_present_opaque];
++    gl->srgb_capable = desc.framebuffer_srgb_capable;
++    gl->attachment_generation = ReadAcquire(&surface->attachment_generation);
+
+     NtCreateEvent(&surface->throttle, EVENT_ALL_ACCESS, NULL, SynchronizationEvent, TRUE);
+
+     if (!(gl->wl_egl_window = wl_egl_window_create(surface->wl_surface, size.cx, size.cy))) goto err;
 -    if (!(gl->base.surface = funcs->p_eglCreateWindowSurface(egl->display, config, gl->wl_egl_window, attribs))) goto err;
 +    if (!(gl->base.surface = wayland_gl_drawable_create_egl_surface(gl))) goto err;
-     set_client_surface(hwnd, client);
- 
-     TRACE("Created drawable %s with egl_surface %p\n", debugstr_opengl_drawable(&gl->base), gl->base.surface);
-@@ -244,11 +313,20 @@ static BOOL wayland_drawable_swap(struct opengl_drawable *base)
+     set_client_surface(hwnd, surface);
+@@ -321,10 +392,19 @@ static BOOL wayland_drawable_swap(struct opengl_drawable *base)
      struct wayland_gl_drawable *gl = impl_from_opengl_drawable(base);
      struct wayland_client_surface *surface = impl_from_client_surface(base->client);
      struct wl_callback *callback;
 +    LONG attachment_generation;
 +    EGLint error;
- 
+
+     steam_overlay_opengl_dispatch( base );
      client_surface_present(base->client);
      if (!surface->toplevel && !surface->hwnd_dmabuf_producer)
          return TRUE;
- 
+
 +    attachment_generation = ReadAcquire(&surface->attachment_generation);
 +    if (gl->attachment_generation != attachment_generation)
 +    {
@@ -164,9 +168,7 @@ index 91a336f..424c1eb 100644
 +    }
 +
      if (!gl->swap_interval_initialized)
-     {
-         gl->manual_frame_throttle = funcs->p_eglSwapInterval(egl->display, 0);
-@@ -279,7 +357,16 @@ static BOOL wayland_drawable_swap(struct opengl_drawable *base)
+@@ -357,7 +437,16 @@ static BOOL wayland_drawable_swap(struct opengl_drawable *base)
          }
      }
      if (!funcs->p_eglSwapBuffers(egl->display, gl->base.surface))
@@ -181,41 +183,41 @@ index 91a336f..424c1eb 100644
 +        }
 +        ERR("eglSwapBuffers failed with error %#x.\n", error);
 +    }
- 
+
      return TRUE;
  }
 diff --git a/dlls/winewayland.drv/wayland_surface.c b/dlls/winewayland.drv/wayland_surface.c
 index 0c9a43e..08d5a4c 100644
 --- a/dlls/winewayland.drv/wayland_surface.c
 +++ b/dlls/winewayland.drv/wayland_surface.c
-@@ -4639,6 +4639,7 @@ void wayland_client_surface_attach(struct wayland_client_surface *client, HWND t
+@@ -4996,6 +4996,7 @@ void wayland_client_surface_attach(struct wayland_client_surface *client, HWND t
              wl_subsurface_destroy(client->wl_subsurface);
              client->wl_subsurface = NULL;
              client->toplevel_wl_surface = NULL;
 +            InterlockedIncrement(&client->attachment_generation);
          }
- 
+
          SetRect(&client->viewport_rect, -INT32_MAX, 0, -INT32_MAX, 0);
-@@ -4671,6 +4672,8 @@ void wayland_client_surface_attach(struct wayland_client_surface *client, HWND t
+@@ -5033,5 +5033,7 @@ void wayland_client_surface_attach(struct wayland_client_surface *client, HWND t
                                              surface->wl_surface);
          if (!client->wl_subsurface) goto done;
- 
+
 +        InterlockedIncrement(&client->attachment_generation);
 +
          /* If the parent wl_surface changes, then the subsurface will be reattached.
           * So this place_above only need to be done once on attach. If two child windows
-          * are on top of each other then the composition behavior depends on the clip rect
 diff --git a/dlls/winewayland.drv/waylanddrv.h b/dlls/winewayland.drv/waylanddrv.h
 index 1d49ff2..7ae1ce1 100644
 --- a/dlls/winewayland.drv/waylanddrv.h
 +++ b/dlls/winewayland.drv/waylanddrv.h
-@@ -445,6 +445,7 @@ struct wayland_client_surface
+@@ -438,7 +438,8 @@ struct wayland_client_surface
      struct client_surface client;
      HWND toplevel;
      HANDLE throttle;
 +    LONG attachment_generation;
-     RECT viewport_rect;
      struct wl_callback *wl_callback;
+     RECT rect;
+     RECT viewport_rect;
      BOOL hwnd_dmabuf_producer;
--- 
+--
 2.51.0

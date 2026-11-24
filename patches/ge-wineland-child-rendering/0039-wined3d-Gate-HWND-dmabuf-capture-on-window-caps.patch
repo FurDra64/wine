@@ -93,7 +93,7 @@ index 7adae6b9c4c..2fd564b2ff7 100644
      struct wined3d_context *context;
  
      context = context_acquire(swapchain->device, swapchain->front_buffer, 0);
-@@ -1309,9 +1347,12 @@ static void swapchain_gl_present(struct wined3d_swapchain *swapchain,
+@@ -1325,5 +1363,14 @@ static void swapchain_gl_present(struct wined3d_swapchain *swapchain,
      }
  
      TRACE("Presenting DC %p.\n", context_gl->dc);
@@ -101,30 +101,31 @@ index 7adae6b9c4c..2fd564b2ff7 100644
 +    hwnd_dmabuf_present = wined3d_gl_hwnd_dmabuf_should_present(wined3d_swapchain_gl(swapchain),
 +            gl_info, flags);
  
-     /* The gated dmabuf path captures below without updating the window. */
--    if (flags & WINED3D_PRESENT_NO_WINDOW_UPDATE)
++    /* The gated dmabuf path captures below without updating the window. */
 +    if (hwnd_dmabuf_present)
-     {
-         TRACE("Skipping window update.\n");
++    {
++        TRACE("Skipping window update.\n");
++    }
++
+     pixel_format = &wined3d_adapter_gl(swapchain->device->adapter)->pixel_formats[context_gl->pixel_format - 1];
+@@ -1335,8 +1382,6 @@ static void swapchain_gl_present(struct wined3d_swapchain *swapchain,
      }
-@@ -1326,8 +1367,6 @@ static void swapchain_gl_present(struct wined3d_swapchain *swapchain,
-         }
-         else
-         {
--            gl_info = context_gl->gl_info;
+     else
+     {
+-        gl_info = context_gl->gl_info;
 -
-             swapchain_gl_set_swap_interval(swapchain, context_gl, swap_interval);
+         swapchain_gl_set_swap_interval(swapchain, context_gl, swap_interval);
  
-             wined3d_texture_load_location(back_buffer, 0, context, back_buffer->resource.draw_binding);
-@@ -1345,6 +1384,7 @@ static void swapchain_gl_present(struct wined3d_swapchain *swapchain,
-         }
+         wined3d_texture_load_location(back_buffer, 0, context, back_buffer->resource.draw_binding);
+@@ -1353,6 +1398,7 @@ static void swapchain_gl_present(struct wined3d_swapchain *swapchain,
+         gl_info->gl_ops.wgl.p_wglSwapBuffers(context_gl->dc);
      }
  
 +    if (hwnd_dmabuf_present)
      {
          struct wined3d_gl_hwnd_dmabuf_ring *ring = &wined3d_swapchain_gl(swapchain)->hwnd_dmabuf;
  
-@@ -1360,7 +1400,7 @@ static void swapchain_gl_present(struct wined3d_swapchain *swapchain,
+@@ -1368,7 +1414,7 @@ static void swapchain_gl_present(struct wined3d_swapchain *swapchain,
  
      TRACE("SwapBuffers called, Starting new frame\n");
  

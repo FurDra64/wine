@@ -50,7 +50,7 @@ diff --git a/dlls/win32u/win32u_private.h b/dlls/win32u/win32u_private.h
 index a3a3afc94b5c70ba0922331a94be28ed34f9f4f4..3363c48906fc39d9781d258eaaa3f168f936a7ed 100644
 --- a/dlls/win32u/win32u_private.h
 +++ b/dlls/win32u/win32u_private.h
-@@ -321,7 +321,7 @@ extern BOOL is_window_unicode( HWND hwnd );
+@@ -349,7 +349,7 @@ extern BOOL is_window_unicode( HWND hwnd );
  extern BOOL is_window_visible( HWND hwnd );
  extern BOOL is_zoomed( HWND hwnd );
  extern BOOL set_window_pixel_format( HWND hwnd, int format, BOOL internal );
@@ -58,7 +58,7 @@ index a3a3afc94b5c70ba0922331a94be28ed34f9f4f4..3363c48906fc39d9781d258eaaa3f168
 +extern BOOL set_window_surface_clip( HWND hwnd, BOOL enable );
  extern int get_window_pixel_format( HWND hwnd );
  extern DWORD get_window_long( HWND hwnd, INT offset );
- extern ULONG_PTR get_window_long_ptr( HWND hwnd, INT offset, BOOL ansi );
+ extern UINT get_window_fnid( HWND hwnd );
 diff --git a/dlls/win32u/window.c b/dlls/win32u/window.c
 index b19822ee9de273749ff6674957d91642f8ca4ac3..16b6620c7819d10de094622530c437c572a84b19 100644
 --- a/dlls/win32u/window.c
@@ -496,7 +496,7 @@ index 18c8387e4f4910e2a422a2fc0c744aac173e9c0d..8f66e801c267c76e24a134e137f48359
  
      /* some objects are shared between several roles */
  
-@@ -2303,9 +1999,8 @@ static void wayland_surface_reconfigure_client(struct wayland_surface *surface,
+@@ -2523,9 +2219,8 @@ static void wayland_surface_reconfigure_client(struct wayland_surface *surface,
          if (client->wl_subsurface)
          {
              wl_subsurface_set_position(client->wl_subsurface, rect.left, rect.top);
@@ -507,7 +507,7 @@ index 18c8387e4f4910e2a422a2fc0c744aac173e9c0d..8f66e801c267c76e24a134e137f48359
 +                                      wayland_surface_client_stack_anchor(surface));
          }
  
-         if (rect.left != rect.right && rect.top != rect.bottom)
+     client->rect = *client_rect;
 @@ -2544,10 +2239,10 @@ static BOOL wayland_hwnd_dmabuf_surface_compute_geometry(struct wayland_surface
  
  static void wayland_hwnd_dmabuf_surface_apply_geometry(struct wayland_hwnd_dmabuf_surface *surface,
@@ -760,7 +760,7 @@ index 18c8387e4f4910e2a422a2fc0c744aac173e9c0d..8f66e801c267c76e24a134e137f48359
 @@ -3834,12 +3559,6 @@ static void wayland_client_surface_detach(struct client_surface *client)
      {
          if (data->client_surface == surface) data->client_surface = NULL;
-         wayland_client_surface_attach(surface, NULL);
+         wayland_client_surface_attach(surface, NULL, NULL);
 -        /* the occluder is gone, GDI children show through the base again */
 -        if (data->wayland_surface && !wl_list_empty(&data->wayland_surface->child_overlays))
 -        {
@@ -783,14 +783,14 @@ index 18c8387e4f4910e2a422a2fc0c744aac173e9c0d..8f66e801c267c76e24a134e137f48359
  
          SetRect(&client->viewport_rect, -INT32_MAX, 0, -INT32_MAX, 0);
 @@ -4050,7 +3772,8 @@ void wayland_client_surface_attach(struct wayland_client_surface *client, HWND t
-         return wayland_client_surface_attach(client, NULL);
+         return wayland_client_surface_attach(client, NULL, NULL);
      }
  
 -    if (client->toplevel != toplevel)
 +    if (client->toplevel != toplevel ||
 +        client->toplevel_wl_surface != surface->wl_surface)
      {
-         wayland_client_surface_attach(client, NULL);
+         wayland_client_surface_attach(client, NULL, NULL);
  
 @@ -4068,8 +3791,13 @@ void wayland_client_surface_attach(struct wayland_client_surface *client, HWND t
  
@@ -831,9 +831,8 @@ diff --git a/dlls/winewayland.drv/waylanddrv.h b/dlls/winewayland.drv/waylanddrv
 index 8d48f750a88b99a4b8e59640d622c34392d9c82d..ad81378f8739fa83e0b4a71c327a1eb31b741ed0 100644
 --- a/dlls/winewayland.drv/waylanddrv.h
 +++ b/dlls/winewayland.drv/waylanddrv.h
-@@ -441,6 +441,7 @@ struct wayland_client_surface
+@@ -442,5 +442,6 @@ struct wayland_client_surface
      BOOL hwnd_dmabuf_producer;
-     RECT rect;
      struct wl_surface *wl_surface;
 +    const struct wl_surface *toplevel_wl_surface;
      struct wl_subsurface *wl_subsurface;
@@ -869,9 +868,9 @@ index 8d48f750a88b99a4b8e59640d622c34392d9c82d..ad81378f8739fa83e0b4a71c327a1eb3
 -    } entries[];
 -};
 -
+ extern struct wayland_client_surface *impl_from_client_surface(struct client_surface *client);
+ 
  struct wayland_shm_buffer
- {
-     struct wl_list link;
 @@ -551,16 +526,12 @@ struct wayland_surface
       * The opengl implementation is already merged. Then we would only need to ensure contents via expose. */
      enum wayland_surface_ensure_type ensured_contents;
@@ -894,10 +893,10 @@ index 8d48f750a88b99a4b8e59640d622c34392d9c82d..ad81378f8739fa83e0b4a71c327a1eb3
      HRGN child_region;
      BOOL shaped;
      BOOL occlusion_clipped;
-@@ -623,12 +594,6 @@ void wayland_surface_sync_window_regions(struct wayland_surface *surface,
-                                          struct window_surface *window_surface);
- void wayland_surface_prepare_direct_dmabuf_shm_commit(struct wayland_surface *surface);
+@@ -643,12 +614,6 @@ void wayland_surface_sync_window_regions(struct wayland_surface *surface,
  void wayland_surface_finish_direct_dmabuf_shm_commit(struct wayland_surface *surface);
+ void wayland_client_surface_attach(struct wayland_client_surface *client, HWND toplevel, const RECT *rect);
+ void wayland_client_surface_attach_image_description(struct wayland_client_surface *surface,
 -struct child_overlay_snapshot *child_overlays_snapshot(HWND hwnd);
 -void wayland_surface_apply_child_overlays(struct wayland_surface *surface,
 -                                          struct wayland_shm_buffer *shm_buffer,
@@ -950,7 +949,7 @@ index 9b3f45346520578bb3c61d8e62775443f3008fdd..1d7a0b8683e32a0c5d45fd324a2655cb
      wayland_win_data_destroy(data);
  }
  
-@@ -795,12 +789,9 @@ void WAYLAND_WindowPosChanged(HWND hwnd, HWND insert_after, HWND owner_hint, UIN
+@@ -844,13 +838,10 @@ void WAYLAND_WindowPosChanged(HWND hwnd, HWND insert_after, HWND owner_hint, UIN
                                const struct window_rects *new_rects, struct window_surface *surface)
  {
      HWND toplevel = NtUserGetAncestor(hwnd, GA_ROOT), owner = NULL, menu_popup_owner = NULL;
@@ -964,11 +963,11 @@ index 9b3f45346520578bb3c61d8e62775443f3008fdd..1d7a0b8683e32a0c5d45fd324a2655cb
 +    struct wayland_win_data *data, *toplevel_data, *owner_data;
      BOOL managed, fullscreen = swp_flags & WINE_SWP_FULLSCREEN;
      BOOL tray_menu = swp_flags & WINE_SWP_TRAY_MENU;
+     BOOL notification = FALSE;
      BOOL use_layer_shell = FALSE;
-@@ -827,18 +818,7 @@ void WAYLAND_WindowPosChanged(HWND hwnd, HWND insert_after, HWND owner_hint, UIN
+@@ -882,17 +873,6 @@ void WAYLAND_WindowPosChanged(HWND hwnd, HWND insert_after, HWND owner_hint, UIN
            hwnd, toplevel, owner, owner_hint, menu_popup_owner, debugstr_window_rects(new_rects),
            insert_after, swp_flags);
- 
 -    /* A child moved, restacked or changed visibility. Snapshot the toplevel's
 -     * overlay stack outside win_data_mutex so overlays track the window tree
 -     * without waiting for the next GDI flush. */
@@ -1159,9 +1158,8 @@ index 45b64912cedc43ba554316675591c513b408ab46..a5e657ec746accde4bb98565b8d31263
  static struct rectangle monitors_get_union_rect( struct winstation *winstation, int is_raw )
  {
      struct monitor_info *monitor, *end;
-@@ -466,7 +478,7 @@ static int set_parent_window( struct window *win, struct window *parent )
-             SHARED_WRITE_END;
-         }
+@@ -455,6 +467,6 @@ static int set_parent_window( struct window *win, struct window *parent )
+         SHARED_WRITE_END;
  
 -        if (win->paint_flags & (PAINT_HAS_PIXEL_FORMAT | PAINT_CLIP_CLIENT | PAINT_CLIP_CLIENT_CHILD))
 +        if (window_has_punch_through_content( win ))

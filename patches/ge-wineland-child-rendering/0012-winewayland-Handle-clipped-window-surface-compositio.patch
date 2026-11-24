@@ -82,7 +82,7 @@ index 30cb7ec0e0e..c59e1855392 100644
      struct wayland_window_config window, comitted;
      RECT geometry;
      int content_width, content_height;
-@@ -578,6 +580,8 @@ BOOL wayland_surface_get_max_track_size(struct wayland_surface *surface, SIZE *s
+@@ -576,5 +576,7 @@ BOOL wayland_surface_has_hwnd_dmabuf_content(struct wayland_surface *surface);
  BOOL wayland_surface_has_hwnd_dmabuf_content(struct wayland_surface *surface);
  void wayland_surface_sync_shape_input_region(struct wayland_surface *surface, HRGN shape_region);
  void wayland_surface_sync_window_input_region(struct wayland_surface *surface);
@@ -90,17 +90,15 @@ index 30cb7ec0e0e..c59e1855392 100644
 +void wayland_surface_set_occlusion_clip(struct wayland_surface *surface, BOOL clipped);
  void wayland_surface_prepare_direct_dmabuf_shm_commit(struct wayland_surface *surface);
  void wayland_surface_finish_direct_dmabuf_shm_commit(struct wayland_surface *surface);
- struct child_overlay_snapshot *child_overlays_snapshot(HWND hwnd);
 diff --git a/dlls/winewayland.drv/window.c b/dlls/winewayland.drv/window.c
 index dbe42950561..2ad1180d573 100644
 --- a/dlls/winewayland.drv/window.c
 +++ b/dlls/winewayland.drv/window.c
-@@ -265,7 +265,8 @@ static BOOL should_keep_minimized_toplevel_mapped(struct wayland_surface *surfac
- static BOOL wayland_win_data_create_wayland_surface(struct wayland_win_data *data,
-                                                     struct wayland_surface *toplevel_surface,
+@@ -267,6 +267,7 @@ static BOOL should_keep_minimized_toplevel_mapped(struct wayland_surface *surfac
                                                      struct wayland_surface *owner_surface,
--                                                    BOOL use_layer_shell)
-+                                                    BOOL use_layer_shell,
+                                                     BOOL use_layer_shell,
+-                                                    BOOL layer_menu)
++                                                    BOOL layer_menu,
 +                                                    struct window_surface *window_surface)
  {
      struct wayland_client_surface *client = data->client_surface;
@@ -114,12 +112,12 @@ index dbe42950561..2ad1180d573 100644
  
      /* Size/position changes affect the effective pointer constraint, so update
       * it as needed. */
-@@ -837,7 +840,7 @@ void WAYLAND_WindowPosChanged(HWND hwnd, HWND insert_after, HWND owner_hint, UIN
+@@ -898,7 +898,7 @@ void WAYLAND_WindowPosChanged(HWND hwnd, HWND insert_after, HWND owner_hint, UIN
          }
      }
      else if (wayland_win_data_create_wayland_surface(data, toplevel_surface, owner_surface,
--                                                     use_layer_shell))
-+                                                     use_layer_shell, surface))
+-                                                     use_layer_shell, tray_menu))
++                                                     use_layer_shell, tray_menu, surface))
      {
          wayland_win_data_update_wayland_state(data);
      }

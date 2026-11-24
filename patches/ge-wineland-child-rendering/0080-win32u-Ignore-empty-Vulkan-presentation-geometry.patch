@@ -1,4 +1,4 @@
-From da79178bb86534cce39db86ee2fa0abe60146ad2 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Erhan Bilgili <erhan.bilgili@gmail.com>
 Date: Tue, 28 Jul 2026 10:36:39 +0200
 Subject: [PATCH] win32u: Ignore empty Vulkan presentation geometry.
@@ -22,11 +22,11 @@ diff --git a/dlls/win32u/vulkan.c b/dlls/win32u/vulkan.c
 index 27c0a9a1a0c..551d3bd7406 100644
 --- a/dlls/win32u/vulkan.c
 +++ b/dlls/win32u/vulkan.c
-@@ -1911,6 +1911,12 @@ static BOOL get_surface_rect( HWND hwnd, RECT *rect, UINT dpi )
+@@ -2691,6 +2691,12 @@ static BOOL get_surface_rect( HWND hwnd, RECT *rect, struct ratio dpi )
      return TRUE;
  }
- 
-+static BOOL get_swapchain_surface_rect( HWND hwnd, RECT *rect, UINT dpi )
+
++static BOOL get_swapchain_surface_rect( HWND hwnd, RECT *rect, struct ratio dpi )
 +{
 +    if (!get_surface_rect( hwnd, rect, dpi )) return FALSE;
 +    return !IsRectEmpty( rect );
@@ -35,53 +35,47 @@ index 27c0a9a1a0c..551d3bd7406 100644
  static void adjust_surface_capabilities( struct vulkan_instance *instance, struct surface *surface,
                                           VkSurfaceCapabilitiesKHR *capabilities )
  {
-@@ -3450,7 +3456,7 @@ static VkResult managed_acquire( struct vulkan_device *device, struct swapchain
- 
+@@ -4535,7 +4541,7 @@ static VkResult managed_acquire( struct vulkan_device *device, struct swapchain
+
      if (res) return res;
- 
+
 -    if (get_surface_rect( surface->hwnd, &client_rect, NtUserGetDpiForWindow( surface->hwnd ) ) &&
 +    if (get_swapchain_surface_rect( surface->hwnd, &client_rect, NtUserGetDpiForWindow( surface->hwnd ) ) &&
          !extents_equals( &managed->extents, &client_rect ))
          return VK_SUBOPTIMAL_KHR;
- 
-@@ -3660,7 +3666,7 @@ static VkResult managed_present( struct vulkan_device *device, struct vulkan_que
+
+@@ -4745,7 +4751,7 @@ static VkResult managed_present( struct vulkan_device *device, struct vulkan_que
      else if (consumer_state == WINE_MANAGED_CONSUMER_UNKNOWN)
          managed_consumer_request_state( managed );
- 
+
 -    if (res >= VK_SUCCESS && !extents_equals( &managed->extents, &client_rect ))
 +    if (res >= VK_SUCCESS && !IsRectEmpty( &client_rect ) && !extents_equals( &managed->extents, &client_rect ))
          res = VK_SUBOPTIMAL_KHR;
- 
+
      return res;
-@@ -3705,7 +3711,7 @@ static VkResult win32u_vkCreateSwapchainKHR( VkDevice client_device, const VkSwa
-      * display mode change emulation), MoltenVK's vkQueuePresentKHR returns VK_SUBOPTIMAL_KHR.
-      * Create the swapchain with VkSwapchainPresentScalingCreateInfoEXT to avoid this.
+@@ -4801,6 +4807,6 @@ static VkResult win32u_vkCreateSwapchainKHR( VkDevice client_device, const VkSwa
       */
--    if (get_surface_rect( surface->hwnd, &client_rect, NtUserGetWinMonitorDpi( surface->hwnd, MDT_WINE_RAW_DPI ) ) &&
-+    if (get_swapchain_surface_rect( surface->hwnd, &client_rect, NtUserGetWinMonitorDpi( surface->hwnd, MDT_WINE_RAW_DPI ) ) &&
+     get_win_monitor_dpi( surface->hwnd, &raw_dpi );
+-    if (get_surface_rect( surface->hwnd, &client_rect, raw_dpi ) &&
++    if (get_swapchain_surface_rect( surface->hwnd, &client_rect, raw_dpi ) &&
          !extents_equals( &create_info_host.imageExtent, &client_rect ) &&
          instance->extensions.has_VK_EXT_surface_maintenance1 &&
          physical_device->extensions.has_VK_KHR_swapchain_maintenance1)
-@@ -3954,7 +3960,7 @@ static VkResult win32u_vkAcquireNextImage2KHR( VkDevice client_device, const VkA
-         return VK_SUBOPTIMAL_KHR;
+@@ -5091,5 +5097,5 @@ static VkResult win32u_vkAcquireNextImage2KHR( VkDevice client_device, const VkA
      }
- 
--    if (!res && get_surface_rect( surface->hwnd, &client_rect, NtUserGetDpiForWindow( surface->hwnd ) ) &&
-+    if (!res && get_swapchain_surface_rect( surface->hwnd, &client_rect, NtUserGetDpiForWindow( surface->hwnd ) ) &&
+
+-    if (!res && get_surface_rect( surface->hwnd, &client_rect, get_dpi_for_window( surface->hwnd ) ) &&
++    if (!res && get_swapchain_surface_rect( surface->hwnd, &client_rect, get_dpi_for_window( surface->hwnd ) ) &&
          !extents_equals( &swapchain->extents, &client_rect ))
      {
-         WARN( "Swapchain size %dx%d does not match client rect %s, returning VK_SUBOPTIMAL_KHR\n",
-@@ -3994,7 +4000,7 @@ static VkResult win32u_vkAcquireNextImageKHR( VkDevice client_device, VkSwapchai
-         return VK_SUBOPTIMAL_KHR;
+@@ -5131,5 +5137,5 @@ static VkResult win32u_vkAcquireNextImageKHR( VkDevice client_device, VkSwapchai
      }
- 
--    if (!res && get_surface_rect( surface->hwnd, &client_rect, NtUserGetDpiForWindow( surface->hwnd ) ) &&
-+    if (!res && get_swapchain_surface_rect( surface->hwnd, &client_rect, NtUserGetDpiForWindow( surface->hwnd ) ) &&
+
+-    if (!res && get_surface_rect( surface->hwnd, &client_rect, get_dpi_for_window( surface->hwnd ) ) &&
++    if (!res && get_swapchain_surface_rect( surface->hwnd, &client_rect, get_dpi_for_window( surface->hwnd ) ) &&
          !extents_equals( &swapchain->extents, &client_rect ))
      {
-         WARN( "Swapchain size %dx%d does not match client rect %s, returning VK_SUBOPTIMAL_KHR\n",
-@@ -4817,7 +4823,8 @@ host_present_done:
-         }
+@@ -6086,5 +6092,6 @@ host_present_done:
          else if (swapchain_res)
              WARN( "Present returned status %d for swapchain %p\n", swapchain_res, swapchain );
 -        else if (!extents_equals( &swapchain->extents, &client_rect ))
@@ -90,6 +84,5 @@ index 27c0a9a1a0c..551d3bd7406 100644
          {
              WARN( "Swapchain size %dx%d does not match client rect %s, returning VK_SUBOPTIMAL_KHR\n",
                    swapchain->extents.width, swapchain->extents.height, wine_dbgstr_rect( &client_rect ) );
--- 
+--
 2.55.0
-

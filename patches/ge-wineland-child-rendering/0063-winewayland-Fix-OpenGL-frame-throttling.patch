@@ -42,12 +42,12 @@ index 72384bd654d..1865e99ced4 100644
      if (surface->throttle) NtSetEvent(surface->throttle, NULL);
  }
  
-@@ -238,11 +242,19 @@ static BOOL wayland_drawable_swap(struct opengl_drawable *base)
- {
+@@ -239,11 +239,19 @@ static BOOL wayland_drawable_swap(struct opengl_drawable *base)
      struct wayland_gl_drawable *gl = impl_from_opengl_drawable(base);
      struct wayland_client_surface *surface = impl_from_client_surface(base->client);
 +    struct wl_callback *callback;
  
+     steam_overlay_opengl_dispatch( base );
      client_surface_present(base->client);
 -    if (base->interval && surface->toplevel)
 +    if (!gl->swap_interval_initialized)

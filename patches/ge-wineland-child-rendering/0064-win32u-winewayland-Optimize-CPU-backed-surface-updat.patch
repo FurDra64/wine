@@ -136,9 +136,9 @@ index 41d136deda5..3d44289bfe8 100644
             hwnd, surface, width, height );
      return surface;
  }
-@@ -1578,7 +1629,7 @@ static void update_visible_region( struct dce *dce )
+@@ -1582,7 +1633,7 @@ static void update_visible_region( struct dce *dce )
          RECT window_rect, toplevel_rect;
-         UINT dpi;
+         struct ratio dpi;
  
 -        if (foreign && user_driver->pUseForeignGdiBridge())
 +        if (foreign && (user_driver->pGetForeignGdiSurfaceCaps() & WINE_GDI_FOREIGN_SURFACE_SHM))
@@ -258,9 +258,9 @@ index f93ae4cc8d3..011c6d32d5a 100644
  }
  
  static const struct user_driver_funcs waylanddrv_funcs =
-@@ -67,7 +67,7 @@ static const struct user_driver_funcs waylanddrv_funcs =
-     .pWindowPosChanged = WAYLAND_WindowPosChanged,
+@@ -69,7 +69,7 @@ static const struct user_driver_funcs waylanddrv_funcs =
      .pWindowPosChanging = WAYLAND_WindowPosChanging,
+     .pCreateClientSurface = WAYLAND_CreateClientSurface,
      .pCreateWindowSurface = WAYLAND_CreateWindowSurface,
 -    .pUseForeignGdiBridge = WAYLAND_UseForeignGdiBridge,
 +    .pGetForeignGdiSurfaceCaps = WAYLAND_GetForeignGdiSurfaceCaps,
@@ -381,15 +381,15 @@ index 6935bdfa629..38aa5a0c949 100644
  struct vulkan_driver_funcs;
  struct opengl_driver_funcs;
  
-@@ -476,7 +479,7 @@ struct user_driver_funcs
+@@ -485,7 +488,7 @@ struct user_driver_funcs
      BOOL    (*pCreateWindowSurface)(HWND,BOOL,const RECT *,struct window_surface**);
      void    (*pMoveWindowBits)(HWND,const struct window_rects *,const struct window_rects *,const RECT *);
      void    (*pWindowPosChanged)(HWND,HWND,HWND,UINT,const struct window_rects*,struct window_surface*);
 -    BOOL    (*pUseForeignGdiBridge)(void);
 +    UINT    (*pGetForeignGdiSurfaceCaps)(void);
+     BOOL    (*pHasWindowManager)(const char *name);
      /* system parameters */
      BOOL    (*pSystemParametersInfo)(UINT,UINT,void*,UINT);
-     /* wintab support */
 diff --git a/include/wine/hwnd_dmabuf.h b/include/wine/hwnd_dmabuf.h
 index 92e1b9ff8a3..ad9e1d869b5 100644
 --- a/include/wine/hwnd_dmabuf.h

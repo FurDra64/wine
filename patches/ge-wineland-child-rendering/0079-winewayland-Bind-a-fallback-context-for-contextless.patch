@@ -20,29 +20,29 @@ Paul Gofman <pgofman@codeweavers.com>.
  1 file changed, 35 insertions(+), 1 deletion(-)
 
 diff --git a/dlls/winewayland.drv/opengl.c b/dlls/winewayland.drv/opengl.c
-index 424c1eb..97ff871 100644
+index 97ff871..2b3c4d5e 100644
 --- a/dlls/winewayland.drv/opengl.c
 +++ b/dlls/winewayland.drv/opengl.c
-@@ -46,6 +46,7 @@ WINE_DEFAULT_DEBUG_CHANNEL(waylanddrv);
- static const struct egl_platform *egl;
- static const struct opengl_funcs *funcs;
+@@ -48,5 +48,6 @@ static const struct opengl_funcs *funcs;
  static const struct opengl_drawable_funcs wayland_drawable_funcs;
+ static BOOL (*p_egl_describe_pixel_format)( int format, struct wgl_pixel_format *pf );
 +static EGLContext egl_fallback_context;
- 
+
  /* Original (win32u) driver proc-address resolver, chained from
   * wayland_get_proc_address so that names other than the WINE dmabuf-export
-@@ -315,6 +316,7 @@ static BOOL wayland_drawable_swap(struct opengl_drawable *base)
+@@ -394,7 +395,8 @@ static BOOL wayland_drawable_swap(struct opengl_drawable *base)
      struct wayland_client_surface *surface = impl_from_client_surface(base->client);
      struct wl_callback *callback;
      LONG attachment_generation;
 +    BOOL fallback_bound = FALSE;
      EGLint error;
- 
+
+     steam_overlay_opengl_dispatch( base );
      client_surface_present(base->client);
-@@ -328,6 +330,30 @@ static BOOL wayland_drawable_swap(struct opengl_drawable *base)
+@@ -408,6 +410,30 @@ static BOOL wayland_drawable_swap(struct opengl_drawable *base)
          gl->attachment_generation = attachment_generation;
      }
- 
+
 +    if (!funcs->p_eglGetCurrentContext())
 +    {
 +        if (!egl_fallback_context)
@@ -70,7 +70,7 @@ index 424c1eb..97ff871 100644
      if (!gl->swap_interval_initialized)
      {
          gl->manual_frame_throttle = funcs->p_eglSwapInterval(egl->display, 0);
-@@ -362,12 +385,21 @@ static BOOL wayland_drawable_swap(struct opengl_drawable *base)
+@@ -442,11 +468,20 @@ static BOOL wayland_drawable_swap(struct opengl_drawable *base)
          if (error == EGL_BAD_SURFACE && wayland_gl_drawable_recreate_egl_surface(gl))
          {
              gl->attachment_generation = ReadAcquire(&surface->attachment_generation);
@@ -80,7 +80,7 @@ index 424c1eb..97ff871 100644
          }
          ERR("eglSwapBuffers failed with error %#x.\n", error);
      }
- 
+
 +done:
 +    if (fallback_bound &&
 +        !funcs->p_eglMakeCurrent(egl->display, EGL_NO_SURFACE,
@@ -92,6 +92,5 @@ index 424c1eb..97ff871 100644
 +
      return TRUE;
  }
- 
--- 
+--
 2.51.0

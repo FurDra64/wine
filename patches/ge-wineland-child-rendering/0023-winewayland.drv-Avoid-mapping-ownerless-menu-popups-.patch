@@ -171,17 +171,17 @@ index 90564a67456..2c6e423413b 100644
      /* GA_ROOT host of any GDI child overlays, resolved independently below. */
      HWND overlay_toplevel = toplevel;
      struct child_overlay_snapshot *snapshot = NULL;
-@@ -767,7 +803,8 @@ void WAYLAND_WindowPosChanged(HWND hwnd, HWND insert_after, HWND owner_hint, UIN
+@@ -822,7 +858,8 @@ void WAYLAND_WindowPosChanged(HWND hwnd, HWND insert_after, HWND owner_hint, UIN
      /* Get the managed state with win_data unlocked, as is_window_managed
       * may need to query win_data information about other HWNDs and thus
       * acquire the lock itself internally. */
 -    managed = is_window_managed(hwnd, swp_flags, fullscreen);
 +    menu_popup_owner = wayland_is_menu_popup_candidate(hwnd) ? get_menu_popup_owner(hwnd, owner_hint) : NULL;
 +    managed = is_window_managed(hwnd, menu_popup_owner, swp_flags, fullscreen);
-     if (tray_menu && surface && process_wayland.zwlr_layer_shell_v1)
-     {
-         managed = FALSE;
-@@ -778,11 +815,12 @@ void WAYLAND_WindowPosChanged(HWND hwnd, HWND insert_after, HWND owner_hint, UIN
+ 
+     if (!tray_menu && surface && process_wayland.zwlr_layer_shell_v1)
+         notification = is_notification_window(hwnd, swp_flags, new_rects);
+@@ -837,10 +874,11 @@ void WAYLAND_WindowPosChanged(HWND hwnd, HWND insert_after, HWND owner_hint, UIN
      else if (!managed && surface)
      {
          toplevel = NULL;
@@ -194,6 +194,5 @@ index 90564a67456..2c6e423413b 100644
 +    TRACE("hwnd %p toplevel %p owner %p owner_hint %p menu_owner %p new_rects %s after %p flags %08x\n",
 +          hwnd, toplevel, owner, owner_hint, menu_popup_owner, debugstr_window_rects(new_rects),
 +          insert_after, swp_flags);
- 
      /* A child moved, restacked or changed visibility. Snapshot the toplevel's
       * overlay stack outside win_data_mutex so overlays track the window tree

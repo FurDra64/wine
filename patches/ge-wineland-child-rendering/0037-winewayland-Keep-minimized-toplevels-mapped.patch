@@ -25,10 +25,11 @@ index b6d3072e386..d81a919c787 100644
      HWND hwnd;
  
      InterlockedExchange(&process_wayland.input_serial, serial);
-@@ -929,8 +931,25 @@ static void keyboard_handle_enter(void *private, struct wl_keyboard *wl_keyboard
+@@ -929,9 +931,26 @@ static void keyboard_handle_enter(void *private, struct wl_keyboard *wl_keyboard
  
      NtUserPostMessage(hwnd, WM_INPUTLANGCHANGEREQUEST, 0 /*FIXME*/, (LPARAM)keyboard_hkl);
      NtUserPostMessage(hwnd, WM_WINE_WINDOW_STATE_CHANGED, 0, 0);
+ 
 -    if (wayland_is_layer_menu_hwnd(hwnd))
 -        NtUserPostMessage(hwnd, WM_WAYLAND_SET_FOREGROUND, 0, 0);
 +
@@ -95,11 +96,11 @@ index 094249d1796..86e3279584a 100644
  
 @@ -4191,6 +4205,11 @@ void wayland_client_surface_attach(struct wayland_client_surface *client, HWND t
          if (toplevel_data) wayland_win_data_release(toplevel_data);
-         return wayland_client_surface_attach(client, NULL);
+         return wayland_client_surface_attach(client, NULL, NULL);
      }
 +    if (surface->role == WAYLAND_SURFACE_ROLE_TOPLEVEL && surface->window.minimized)
 +    {
-+        wayland_client_surface_attach(client, NULL);
++        wayland_client_surface_attach(client, NULL, NULL);
 +        return;
 +    }
  
@@ -176,9 +177,9 @@ index c7363eb68ff..568026aaa31 100644
          {
 -            if (toplevel && NtUserIsWindowVisible(hwnd))
 +            if (toplevel && NtUserIsWindowVisible(hwnd) && !window_or_root_minimized(hwnd))
-                 wayland_client_surface_attach(client, toplevel);
+                 wayland_client_surface_attach(client, toplevel, &client->client.monitor_rect);
              else
-                 wayland_client_surface_attach(client, NULL);
+             {
 @@ -1546,6 +1569,13 @@ BOOL set_window_surface_contents(HWND hwnd, struct wayland_shm_buffer *shm_buffe
  
      if ((wayland_surface = data->wayland_surface))

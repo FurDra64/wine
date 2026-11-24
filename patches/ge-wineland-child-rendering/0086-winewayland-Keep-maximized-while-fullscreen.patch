@@ -30,8 +30,7 @@ https://github.com/GloriousEggroll/proton-ge-custom/issues/871
 diff --git a/dlls/winewayland.drv/window.c b/dlls/winewayland.drv/window.c
 --- a/dlls/winewayland.drv/window.c
 +++ b/dlls/winewayland.drv/window.c
-@@ -547,8 +547,15 @@
-     {
+@@ -553,8 +553,15 @@
           /* First do all state unsettings, before setting new state. Some
            * Wayland compositors misbehave if the order is reversed. */
 +        /* Some compositors (e.g. Hyprland) report fullscreen together with
@@ -40,10 +39,10 @@ diff --git a/dlls/winewayland.drv/window.c b/dlls/winewayland.drv/window.c
 +         * fullscreen: unsetting it makes those compositors leave fullscreen
 +         * and send a tiled configure, which the application sees as a resize. */
          if (!(surface->window.state & WAYLAND_SURFACE_CONFIG_STATE_MAXIMIZED) &&
--            (surface->current.state & WAYLAND_SURFACE_CONFIG_STATE_MAXIMIZED))
-+            (surface->current.state & WAYLAND_SURFACE_CONFIG_STATE_MAXIMIZED) &&
+             (surface->current.state & WAYLAND_SURFACE_CONFIG_STATE_MAXIMIZED) &&
 +            !(surface->window.state & surface->current.state &
-+              WAYLAND_SURFACE_CONFIG_STATE_FULLSCREEN))
++              WAYLAND_SURFACE_CONFIG_STATE_FULLSCREEN) &&
+             !surface->window.minimized)
          {
              xdg_toplevel_unset_maximized(surface->xdg_toplevel);
          }

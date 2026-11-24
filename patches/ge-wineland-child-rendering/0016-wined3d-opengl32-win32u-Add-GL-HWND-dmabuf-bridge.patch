@@ -8,46 +8,46 @@ NO_WINDOW_UPDATE is requested. Add the WGL dmabuf export helpers, channel
 producer plumbing, modifier negotiation and slot ownership/reclaim handling.
 Provide ARM64EC syscall entry stubs for the new win32u calls as well.
 ---
- dlls/opengl32/make_opengl              | 214 ++++++-
- dlls/opengl32/opengl32.spec            |   8 +
- dlls/opengl32/thunks.c                 |  80 +++
- dlls/opengl32/unix_thunks.c            | 323 ++++++++++-
- dlls/opengl32/unixlib.h                | 100 ++++
- dlls/opengl32/wgl.c                    |  95 +++
- dlls/win32u/d3dkmt.c                   |  84 ++-
- dlls/win32u/hwnd_dmabuf.c              |  98 ++++
- dlls/win32u/main.c                     |  26 +
- dlls/win32u/ntuser_private.h           |   5 +
- dlls/win32u/opengl.c                   | 594 +++++++++++++++++++
- dlls/win32u/vulkan.c                   |  49 +-
- dlls/win32u/win32u.spec                |   5 +
- dlls/win32u/win32u_private.h           |  24 +
- dlls/wined3d/adapter_gl.c              |  13 +
- dlls/wined3d/swapchain.c               | 761 ++++++++++++++++++++++++-
- dlls/wined3d/wined3d.spec              |   1 +
- dlls/wined3d/wined3d_gl.h              |  65 +++
- dlls/wined3d/wined3d_private.h         |   1 +
- dlls/winewayland.drv/opengl.c          | 145 ++++-
- dlls/winewayland.drv/vulkan.c          |   7 -
- dlls/winewayland.drv/wayland_surface.c |  83 ++-
- dlls/wow64win/user.c                   |  46 ++
- include/ntuser.h                       |   6 +
- include/wine/hwnd_dmabuf.h             |  49 +-
- include/wine/opengl_driver.h           |  37 +-
- include/wine/server_protocol.h         |  19 +-
- include/wine/wgl.h                     |  19 +
- include/wine/wined3d.h                 |   4 +
- server/protocol.def                    |   9 +
- server/request_handlers.h              |   7 +
- server/request_trace.h                 |  14 +
- server/window.c                        | 180 +++++-
- 33 files changed, 3072 insertions(+), 99 deletions(-)
+ dlls/opengl32/make_opengl              |  214 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++---
+ dlls/opengl32/opengl32.spec            |    8 ++++++++
+ dlls/opengl32/thunks.c                 |   88 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ dlls/opengl32/unix_thunks.c            |  311 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ dlls/opengl32/unixlib.h                |  100 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ dlls/opengl32/wgl.c                    |   95 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ dlls/win32u/d3dkmt.c                   |   84 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++--
+ dlls/win32u/hwnd_dmabuf.c              |   98 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ dlls/win32u/main.c                     |   26 ++++++++++++++++++++++++++
+ dlls/win32u/ntuser_private.h           |    5 +++++
+ dlls/win32u/opengl.c                   |  589 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ dlls/win32u/vulkan.c                   |   49 +++++++++++++++++++++++++++++++++++++++----------
+ dlls/win32u/win32u.spec                |    5 +++++
+ dlls/win32u/win32u_private.h           |   24 ++++++++++++++++++++++++
+ dlls/wined3d/adapter_gl.c              |   13 +++++++++++++
+ dlls/wined3d/swapchain.c               |  723 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++------
+ dlls/wined3d/wined3d.spec              |    1 +
+ dlls/wined3d/wined3d_gl.h              |   65 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ dlls/wined3d/wined3d_private.h         |    1 +
+ dlls/winewayland.drv/opengl.c          |  145 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++-
+ dlls/winewayland.drv/vulkan.c          |    7 -------
+ dlls/winewayland.drv/wayland_surface.c |   83 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++---------------
+ dlls/wow64win/user.c                   |   46 ++++++++++++++++++++++++++++++++++++++++++++++
+ include/ntuser.h                       |    6 ++++++
+ include/wine/hwnd_dmabuf.h             |   49 ++++++++++++++++++++++++++++++++++++-------------
+ include/wine/opengl_driver.h           |   32 +++++++++++++++++++++++++++++++-
+ include/wine/server_protocol.h         |   19 ++++++++++++++++++-
+ include/wine/wgl.h                     |   20 ++++++++++++++++++++
+ include/wine/wined3d.h                 |    4 ++++
+ server/protocol.def                    |    9 +++++++++
+ server/request_handlers.h              |    7 +++++++
+ server/request_trace.h                 |   14 ++++++++++++++
+ server/window.c                        |  180 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++-----------------------
+ 33 files changed, 3038 insertions(+), 82 deletions(-)
 
 diff --git a/dlls/opengl32/make_opengl b/dlls/opengl32/make_opengl
-index 0eeaee4fc72..d7af61ab6a0 100755
+index 2753754..755fe52 100755
 --- a/dlls/opengl32/make_opengl
 +++ b/dlls/opengl32/make_opengl
-@@ -117,6 +117,7 @@ my %arg_types =
+@@ -102,6 +102,7 @@ my %arg_types =
       "HDC" =>                  [ "long",   "%p" ],
       "HGLRC" =>                [ "long",   "%p" ],
       "HPBUFFERARB" =>          [ "long",   "%p" ],
@@ -55,8 +55,8 @@ index 0eeaee4fc72..d7af61ab6a0 100755
       "HENHMETAFILE" =>         [ "long",   "%p" ],
       "LPGLYPHMETRICSFLOAT" =>  [ "ptr",    "%p" ],
       "LPCSTR" =>               [ "str",    "wine_dbgstr_a(%s)" ],
-@@ -222,6 +223,34 @@ my %manual_unix_thunks =
-      "wglGetProcAddress" => 1,
+@@ -182,6 +183,34 @@ my %manual_win_thunks =
+      "glShaderSourceARB" => 1,
       "wglSwapBuffers" => 1,
      );
 +my @wine_export_funcs =
@@ -87,10 +87,10 @@ index 0eeaee4fc72..d7af61ab6a0 100755
 +     "wglWineHwndDmaBufPublishWINE" => "ptr long ptr long",
 +     "wglWineHwndDmaBufDrainReleaseWINE" => "long ptr",
 +    );
- my %hide_default_fbo_thunks =
-     (
-      "glFramebufferRenderbuffer" => 1,
-@@ -493,6 +522,67 @@ sub generate_unix_thunk($$$$)
+ 
+ sub manual_unix_thunks($)
+ {
+@@ -424,6 +453,67 @@ sub generate_unix_thunk($$$$)
      $ret .= "$prefix\_$name( void *args )\n";
      $ret .= "{\n";
  
@@ -157,8 +157,8 @@ index 0eeaee4fc72..d7af61ab6a0 100755
 +
      # special case for functions that take an HDC as first parameter
      $use_dc = @{$func->[1]} && get_arg_type( ${$func->[1]}[0] ) eq "HDC" && $name !~ /wglMake(Context)?Current/;
- 
-@@ -817,6 +907,106 @@ sub generate_spec_entry($$)
+     $use_pbuffer = @{$func->[1]} && get_arg_type( ${$func->[1]}[0] ) eq "HPBUFFERARB";
+@@ -944,6 +1034,106 @@ sub generate_spec_entry($$)
      return "@ stdcall $_($args)";
  }
  
@@ -265,16 +265,16 @@ index 0eeaee4fc72..d7af61ab6a0 100755
  sub generate_func_params($$)
  {
      my ($name, $func) = @_;
-@@ -973,8 +1163,6 @@ my %unsupported_extensions =
+@@ -1083,8 +1273,6 @@ my %unsupported_extensions =
      "WGL_EXT_pixel_format" => 1,
      "WGL_NV_copy_image" => 1,
      "WGL_NV_delay_before_swap" => 1,
 -    "WGL_NV_DX_interop" => 1,
 -    "WGL_NV_DX_interop2" => 1,
      "WGL_NV_gpu_affinity" => 1,
-     "WGL_NV_multigpu_context" => 1,
-     "WGL_NV_multisample_coverage" => 1,
-@@ -1339,6 +1527,10 @@ foreach (sort keys %wgl_functions)
+     "WGL_NV_present_video" => 1,
+     "WGL_NV_swap_group" => 1,
+@@ -1767,6 +1955,10 @@ foreach (sort keys %wgl_functions)
  {
      printf SPEC "%s\n", generate_spec_entry( $_, $wgl_functions{$_} );
  }
@@ -285,7 +285,7 @@ index 0eeaee4fc72..d7af61ab6a0 100755
  
  close(SPEC);
  
-@@ -1361,6 +1553,7 @@ print OUT "#include \"winternl.h\"\n";
+@@ -1788,6 +1980,7 @@ print OUT "#include \"winternl.h\"\n";
  print OUT "#include \"wingdi.h\"\n";
  print OUT "#include \"ntuser.h\"\n\n";
  print OUT "#include \"wine/wgl.h\"\n";
@@ -293,7 +293,7 @@ index 0eeaee4fc72..d7af61ab6a0 100755
  print OUT "#include \"wine/unixlib.h\"\n\n";
  
  print OUT "struct process_attach_params\n";
-@@ -1373,6 +1566,7 @@ foreach (sort keys %wgl_functions)
+@@ -1800,6 +1993,7 @@ foreach (sort keys %wgl_functions)
      next if defined $manual_win_functions{$_};
      print OUT generate_func_params($_, $wgl_functions{$_});
  }
@@ -301,7 +301,7 @@ index 0eeaee4fc72..d7af61ab6a0 100755
  foreach (sort keys %norm_functions)
  {
      next if defined $manual_win_functions{$_};
-@@ -1417,6 +1611,10 @@ foreach (sort keys %ext_functions)
+@@ -1852,6 +2046,10 @@ foreach (sort keys %ext_functions)
      next if defined $manual_win_functions{$_};
      printf OUT "    unix_%s,\n", $_;
  }
@@ -312,7 +312,7 @@ index 0eeaee4fc72..d7af61ab6a0 100755
  print OUT "    funcs_count\n";
  print OUT "};\n\n";
  
-@@ -1558,6 +1756,7 @@ print OUT "#endif\n\n";
+@@ -2050,6 +2248,7 @@ print OUT "#endif\n\n";
  
  print OUT "#include <stdarg.h>\n";
  print OUT "#include <stddef.h>\n\n";
@@ -320,15 +320,15 @@ index 0eeaee4fc72..d7af61ab6a0 100755
  print OUT "#include <assert.h>\n\n";
  
  print OUT "#include \"ntstatus.h\"\n";
-@@ -1571,7 +1770,6 @@ print OUT "#include \"unix_private.h\"\n\n";
+@@ -2062,7 +2261,6 @@ print OUT "#include \"unix_private.h\"\n\n";
  print OUT "#include \"wine/debug.h\"\n\n";
  
  print OUT "WINE_DEFAULT_DEBUG_CHANNEL(opengl);\n\n";
 -
- print OUT "static GLboolean const_false;\n";
- print OUT "static GLboolean const_true = 1;\n\n";
- 
-@@ -1591,6 +1789,7 @@ foreach (sort keys %ext_functions)
+ foreach (sort keys %wgl_functions)
+ {
+     next if defined $manual_win_functions{$_};
+@@ -2079,6 +2277,7 @@ foreach (sort keys %ext_functions)
      next if defined $manual_win_functions{$_};
      print OUT generate_unix_thunk($_, $ext_functions{$_}, 0, "ext");
  }
@@ -336,7 +336,7 @@ index 0eeaee4fc72..d7af61ab6a0 100755
  
  print OUT "const unixlib_entry_t __wine_unix_call_funcs[] =\n";
  print OUT "{\n";
-@@ -1614,6 +1813,10 @@ foreach (sort keys %ext_functions)
+@@ -2104,6 +2303,10 @@ foreach (sort keys %ext_functions)
      next if defined $manual_win_functions{$_};
      printf OUT "    ext_%s,\n", $_;
  }
@@ -347,7 +347,7 @@ index 0eeaee4fc72..d7af61ab6a0 100755
  print OUT "};\n\n";
  print OUT "C_ASSERT(ARRAYSIZE(__wine_unix_call_funcs) == funcs_count);\n\n";
  
-@@ -1638,6 +1841,7 @@ foreach (sort keys %ext_functions)
+@@ -2130,6 +2333,7 @@ foreach (sort keys %ext_functions)
      next if defined $manual_win_functions{$_};
      print OUT generate_unix_thunk($_, $ext_functions{$_}, 1, "ext");
  }
@@ -355,7 +355,7 @@ index 0eeaee4fc72..d7af61ab6a0 100755
  
  print OUT "\nconst unixlib_entry_t __wine_unix_call_wow64_funcs[] =\n";
  print OUT "{\n";
-@@ -1661,6 +1865,10 @@ foreach (sort keys %ext_functions)
+@@ -2155,6 +2359,10 @@ foreach (sort keys %ext_functions)
      next if defined $manual_win_functions{$_};
      printf OUT "    wow64_ext_%s,\n", $_;
  }
@@ -367,7 +367,7 @@ index 0eeaee4fc72..d7af61ab6a0 100755
  print OUT "C_ASSERT(ARRAYSIZE(__wine_unix_call_wow64_funcs) == funcs_count);\n\n";
  
 diff --git a/dlls/opengl32/opengl32.spec b/dlls/opengl32/opengl32.spec
-index 94a3dfd0757..cf50935bad6 100644
+index 94a3dfd..cf50935 100644
 --- a/dlls/opengl32/opengl32.spec
 +++ b/dlls/opengl32/opengl32.spec
 @@ -359,3 +359,11 @@
@@ -383,10 +383,10 @@ index 94a3dfd0757..cf50935bad6 100644
 +@ stdcall wglWineHwndDmaBufPublishWINE(ptr long ptr long)
 +@ stdcall wglWineHwndDmaBufDrainReleaseWINE(long ptr)
 diff --git a/dlls/opengl32/thunks.c b/dlls/opengl32/thunks.c
-index b2a1290d12f..890f4d599d9 100644
+index 32ba479..406971c 100644
 --- a/dlls/opengl32/thunks.c
 +++ b/dlls/opengl32/thunks.c
-@@ -24744,6 +24744,78 @@ static HPBUFFERARB WINAPI wglCreatePbufferARB( HDC hDC, int iPixelFormat, int iW
+@@ -28506,6 +28506,78 @@ static BOOL WINAPI wglBindTexImageARB( HPBUFFERARB hPbuffer, int iBuffer )
      return args.ret;
  }
  
@@ -462,10 +462,10 @@ index b2a1290d12f..890f4d599d9 100644
 +    return args.ret;
 +}
 +
- static BOOL WINAPI wglDestroyPbufferARB( HPBUFFERARB hPbuffer )
+ static void WINAPI wglFreeMemoryNV( void *pointer )
  {
-     struct wglDestroyPbufferARB_params args = { .teb = NtCurrentTeb(), .hPbuffer = hPbuffer };
-@@ -27607,6 +27679,14 @@ const void *extension_procs[] =
+     struct wglFreeMemoryNV_params args = { .teb = NtCurrentTeb(), .pointer = pointer };
+@@ -31347,6 +31419,14 @@ const void *extension_procs[] =
      wglChoosePixelFormatARB,
      wglCreateContextAttribsARB,
      wglCreatePbufferARB,
@@ -480,8 +480,23 @@ index b2a1290d12f..890f4d599d9 100644
      wglDestroyPbufferARB,
      wglFreeMemoryNV,
      wglGetCurrentReadDCARB,
+@@ -34106,6 +34186,14 @@ const struct registry_entry extension_registry[] =
+     { "wglChoosePixelFormatARB", wglChoosePixelFormatARB, 0, 0, { WGL_ARB_pixel_format, GL_EXTENSION_COUNT }},
+     { "wglCreateContextAttribsARB", wglCreateContextAttribsARB, 0, 0, { WGL_ARB_create_context, GL_EXTENSION_COUNT }},
+     { "wglCreatePbufferARB", wglCreatePbufferARB, 0, 0, { WGL_ARB_pbuffer, GL_EXTENSION_COUNT }},
++    { "wglDXCloseDeviceNV", wglDXCloseDeviceNV, 0, 0, { WGL_NV_DX_interop, GL_EXTENSION_COUNT }},
++    { "wglDXLockObjectsNV", wglDXLockObjectsNV, 0, 0, { WGL_NV_DX_interop, GL_EXTENSION_COUNT }},
++    { "wglDXObjectAccessNV", wglDXObjectAccessNV, 0, 0, { WGL_NV_DX_interop, GL_EXTENSION_COUNT }},
++    { "wglDXOpenDeviceNV", wglDXOpenDeviceNV, 0, 0, { WGL_NV_DX_interop, GL_EXTENSION_COUNT }},
++    { "wglDXRegisterObjectNV", wglDXRegisterObjectNV, 0, 0, { WGL_NV_DX_interop, GL_EXTENSION_COUNT }},
++    { "wglDXSetResourceShareHandleNV", wglDXSetResourceShareHandleNV, 0, 0, { WGL_NV_DX_interop, GL_EXTENSION_COUNT }},
++    { "wglDXUnlockObjectsNV", wglDXUnlockObjectsNV, 0, 0, { WGL_NV_DX_interop, GL_EXTENSION_COUNT }},
++    { "wglDXUnregisterObjectNV", wglDXUnregisterObjectNV, 0, 0, { WGL_NV_DX_interop, GL_EXTENSION_COUNT }},
+     { "wglDestroyPbufferARB", wglDestroyPbufferARB, 0, 0, { WGL_ARB_pbuffer, GL_EXTENSION_COUNT }},
+     { "wglFreeMemoryNV", wglFreeMemoryNV, 0, 0, { WGL_NV_vertex_array_range, GL_EXTENSION_COUNT }},
+     { "wglGetCurrentReadDCARB", wglGetCurrentReadDCARB, 0, 0, { WGL_ARB_make_current_read, GL_EXTENSION_COUNT }},
 diff --git a/dlls/opengl32/unix_thunks.c b/dlls/opengl32/unix_thunks.c
-index ec2779005c7..5b5353cd4d0 100644
+index 39f4358..8930b45 100644
 --- a/dlls/opengl32/unix_thunks.c
 +++ b/dlls/opengl32/unix_thunks.c
 @@ -7,6 +7,8 @@
@@ -493,7 +508,7 @@ index ec2779005c7..5b5353cd4d0 100644
  #include <assert.h>
  
  #include "ntstatus.h"
-@@ -30552,6 +30554,78 @@ static NTSTATUS ext_wglCreatePbufferARB( void *args )
+@@ -27790,6 +27792,78 @@ static NTSTATUS ext_wglCreatePbufferARB( void *args )
      return STATUS_SUCCESS;
  }
  
@@ -572,7 +587,7 @@ index ec2779005c7..5b5353cd4d0 100644
  static NTSTATUS ext_wglDestroyPbufferARB( void *args )
  {
      struct wglDestroyPbufferARB_params *params = args;
-@@ -30723,6 +30797,37 @@ static NTSTATUS ext_wglSwapIntervalEXT( void *args )
+@@ -27923,6 +27997,37 @@ static NTSTATUS ext_wglSwapIntervalEXT( void *args )
      return STATUS_SUCCESS;
  }
  
@@ -610,8 +625,8 @@ index ec2779005c7..5b5353cd4d0 100644
  const unixlib_entry_t __wine_unix_call_funcs[] =
  {
      process_attach,
-@@ -33808,6 +33913,14 @@ const unixlib_entry_t __wine_unix_call_funcs[] =
-     ext_wglChoosePixelFormatARB,
+@@ -31006,6 +31111,14 @@ const unixlib_entry_t __wine_unix_call_funcs[] =
+     ext_wglBindTexImageARB,
      ext_wglCreateContextAttribsARB,
      ext_wglCreatePbufferARB,
 +    ext_wglDXCloseDeviceNV,
@@ -624,8 +639,8 @@ index ec2779005c7..5b5353cd4d0 100644
 +    ext_wglDXUnregisterObjectNV,
      ext_wglDestroyPbufferARB,
      ext_wglFreeMemoryNV,
-     ext_wglGetExtensionsStringARB,
-@@ -33827,6 +33940,9 @@ const unixlib_entry_t __wine_unix_call_funcs[] =
+     ext_wglGetPbufferDCARB,
+@@ -31021,6 +31134,9 @@ const unixlib_entry_t __wine_unix_call_funcs[] =
      ext_wglSetPbufferAttribARB,
      ext_wglSetPixelFormatWINE,
      ext_wglSwapIntervalEXT,
@@ -635,7 +650,7 @@ index ec2779005c7..5b5353cd4d0 100644
  };
  
  C_ASSERT(ARRAYSIZE(__wine_unix_call_funcs) == funcs_count);
-@@ -86986,6 +87102,144 @@ static NTSTATUS wow64_ext_wglCreatePbufferARB( void *args )
+@@ -81342,6 +81458,144 @@ static NTSTATUS wow64_ext_wglCreatePbufferARB( void *args )
      return STATUS_SUCCESS;
  }
  
@@ -780,7 +795,7 @@ index ec2779005c7..5b5353cd4d0 100644
  static NTSTATUS wow64_ext_wglDestroyPbufferARB( void *args )
  {
      struct
-@@ -87290,6 +87544,52 @@ static NTSTATUS wow64_ext_wglSwapIntervalEXT( void *args )
+@@ -81570,6 +81824,52 @@ static NTSTATUS wow64_ext_wglSwapIntervalEXT( void *args )
      return STATUS_SUCCESS;
  }
  
@@ -833,8 +848,8 @@ index ec2779005c7..5b5353cd4d0 100644
  
  const unixlib_entry_t __wine_unix_call_wow64_funcs[] =
  {
-@@ -90376,6 +90676,14 @@ const unixlib_entry_t __wine_unix_call_wow64_funcs[] =
-     wow64_ext_wglChoosePixelFormatARB,
+@@ -84654,6 +84954,14 @@ const unixlib_entry_t __wine_unix_call_wow64_funcs[] =
+     wow64_ext_wglBindTexImageARB,
      wow64_ext_wglCreateContextAttribsARB,
      wow64_ext_wglCreatePbufferARB,
 +    wow64_ext_wglDXCloseDeviceNV,
@@ -847,8 +862,8 @@ index ec2779005c7..5b5353cd4d0 100644
 +    wow64_ext_wglDXUnregisterObjectNV,
      wow64_ext_wglDestroyPbufferARB,
      wow64_ext_wglFreeMemoryNV,
-     wow64_ext_wglGetExtensionsStringARB,
-@@ -90395,6 +90703,9 @@ const unixlib_entry_t __wine_unix_call_wow64_funcs[] =
+     wow64_ext_wglGetPbufferDCARB,
+@@ -84669,6 +84977,9 @@ const unixlib_entry_t __wine_unix_call_wow64_funcs[] =
      wow64_ext_wglSetPbufferAttribARB,
      wow64_ext_wglSetPixelFormatWINE,
      wow64_ext_wglSwapIntervalEXT,
@@ -858,37 +873,11 @@ index ec2779005c7..5b5353cd4d0 100644
  };
  
  C_ASSERT(ARRAYSIZE(__wine_unix_call_wow64_funcs) == funcs_count);
-@@ -92168,8 +92479,8 @@ struct opengl_funcs null_opengl_funcs =
-     .p_glViewport = null_glViewport,
- };
- 
--const int extension_registry_size = 2754;
--const struct registry_entry extension_registry[2754] =
-+const int extension_registry_size = 2762;
-+const struct registry_entry extension_registry[2762] =
- {
-     { "glAccumxOES", "GL_OES_fixed_point\0", offsetof(struct opengl_funcs, p_glAccumxOES) },
-     { "glAcquireKeyedMutexWin32EXT", "GL_EXT_win32_keyed_mutex\0", offsetof(struct opengl_funcs, p_glAcquireKeyedMutexWin32EXT) },
-@@ -94905,6 +95216,14 @@ const struct registry_entry extension_registry[2754] =
-     { "wglChoosePixelFormatARB", "WGL_ARB_pixel_format\0", offsetof(struct opengl_funcs, p_wglChoosePixelFormatARB) },
-     { "wglCreateContextAttribsARB", "WGL_ARB_create_context\0", offsetof(struct opengl_funcs, p_wglCreateContextAttribsARB) },
-     { "wglCreatePbufferARB", "WGL_ARB_pbuffer\0", offsetof(struct opengl_funcs, p_wglCreatePbufferARB) },
-+    { "wglDXCloseDeviceNV", "WGL_NV_DX_interop\0", offsetof(struct opengl_funcs, p_wglDXCloseDeviceNV) },
-+    { "wglDXLockObjectsNV", "WGL_NV_DX_interop\0", offsetof(struct opengl_funcs, p_wglDXLockObjectsNV) },
-+    { "wglDXObjectAccessNV", "WGL_NV_DX_interop\0", offsetof(struct opengl_funcs, p_wglDXObjectAccessNV) },
-+    { "wglDXOpenDeviceNV", "WGL_NV_DX_interop\0", offsetof(struct opengl_funcs, p_wglDXOpenDeviceNV) },
-+    { "wglDXRegisterObjectNV", "WGL_NV_DX_interop\0", offsetof(struct opengl_funcs, p_wglDXRegisterObjectNV) },
-+    { "wglDXSetResourceShareHandleNV", "WGL_NV_DX_interop\0", offsetof(struct opengl_funcs, p_wglDXSetResourceShareHandleNV) },
-+    { "wglDXUnlockObjectsNV", "WGL_NV_DX_interop\0", offsetof(struct opengl_funcs, p_wglDXUnlockObjectsNV) },
-+    { "wglDXUnregisterObjectNV", "WGL_NV_DX_interop\0", offsetof(struct opengl_funcs, p_wglDXUnregisterObjectNV) },
-     { "wglDestroyPbufferARB", "WGL_ARB_pbuffer\0", offsetof(struct opengl_funcs, p_wglDestroyPbufferARB) },
-     { "wglFreeMemoryNV", "WGL_NV_vertex_array_range\0", offsetof(struct opengl_funcs, p_wglFreeMemoryNV) },
-     { "wglGetCurrentReadDCARB", "WGL_ARB_make_current_read\0", offsetof(struct opengl_funcs, p_wglGetCurrentReadDCARB) },
 diff --git a/dlls/opengl32/unixlib.h b/dlls/opengl32/unixlib.h
-index 2791b007e22..17c6b783009 100644
+index a17c3d7..15c02f6 100644
 --- a/dlls/opengl32/unixlib.h
 +++ b/dlls/opengl32/unixlib.h
-@@ -15,6 +15,7 @@
+@@ -14,6 +14,7 @@
  #include "ntuser.h"
  
  #include "wine/wgl.h"
@@ -896,7 +885,7 @@ index 2791b007e22..17c6b783009 100644
  #include "wine/unixlib.h"
  
  struct process_attach_params
-@@ -91,6 +92,27 @@ struct wglSwapBuffers_params
+@@ -51,6 +52,27 @@ struct wglSwapBuffers_params
      BOOL ret;
  };
  
@@ -924,7 +913,7 @@ index 2791b007e22..17c6b783009 100644
  struct glAccum_params
  {
      TEB *teb;
-@@ -25686,6 +25708,73 @@ struct wglCreatePbufferARB_params
+@@ -25649,6 +25671,73 @@ struct wglCreatePbufferARB_params
      HPBUFFERARB ret;
  };
  
@@ -998,8 +987,8 @@ index 2791b007e22..17c6b783009 100644
  struct wglDestroyPbufferARB_params
  {
      TEB *teb;
-@@ -28935,6 +29024,14 @@ enum unix_funcs
-     unix_wglChoosePixelFormatARB,
+@@ -28865,6 +28954,14 @@ enum unix_funcs
+     unix_wglBindTexImageARB,
      unix_wglCreateContextAttribsARB,
      unix_wglCreatePbufferARB,
 +    unix_wglDXCloseDeviceNV,
@@ -1012,8 +1001,8 @@ index 2791b007e22..17c6b783009 100644
 +    unix_wglDXUnregisterObjectNV,
      unix_wglDestroyPbufferARB,
      unix_wglFreeMemoryNV,
-     unix_wglGetExtensionsStringARB,
-@@ -28954,6 +29051,9 @@ enum unix_funcs
+     unix_wglGetPbufferDCARB,
+@@ -28880,6 +28977,9 @@ enum unix_funcs
      unix_wglSetPbufferAttribARB,
      unix_wglSetPixelFormatWINE,
      unix_wglSwapIntervalEXT,
@@ -1024,18 +1013,18 @@ index 2791b007e22..17c6b783009 100644
  };
  
 diff --git a/dlls/opengl32/wgl.c b/dlls/opengl32/wgl.c
-index 4075367a69a..c386e6f0d66 100644
+index de1d136..f747067 100644
 --- a/dlls/opengl32/wgl.c
 +++ b/dlls/opengl32/wgl.c
-@@ -37,6 +37,7 @@
+@@ -35,6 +35,7 @@
+ #include "private.h"
  
  #include "wine/glu.h"
- #include "wine/debug.h"
 +#include "wine/hwnd_dmabuf.h"
- #include "wine/opengl_driver.h"
+ #include "wine/rbtree.h"
+ #include "wine/debug.h"
  
- WINE_DEFAULT_DEBUG_CHANNEL(opengl);
-@@ -980,6 +981,100 @@ BOOL WINAPI DECLSPEC_HOTPATCH wglSwapBuffers( HDC hdc )
+@@ -2294,6 +2295,100 @@ BOOL WINAPI DECLSPEC_HOTPATCH wglSwapBuffers( HDC hdc )
      return args.ret;
  }
  
@@ -1137,10 +1126,10 @@ index 4075367a69a..c386e6f0d66 100644
   *		wglCreateLayerContext (OPENGL32.@)
   */
 diff --git a/dlls/win32u/d3dkmt.c b/dlls/win32u/d3dkmt.c
-index d8b69ceea21..541d8c068e2 100644
+index e7f65ed..1382ee3 100644
 --- a/dlls/win32u/d3dkmt.c
 +++ b/dlls/win32u/d3dkmt.c
-@@ -2090,6 +2090,62 @@ static void get_resource_global_keyed_mutex( struct d3dkmt_dxgi_desc *desc, D3DK
+@@ -2302,6 +2302,62 @@ static void get_resource_global_keyed_mutex( struct d3dkmt_dxgi_desc *desc, D3DK
      }
  }
  
@@ -1203,7 +1192,7 @@ index d8b69ceea21..541d8c068e2 100644
  /* get a locally opened D3DKMT object host-specific fd */
  int d3dkmt_object_get_fd( D3DKMT_HANDLE local )
  {
-@@ -2136,7 +2192,8 @@ failed:
+@@ -2344,7 +2400,8 @@ failed:
  }
  
  /* open a D3DKMT global or shared resource */
@@ -1211,19 +1200,19 @@ index d8b69ceea21..541d8c068e2 100644
 +D3DKMT_HANDLE d3dkmt_open_resource_with_desc( D3DKMT_HANDLE global, HANDLE shared,
 +        D3DKMT_HANDLE *mutex_local, D3DKMT_HANDLE *sync_local, struct d3dkmt_resource_desc *desc )
  {
-     struct d3dkmt_object *allocation = NULL, *mutex = NULL, *sync = NULL;
-     UINT runtime_size, mutex_size = 0, sync_size = 0;
-@@ -2147,6 +2204,9 @@ D3DKMT_HANDLE d3dkmt_open_resource( D3DKMT_HANDLE global, HANDLE shared, D3DKMT_
+     UINT runtime_size, mutex_size = 0;
+     D3DKMT_HANDLE mutex_global = 0, sync_global = 0;
+@@ -2357,6 +2414,9 @@ D3DKMT_HANDLE d3dkmt_open_resource( D3DKMT_HANDLE global, HANDLE shared, D3DKMT_
  
      TRACE( "global %#x, shared %p\n", global, shared );
  
 +    *mutex_local = *sync_local = 0;
 +    if (desc) memset( desc, 0, sizeof(*desc) );
 +
-     if ((status = d3dkmt_object_query( D3DKMT_RESOURCE, global, shared, &runtime_size ))) goto failed;
+     if ((status = d3dkmt_object_query( D3DKMT_RESOURCE, global, shared, &runtime_size ))) return status;
      if (runtime_size && !(runtime_data = malloc( runtime_size ))) goto failed;
  
-@@ -2160,7 +2220,11 @@ D3DKMT_HANDLE d3dkmt_open_resource( D3DKMT_HANDLE global, HANDLE shared, D3DKMT_
+@@ -2365,7 +2425,11 @@ D3DKMT_HANDLE d3dkmt_open_resource( D3DKMT_HANDLE global, HANDLE shared, D3DKMT_
      resource->allocation = allocation->local;
  
      if (!runtime_data || runtime_size <= sizeof(struct d3dkmt_dxgi_desc)) WARN( "Unsupported runtime data size %#x\n", runtime_size );
@@ -1234,9 +1223,9 @@ index d8b69ceea21..541d8c068e2 100644
 +        get_resource_global_keyed_mutex( runtime_data, &mutex_global, &sync_global );
 +    }
  
-     if (!d3dkmt_object_open( mutex, mutex_global, shared, NULL, &mutex_size ) &&
-         !d3dkmt_object_open( sync, sync_global, shared, NULL, &sync_size ))
-@@ -2188,6 +2252,22 @@ failed:
+     if (!d3dkmt_mutex_open( mutex_global, shared, NULL, &mutex_size, &mutex ) &&
+         !d3dkmt_sync_open( sync_global, shared, &sync ))
+@@ -2394,6 +2458,22 @@ failed:
      return 0;
  }
  
@@ -1260,7 +1249,7 @@ index d8b69ceea21..541d8c068e2 100644
  NTSTATUS d3dkmt_destroy_resource( D3DKMT_HANDLE local )
  {
 diff --git a/dlls/win32u/hwnd_dmabuf.c b/dlls/win32u/hwnd_dmabuf.c
-index 1f49c4eecd7..fe9b4f46c28 100644
+index 1f49c4e..fe9b4f4 100644
 --- a/dlls/win32u/hwnd_dmabuf.c
 +++ b/dlls/win32u/hwnd_dmabuf.c
 @@ -38,6 +38,34 @@ int hwnd_dmabuf_open_channel( HWND hwnd )
@@ -1372,11 +1361,48 @@ index 1f49c4eecd7..fe9b4f46c28 100644
 +    if (!release) return HWND_DMABUF_CHANNEL_ERROR;
 +    return hwnd_dmabuf_channel_recv_release( channel_fd, release );
 +}
+diff --git a/dlls/win32u/main.c b/dlls/win32u/main.c
+index 975f466..c6ebe6b 100644
+--- a/dlls/win32u/main.c
++++ b/dlls/win32u/main.c
+@@ -1898,6 +1898,32 @@ BOOL SYSCALL_API NtUserHiliteMenuItem( HWND hwnd, HMENU handle, UINT item, UINT
+     SYSCALL_FUNC( NtUserHiliteMenuItem );
+ }
+ 
++void SYSCALL_API NtUserHwndDmaBufCloseProducer( HWND hwnd, int channel_fd )
++{
++    SYSCALL_FUNC( NtUserHwndDmaBufCloseProducer );
++}
++
++int SYSCALL_API NtUserHwndDmaBufDrainRelease( int channel_fd, void *release )
++{
++    SYSCALL_FUNC( NtUserHwndDmaBufDrainRelease );
++}
++
++UINT SYSCALL_API NtUserHwndDmaBufGetCaps( HWND hwnd, void *caps, void *format_modifiers,
++                                          UINT max_format_modifiers, UINT *format_modifier_count )
++{
++    SYSCALL_FUNC( NtUserHwndDmaBufGetCaps );
++}
++
++int SYSCALL_API NtUserHwndDmaBufOpenProducer( HWND hwnd )
++{
++    SYSCALL_FUNC( NtUserHwndDmaBufOpenProducer );
++}
++
++int SYSCALL_API NtUserHwndDmaBufPublish( HWND hwnd, int channel_fd, const void *desc, int dmabuf_fd )
++{
++    SYSCALL_FUNC( NtUserHwndDmaBufPublish );
++}
++
+ NTSTATUS SYSCALL_API NtUserInitializeClientPfnArrays( const ntuser_client_func_ptr *client_procsA,
+                                                       const ntuser_client_func_ptr *client_procsW,
+                                                       const ntuser_client_func_ptr *client_workers, HINSTANCE user_module )
 diff --git a/dlls/win32u/ntuser_private.h b/dlls/win32u/ntuser_private.h
-index 5910ed091b2..3298e939bea 100644
+index c2cf50e..f0c2518 100644
 --- a/dlls/win32u/ntuser_private.h
 +++ b/dlls/win32u/ntuser_private.h
-@@ -247,7 +247,12 @@ extern struct vulkan_instance *vulkan_instance_create( const struct vulkan_insta
+@@ -247,7 +247,12 @@ extern BOOL vulkan_init_in_progress( void );
  
  /* hwnd_dmabuf.c */
  extern int hwnd_dmabuf_open_channel( HWND hwnd );
@@ -1390,10 +1416,10 @@ index 5910ed091b2..3298e939bea 100644
  
  /* window.c */
 diff --git a/dlls/win32u/opengl.c b/dlls/win32u/opengl.c
-index 07fbeeae7a0..ab0d38ef454 100644
+index 1c73cd4..64dc5bb 100644
 --- a/dlls/win32u/opengl.c
 +++ b/dlls/win32u/opengl.c
-@@ -34,6 +34,8 @@
+@@ -33,6 +33,8 @@
  #include "win32u_private.h"
  #include "ntuser_private.h"
  
@@ -1402,19 +1428,7 @@ index 07fbeeae7a0..ab0d38ef454 100644
  #include "wine/opengl_driver.h"
  
  #include "dibdrv/dibdrv.h"
-@@ -1542,6 +1544,11 @@ static BOOL init_egl_platform( struct egl_platform *egl, const struct opengl_fun
- 
-     egl->has_EGL_EXT_present_opaque = has_extension( extensions, "EGL_EXT_present_opaque" );
-     egl->has_EGL_EXT_pixel_format_float = has_extension( extensions, "EGL_EXT_pixel_format_float" );
-+    egl->has_EGL_KHR_image_base = has_extension( extensions, "EGL_KHR_image_base" );
-+    egl->has_EGL_KHR_gl_renderbuffer_image = has_extension( extensions, "EGL_KHR_gl_renderbuffer_image" );
-+    egl->has_EGL_KHR_gl_texture_2D_image = has_extension( extensions, "EGL_KHR_gl_texture_2D_image" );
-+    egl->has_EGL_KHR_image = has_extension( extensions, "EGL_KHR_image" );
-+    egl->has_EGL_MESA_image_dma_buf_export = has_extension( extensions, "EGL_MESA_image_dma_buf_export" );
-     return TRUE;
- }
- 
-@@ -3334,6 +3341,565 @@ void win32u_glImportSemaphoreWin32NameEXT( GLuint semaphore, GLenum type, const
+@@ -3589,6 +3591,565 @@ void win32u_glImportSemaphoreWin32NameEXT( GLuint semaphore, GLenum type, const
      }
  }
  
@@ -1979,17 +1993,17 @@ index 07fbeeae7a0..ab0d38ef454 100644
 +
  static void display_funcs_init(void)
  {
-     struct egl_platform *egl, *next;
-@@ -3414,6 +3980,8 @@ static void display_funcs_init(void)
-     strcpy( wgl_extensions, driver_funcs->p_init_wgl_extensions( &display_funcs ) );
+ #define USE_GL_FUNC(func) { .name = #func, .ptr = (void *)&display_funcs.p_ ## func },
+@@ -3623,6 +4184,8 @@ static void display_funcs_init(void)
+ 
      display_funcs.p_wglGetPixelFormat = win32u_wglGetPixelFormat;
      display_funcs.p_wglSetPixelFormat = win32u_wglSetPixelFormat;
 +    display_funcs.p_wglWineDmaBufExportSupportedWINE = driver_funcs->p_get_proc_address( "wglWineDmaBufExportSupportedWINE" );
 +    display_funcs.p_wglWineExportDmaBufWINE = driver_funcs->p_get_proc_address( "wglWineExportDmaBufWINE" );
  
-     display_funcs.p_wglCreateContext = (void *)1; /* never called */
-     display_funcs.p_wglDeleteContext = (void *)1; /* never called */
-@@ -3476,6 +4044,32 @@ static void display_funcs_init(void)
+     display_funcs.p_wglSwapBuffers = win32u_wglSwapBuffers;
+     display_funcs.p_context_flush = win32u_context_flush;
+@@ -3684,6 +4247,32 @@ static void display_funcs_init(void)
      display_funcs.p_wglSwapIntervalEXT = win32u_wglSwapIntervalEXT;
      display_funcs.p_wglGetSwapIntervalEXT = win32u_wglGetSwapIntervalEXT;
  
@@ -2023,10 +2037,10 @@ index 07fbeeae7a0..ab0d38ef454 100644
      {
          display_funcs.p_glImportMemoryWin32HandleEXT = win32u_glImportMemoryWin32HandleEXT;
 diff --git a/dlls/win32u/vulkan.c b/dlls/win32u/vulkan.c
-index 5912c61ef26..805ecaf600a 100644
+index 0644ca1..d8bbff0 100644
 --- a/dlls/win32u/vulkan.c
 +++ b/dlls/win32u/vulkan.c
-@@ -83,6 +83,13 @@ static UINT hwnd_dmabuf_get_caps( HWND hwnd, void *caps, void *format_modifiers,
+@@ -85,6 +85,13 @@ static UINT hwnd_dmabuf_get_caps( HWND hwnd, void *caps, void *format_modifiers,
                                                          max_format_modifiers, format_modifier_count );
  }
  
@@ -2040,7 +2054,7 @@ index 5912c61ef26..805ecaf600a 100644
  #define ROUND_SIZE(size, mask) ((((SIZE_T)(size) + (mask)) & ~(SIZE_T)(mask)))
  
  static BOOL use_external_memory(void)
-@@ -2756,11 +2763,12 @@ static BOOL vk_host_modifier_exportable( struct vulkan_device *device, VkFormat
+@@ -3841,11 +3848,12 @@ static BOOL vk_host_modifier_exportable( struct vulkan_device *device, VkFormat
  }
  
  /* Build the candidate modifier list = caps modifiers (matching fourcc) that the
@@ -2055,7 +2069,7 @@ index 5912c61ef26..805ecaf600a 100644
  {
      hwnd_dmabuf_format_modifier_t *caps_mods;
      hwnd_dmabuf_host_caps_t caps = {0};
-@@ -2788,6 +2796,11 @@ static uint32_t vk_select_managed_modifiers( struct vulkan_device *device, HWND
+@@ -3873,6 +3881,11 @@ static uint32_t vk_select_managed_modifiers( struct vulkan_device *device, HWND
          free( caps_mods );
          return 0;
      }
@@ -2067,7 +2081,7 @@ index 5912c61ef26..805ecaf600a 100644
  
      *fourcc_out = 0;
      for (i = 0; i < caps_count && !*fourcc_out; i++)
-@@ -2799,7 +2812,8 @@ static uint32_t vk_select_managed_modifiers( struct vulkan_device *device, HWND
+@@ -3884,7 +3897,8 @@ static uint32_t vk_select_managed_modifiers( struct vulkan_device *device, HWND
  
      for (i = 0; i < caps_count && out_count < max_out; i++)
      {
@@ -2077,7 +2091,7 @@ index 5912c61ef26..805ecaf600a 100644
  
          if (caps_mods[i].fourcc != *fourcc_out) continue;
          /* MOD_INVALID means "any/implicit". Let the host pick by offering LINEAR. */
-@@ -2813,7 +2827,9 @@ static uint32_t vk_select_managed_modifiers( struct vulkan_device *device, HWND
+@@ -3898,7 +3912,9 @@ static uint32_t vk_select_managed_modifiers( struct vulkan_device *device, HWND
              for (j = 0; j < out_count; j++) if (out_mods[j] == modifier) { dup = TRUE; break; }
              if (dup) continue;
          }
@@ -2088,7 +2102,7 @@ index 5912c61ef26..805ecaf600a 100644
      }
  
      free( caps_mods );
-@@ -2847,7 +2863,8 @@ static void managed_free( struct vulkan_device *device, struct wine_managed_swap
+@@ -3932,7 +3948,8 @@ static void managed_free( struct vulkan_device *device, struct wine_managed_swap
  /* Create one exportable DRM-modifier image + dedicated exportable memory, export
   * its dmabuf fd and cache the realized modifier + per-plane layouts. */
  static VkResult managed_create_image( struct vulkan_device *device, struct wine_managed_swapchain *managed,
@@ -2098,7 +2112,7 @@ index 5912c61ef26..805ecaf600a 100644
                                        struct wine_managed_image *image )
  {
      VkImageDrmFormatModifierListCreateInfoEXT mod_list =
-@@ -2896,6 +2913,7 @@ static VkResult managed_create_image( struct vulkan_device *device, struct wine_
+@@ -3981,6 +3998,7 @@ static VkResult managed_create_image( struct vulkan_device *device, struct wine_
      struct vulkan_physical_device *physical_device = device->physical_device;
      VkSubresourceLayout layout = {0};
      uint32_t mem_type_index = ~0u, plane_count, i;
@@ -2106,7 +2120,7 @@ index 5912c61ef26..805ecaf600a 100644
      int fd = -1;
      VkResult res;
  
-@@ -2959,6 +2977,15 @@ static VkResult managed_create_image( struct vulkan_device *device, struct wine_
+@@ -4044,6 +4062,15 @@ static VkResult managed_create_image( struct vulkan_device *device, struct wine_
       * image still publishes its own modifier/stride/offset below in case the
       * host picks differently per image. */
      managed->realized_modifier = mod_props.drmFormatModifier;
@@ -2122,7 +2136,7 @@ index 5912c61ef26..805ecaf600a 100644
  
      /* Publish every plane of the realized modifier. A missing auxiliary plane
       * (e.g. AMD DCC) makes the consumer-side dmabuf import fail fatally. */
-@@ -3000,7 +3027,7 @@ static VkResult managed_create_image( struct vulkan_device *device, struct wine_
+@@ -4085,7 +4112,7 @@ static VkResult managed_create_image( struct vulkan_device *device, struct wine_
      image->desc.fourcc = managed->fourcc;
      image->desc.stride = image->desc.plane_strides[0];
      image->desc.offset = image->desc.plane_offsets[0];
@@ -2131,7 +2145,7 @@ index 5912c61ef26..805ecaf600a 100644
      image->desc.alpha_mode = managed->alpha_mode;
      image->desc.sync_fd_kind = 0; /* HWND_DMABUF_SYNC_NONE: consumer ignores acquire today */
      image->desc.producer_unique_id = 0; /* set from the managed producer id at present */
-@@ -3022,6 +3049,7 @@ static VkResult managed_swapchain_create( struct vulkan_device *device, struct s
+@@ -4107,6 +4134,7 @@ static VkResult managed_swapchain_create( struct vulkan_device *device, struct s
                                            struct wine_managed_swapchain **out )
  {
      uint64_t modifiers[WINE_VK_MANAGED_MAX_MODIFIERS];
@@ -2139,7 +2153,7 @@ index 5912c61ef26..805ecaf600a 100644
      struct wine_managed_swapchain *managed;
      BOOL opaque_alpha;
      unsigned int fourcc = 0;
-@@ -3038,7 +3066,7 @@ static VkResult managed_swapchain_create( struct vulkan_device *device, struct s
+@@ -4123,7 +4151,7 @@ static VkResult managed_swapchain_create( struct vulkan_device *device, struct s
       * host can export as a single-plane dmabuf, against the realized usage. */
      modifier_count = vk_select_managed_modifiers( device, surface->hwnd, create_info->imageFormat,
                                                    usage | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT, opaque_alpha,
@@ -2148,7 +2162,7 @@ index 5912c61ef26..805ecaf600a 100644
      if (!modifier_count)
      {
          TRACE( "no host-exportable modifier intersection for hwnd %p format %u, falling back to host swapchain\n",
-@@ -3052,9 +3080,9 @@ static VkResult managed_swapchain_create( struct vulkan_device *device, struct s
+@@ -4137,9 +4165,9 @@ static VkResult managed_swapchain_create( struct vulkan_device *device, struct s
      managed->format = create_info->imageFormat;
      managed->fourcc = fourcc;
      /* If the chosen fourcc is the opaque X-variant, tell the compositor to ignore
@@ -2160,7 +2174,7 @@ index 5912c61ef26..805ecaf600a 100644
      managed->extents = create_info->imageExtent;
      managed->usage = usage;
      managed->next_release_token = 0;
-@@ -3081,7 +3109,8 @@ static VkResult managed_swapchain_create( struct vulkan_device *device, struct s
+@@ -4166,7 +4194,8 @@ static VkResult managed_swapchain_create( struct vulkan_device *device, struct s
  
      for (i = 0; i < count; i++)
      {
@@ -2170,45 +2184,8 @@ index 5912c61ef26..805ecaf600a 100644
          {
              WARN( "failed to create managed image %u, res %d, falling back to host swapchain\n", i, res );
              managed->image_count = i;
-diff --git a/dlls/win32u/main.c b/dlls/win32u/main.c
---- a/dlls/win32u/main.c
-+++ b/dlls/win32u/main.c
-@@ -1882,6 +1882,32 @@ BOOL SYSCALL_API NtUserHiliteMenuItem( HWND hwnd, HMENU handle, UINT item, UINT
-     SYSCALL_FUNC( NtUserHiliteMenuItem );
- }
--
-+
-+void SYSCALL_API NtUserHwndDmaBufCloseProducer( HWND hwnd, int channel_fd )
-+{
-+    SYSCALL_FUNC( NtUserHwndDmaBufCloseProducer );
-+}
-+
-+int SYSCALL_API NtUserHwndDmaBufDrainRelease( int channel_fd, void *release )
-+{
-+    SYSCALL_FUNC( NtUserHwndDmaBufDrainRelease );
-+}
-+
-+UINT SYSCALL_API NtUserHwndDmaBufGetCaps( HWND hwnd, void *caps, void *format_modifiers,
-+                                          UINT max_format_modifiers, UINT *format_modifier_count )
-+{
-+    SYSCALL_FUNC( NtUserHwndDmaBufGetCaps );
-+}
-+
-+int SYSCALL_API NtUserHwndDmaBufOpenProducer( HWND hwnd )
-+{
-+    SYSCALL_FUNC( NtUserHwndDmaBufOpenProducer );
-+}
-+
-+int SYSCALL_API NtUserHwndDmaBufPublish( HWND hwnd, int channel_fd, const void *desc, int dmabuf_fd )
-+{
-+    SYSCALL_FUNC( NtUserHwndDmaBufPublish );
-+}
-+
- NTSTATUS SYSCALL_API NtUserInitializeClientPfnArrays( const ntuser_client_func_ptr *client_procsA,
-                                                       const ntuser_client_func_ptr *client_procsW,
-                                                       const ntuser_client_func_ptr *client_workers, HINSTANCE user_module )
 diff --git a/dlls/win32u/win32u.spec b/dlls/win32u/win32u.spec
-index 638e0ee6035..5cb723a52ef 100644
+index 9cac54a..8784e8e 100644
 --- a/dlls/win32u/win32u.spec
 +++ b/dlls/win32u/win32u.spec
 @@ -1136,6 +1136,11 @@
@@ -2224,10 +2201,10 @@ index 638e0ee6035..5cb723a52ef 100644
  @ stub -syscall NtUserHwndSetRedirectionInfo
  @ stub -syscall NtUserImpersonateDdeClientWindow
 diff --git a/dlls/win32u/win32u_private.h b/dlls/win32u/win32u_private.h
-index ffc02e70e73..3167e20dd56 100644
+index 56b80f6..8a8fac8 100644
 --- a/dlls/win32u/win32u_private.h
 +++ b/dlls/win32u/win32u_private.h
-@@ -225,7 +225,31 @@ extern NTSTATUS d3dkmt_destroy_mutex( D3DKMT_HANDLE local );
+@@ -238,7 +238,31 @@ extern NTSTATUS d3dkmt_destroy_mutex( D3DKMT_HANDLE local );
  extern HANDLE open_shared_resource_from_name( const WCHAR *name );
  extern HANDLE open_shared_semaphore_from_name( const WCHAR *name );
  
@@ -2260,10 +2237,10 @@ index ffc02e70e73..3167e20dd56 100644
  extern NTSTATUS d3dkmt_destroy_resource( D3DKMT_HANDLE local );
  
 diff --git a/dlls/wined3d/adapter_gl.c b/dlls/wined3d/adapter_gl.c
-index e33e27b4cc3..34ee7c64fbb 100644
+index 7f5f8c4..e70f562 100644
 --- a/dlls/wined3d/adapter_gl.c
 +++ b/dlls/wined3d/adapter_gl.c
-@@ -5057,6 +5057,19 @@ static BOOL wined3d_adapter_gl_init(struct wined3d_adapter_gl *adapter_gl,
+@@ -5074,6 +5074,19 @@ static BOOL wined3d_adapter_gl_init(struct wined3d_adapter_gl *adapter_gl,
  #undef USE_GL_FUNC
          gl_info->gl_ops.wgl.p_wglSwapBuffers = (void *)GetProcAddress(mod_gl, "wglSwapBuffers");
          gl_info->gl_ops.wgl.p_wglGetPixelFormat = (void *)GetProcAddress(mod_gl, "wglGetPixelFormat");
@@ -2284,7 +2261,7 @@ index e33e27b4cc3..34ee7c64fbb 100644
  
      gl_info->p_glEnableWINE = gl_info->gl_ops.gl.p_glEnable;
 diff --git a/dlls/wined3d/swapchain.c b/dlls/wined3d/swapchain.c
-index cf73b56d50a..7adae6b9c4c 100644
+index 4f106d4..732efd5 100644
 --- a/dlls/wined3d/swapchain.c
 +++ b/dlls/wined3d/swapchain.c
 @@ -23,10 +23,15 @@
@@ -2322,7 +2299,7 @@ index cf73b56d50a..7adae6b9c4c 100644
      wined3d_swapchain_cleanup(&swapchain_gl->s);
  }
  
-@@ -172,7 +187,10 @@ ULONG CDECL wined3d_swapchain_decref(struct wined3d_swapchain *swapchain)
+@@ -178,7 +193,10 @@ ULONG CDECL wined3d_swapchain_decref(struct wined3d_swapchain *swapchain)
          wined3d_cs_finish(device->cs, WINED3D_CS_QUEUE_DEFAULT);
  
          if (swapchain->dc)
@@ -2331,9 +2308,9 @@ index cf73b56d50a..7adae6b9c4c 100644
 +            swapchain->dc = NULL;
 +        }
  
-         swapchain->parent_ops->wined3d_object_destroyed(swapchain->parent);
-         swapchain->device->adapter->adapter_ops->adapter_destroy_swapchain(swapchain);
-@@ -203,7 +221,10 @@ void CDECL wined3d_swapchain_set_window(struct wined3d_swapchain *swapchain, HWN
+         CloseHandle(swapchain->frame_latency_semaphore);
+ 
+@@ -211,7 +229,10 @@ void CDECL wined3d_swapchain_set_window(struct wined3d_swapchain *swapchain, HWN
      wined3d_cs_finish(swapchain->device->cs, WINED3D_CS_QUEUE_DEFAULT);
  
      if (swapchain->dc)
@@ -2344,7 +2321,7 @@ index cf73b56d50a..7adae6b9c4c 100644
  
      swapchain->win_handle = window;
  
-@@ -222,8 +243,14 @@ HRESULT CDECL wined3d_swapchain_present(struct wined3d_swapchain *swapchain,
+@@ -230,8 +251,14 @@ HRESULT CDECL wined3d_swapchain_present(struct wined3d_swapchain *swapchain,
              swapchain, wine_dbgstr_rect(src_rect), wine_dbgstr_rect(dst_rect),
              dst_window_override, swap_interval, flags);
  
@@ -2359,9 +2336,9 @@ index cf73b56d50a..7adae6b9c4c 100644
 +        flags &= ~WINED3D_PRESENT_NO_WINDOW_UPDATE;
 +    }
  
-     wined3d_mutex_lock();
- 
-@@ -278,6 +305,16 @@ HRESULT CDECL wined3d_swapchain_get_front_buffer_data(const struct wined3d_swapc
+     if (!(swapchain->state.desc.flags & WINED3D_SWAPCHAIN_FRAME_LATENCY_WAITABLE_OBJECT))
+     {
+@@ -294,6 +321,16 @@ HRESULT CDECL wined3d_swapchain_get_front_buffer_data(const struct wined3d_swapc
              swapchain->front_buffer, 0, &src_rect, 0, NULL, WINED3D_TEXF_POINT);
  }
  
@@ -2378,7 +2355,7 @@ index cf73b56d50a..7adae6b9c4c 100644
  struct wined3d_texture * CDECL wined3d_swapchain_get_back_buffer(const struct wined3d_swapchain *swapchain,
          UINT back_buffer_idx)
  {
-@@ -580,6 +617,649 @@ static void wined3d_swapchain_gl_rotate(struct wined3d_swapchain *swapchain, str
+@@ -596,6 +633,649 @@ static void wined3d_swapchain_gl_rotate(struct wined3d_swapchain *swapchain, str
      device_invalidate_state(swapchain->device, STATE_FRAMEBUFFER);
  }
  
@@ -3028,70 +3005,22 @@ index cf73b56d50a..7adae6b9c4c 100644
  static bool swapchain_present_is_partial_copy(struct wined3d_swapchain *swapchain, const RECT *dst_rect)
  {
      enum wined3d_swap_effect swap_effect = swapchain->state.desc.swap_effect;
-@@ -630,31 +1310,47 @@ static void swapchain_gl_present(struct wined3d_swapchain *swapchain,
- 
-     TRACE("Presenting DC %p.\n", context_gl->dc);
- 
--    pixel_format = &wined3d_adapter_gl(swapchain->device->adapter)->pixel_formats[context_gl->pixel_format];
--    if (context_gl->dc == wined3d_device_gl(swapchain->device)->backup_dc
--            || (pixel_format->swap_method != WGL_SWAP_COPY_ARB
--            && swapchain_present_is_partial_copy(swapchain, dst_rect)))
-+    /* The gated dmabuf path captures below without updating the window. */
-+    if (flags & WINED3D_PRESENT_NO_WINDOW_UPDATE)
-     {
--        swapchain_blit_gdi(swapchain, context, src_rect, dst_rect);
-+        TRACE("Skipping window update.\n");
+@@ -673,6 +1353,14 @@ static void swapchain_gl_present(struct wined3d_swapchain *swapchain,
+         gl_info->gl_ops.wgl.p_wglSwapBuffers(context_gl->dc);
      }
-     else
-     {
--        gl_info = context_gl->gl_info;
-+        pixel_format = &wined3d_adapter_gl(swapchain->device->adapter)->pixel_formats[context_gl->pixel_format];
-+        if (context_gl->dc == wined3d_device_gl(swapchain->device)->backup_dc
-+                || (pixel_format->swap_method != WGL_SWAP_COPY_ARB
-+                && swapchain_present_is_partial_copy(swapchain, dst_rect)))
-+        {
-+            swapchain_blit_gdi(swapchain, context, src_rect, dst_rect);
-+        }
-+        else
-+        {
-+            gl_info = context_gl->gl_info;
  
--        swapchain_gl_set_swap_interval(swapchain, context_gl, swap_interval);
-+            swapchain_gl_set_swap_interval(swapchain, context_gl, swap_interval);
- 
--        wined3d_texture_load_location(back_buffer, 0, context, back_buffer->resource.draw_binding);
-+            wined3d_texture_load_location(back_buffer, 0, context, back_buffer->resource.draw_binding);
- 
--        swapchain_blit(swapchain, context, src_rect, dst_rect);
-+            swapchain_blit(swapchain, context, src_rect, dst_rect);
- 
--        if (swapchain->device->context_count > 1)
--        {
--            WARN_(d3d_perf)("Multiple contexts, calling glFinish() to enforce ordering.\n");
--            gl_info->gl_ops.gl.p_glFinish();
-+            if (swapchain->device->context_count > 1)
-+            {
-+                WARN_(d3d_perf)("Multiple contexts, calling glFinish() to enforce ordering.\n");
-+                gl_info->gl_ops.gl.p_glFinish();
-+            }
-+
-+            /* call wglSwapBuffers through the gl table to avoid confusing the Steam overlay */
-+            gl_info->gl_ops.wgl.p_wglSwapBuffers(context_gl->dc);
-         }
-+    }
- 
--        /* call wglSwapBuffers through the gl table to avoid confusing the Steam overlay */
--        gl_info->gl_ops.wgl.p_wglSwapBuffers(context_gl->dc);
 +    {
 +        struct wined3d_gl_hwnd_dmabuf_ring *ring = &wined3d_swapchain_gl(swapchain)->hwnd_dmabuf;
 +
 +        /* Capture before rotating the back buffer out. */
 +        ++ring->present_count;
 +        wined3d_gl_hwnd_dmabuf_capture(swapchain, context);
-     }
- 
++    }
++
      if (context->d3d_info->fences)
-@@ -664,8 +1360,11 @@ static void swapchain_gl_present(struct wined3d_swapchain *swapchain,
+         wined3d_context_gl_submit_command_fence(context_gl);
+ 
+@@ -680,8 +1368,11 @@ static void swapchain_gl_present(struct wined3d_swapchain *swapchain,
  
      TRACE("SwapBuffers called, Starting new frame\n");
  
@@ -3105,7 +3034,7 @@ index cf73b56d50a..7adae6b9c4c 100644
  
      context_release(context);
  }
-@@ -685,6 +1384,7 @@ static const struct wined3d_swapchain_ops swapchain_gl_ops =
+@@ -701,6 +1392,7 @@ static const struct wined3d_swapchain_ops swapchain_gl_ops =
  {
      swapchain_gl_present,
      swapchain_frontbuffer_updated,
@@ -3113,7 +3042,7 @@ index cf73b56d50a..7adae6b9c4c 100644
  };
  
  static bool wined3d_swapchain_vk_present_mode_supported(struct wined3d_swapchain_vk *swapchain_vk,
-@@ -1259,6 +1959,7 @@ static void swapchain_vk_present(struct wined3d_swapchain *swapchain, const RECT
+@@ -1280,6 +1972,7 @@ static void swapchain_vk_present(struct wined3d_swapchain *swapchain, const RECT
      VkResult vr;
      HRESULT hr;
  
@@ -3121,7 +3050,7 @@ index cf73b56d50a..7adae6b9c4c 100644
      context_vk = wined3d_context_vk(context_acquire(swapchain->device, back_buffer, 0));
  
      if (!swapchain_vk->vk_swapchain || swapchain_present_is_partial_copy(swapchain, dst_rect))
-@@ -1351,6 +2052,7 @@ static void swapchain_gdi_present(struct wined3d_swapchain *swapchain,
+@@ -1372,6 +2065,7 @@ static void swapchain_gdi_present(struct wined3d_swapchain *swapchain,
      void *heap_memory;
      HDC dc;
  
@@ -3129,7 +3058,7 @@ index cf73b56d50a..7adae6b9c4c 100644
      front = &swapchain->front_buffer->dc_info[0];
      back = &swapchain->back_buffers[0]->dc_info[0];
  
-@@ -1726,7 +2428,10 @@ err:
+@@ -1797,7 +2491,10 @@ err:
      }
  
      if (swapchain->dc)
@@ -3138,9 +3067,9 @@ index cf73b56d50a..7adae6b9c4c 100644
 +        swapchain->dc = NULL;
 +    }
  
-     wined3d_swapchain_state_cleanup(&swapchain->state);
-     wined3d_mutex_unlock();
-@@ -1749,11 +2454,24 @@ HRESULT wined3d_swapchain_gl_init(struct wined3d_swapchain_gl *swapchain_gl, str
+     CloseHandle(swapchain->frame_latency_semaphore);
+ 
+@@ -1822,11 +2519,24 @@ HRESULT wined3d_swapchain_gl_init(struct wined3d_swapchain_gl *swapchain_gl, str
          const struct wined3d_swapchain_desc *desc, struct wined3d_swapchain_state_parent *state_parent,
          void *parent, const struct wined3d_parent_ops *parent_ops)
  {
@@ -3167,7 +3096,7 @@ index cf73b56d50a..7adae6b9c4c 100644
  }
  
  HRESULT wined3d_swapchain_vk_init(struct wined3d_swapchain_vk *swapchain_vk, struct wined3d_device *device,
-@@ -1835,6 +2553,7 @@ static struct wined3d_context_gl *wined3d_swapchain_gl_create_context(struct win
+@@ -1908,6 +2618,7 @@ static struct wined3d_context_gl *wined3d_swapchain_gl_create_context(struct win
          free(context_gl);
          return NULL;
      }
@@ -3176,11 +3105,11 @@ index cf73b56d50a..7adae6b9c4c 100644
      if (!device_context_add(device, &context_gl->c))
      {
 diff --git a/dlls/wined3d/wined3d.spec b/dlls/wined3d/wined3d.spec
-index dc86887c251..66d5c6b4763 100644
+index 66467d6..9fa24a7 100644
 --- a/dlls/wined3d/wined3d.spec
 +++ b/dlls/wined3d/wined3d.spec
-@@ -312,6 +312,7 @@
- @ cdecl wined3d_swapchain_set_gamma_ramp(ptr long ptr)
+@@ -316,6 +316,7 @@
+ @ cdecl wined3d_swapchain_set_max_frame_latency(ptr long)
  @ cdecl wined3d_swapchain_set_palette(ptr ptr)
  @ cdecl wined3d_swapchain_set_window(ptr ptr)
 +@ cdecl wined3d_swapchain_supports_hwnd_dmabuf(ptr)
@@ -3188,7 +3117,7 @@ index dc86887c251..66d5c6b4763 100644
  @ cdecl wined3d_swapchain_state_create(ptr ptr ptr ptr ptr)
  @ cdecl wined3d_swapchain_state_destroy(ptr)
 diff --git a/dlls/wined3d/wined3d_gl.h b/dlls/wined3d/wined3d_gl.h
-index 00c82c7ac0a..46aa0b33c8d 100644
+index a75481a..e053c31 100644
 --- a/dlls/wined3d/wined3d_gl.h
 +++ b/dlls/wined3d/wined3d_gl.h
 @@ -30,6 +30,8 @@
@@ -3215,7 +3144,7 @@ index 00c82c7ac0a..46aa0b33c8d 100644
      void (WINE_GLAPI *p_glDisableWINE)(GLenum cap);
      void (WINE_GLAPI *p_glEnableWINE)(GLenum cap);
  };
-@@ -1138,9 +1148,58 @@ HRESULT wined3d_unordered_access_view_gl_init(struct wined3d_unordered_access_vi
+@@ -1140,9 +1150,58 @@ HRESULT wined3d_unordered_access_view_gl_init(struct wined3d_unordered_access_vi
  void wined3d_unordered_access_view_gl_update(struct wined3d_unordered_access_view_gl *uav_gl,
          struct wined3d_context_gl *context_gl);
  
@@ -3274,7 +3203,7 @@ index 00c82c7ac0a..46aa0b33c8d 100644
  };
  
  static inline struct wined3d_swapchain_gl *wined3d_swapchain_gl(struct wined3d_swapchain *swapchain)
-@@ -1148,6 +1207,12 @@ static inline struct wined3d_swapchain_gl *wined3d_swapchain_gl(struct wined3d_s
+@@ -1150,6 +1209,12 @@ static inline struct wined3d_swapchain_gl *wined3d_swapchain_gl(struct wined3d_s
      return CONTAINING_RECORD(swapchain, struct wined3d_swapchain_gl, s);
  }
  
@@ -3288,10 +3217,10 @@ index 00c82c7ac0a..46aa0b33c8d 100644
  struct wined3d_context_gl *wined3d_swapchain_gl_get_context(struct wined3d_swapchain_gl *swapchain_gl);
  HRESULT wined3d_swapchain_gl_init(struct wined3d_swapchain_gl *swapchain_gl, struct wined3d_device *device,
 diff --git a/dlls/wined3d/wined3d_private.h b/dlls/wined3d/wined3d_private.h
-index 1aed310f86c..56763cfbf2c 100644
+index 1331ff8..6842187 100644
 --- a/dlls/wined3d/wined3d_private.h
 +++ b/dlls/wined3d/wined3d_private.h
-@@ -4101,6 +4101,7 @@ struct wined3d_swapchain_ops
+@@ -4102,6 +4102,7 @@ struct wined3d_swapchain_ops
      void (*swapchain_present)(struct wined3d_swapchain *swapchain,
              const RECT *src_rect, const RECT *dst_rect, unsigned int swap_interval, uint32_t flags);
      void (*swapchain_frontbuffer_updated)(struct wined3d_swapchain *swapchain);
@@ -3300,7 +3229,7 @@ index 1aed310f86c..56763cfbf2c 100644
  
  struct wined3d_swapchain
 diff --git a/dlls/winewayland.drv/opengl.c b/dlls/winewayland.drv/opengl.c
-index 80b0ec716ef..72384bd654d 100644
+index 6a21cdc..0e68420 100644
 --- a/dlls/winewayland.drv/opengl.c
 +++ b/dlls/winewayland.drv/opengl.c
 @@ -26,8 +26,10 @@
@@ -3313,10 +3242,10 @@ index 80b0ec716ef..72384bd654d 100644
 +#include <unistd.h>
  
  #include "ntstatus.h"
- #define WIN32_NO_STATUS
-@@ -46,6 +48,68 @@ static const struct egl_platform *egl;
- static const struct opengl_funcs *funcs;
+ #include "waylanddrv.h"
+@@ -46,6 +48,68 @@ static const struct opengl_funcs *funcs;
  static const struct opengl_drawable_funcs wayland_drawable_funcs;
+ static BOOL (*p_egl_describe_pixel_format)( int format, struct wgl_pixel_format *pf );
  
 +/* Original (win32u) driver proc-address resolver, chained from
 + * wayland_get_proc_address so that names other than the WINE dmabuf-export
@@ -3383,8 +3312,8 @@ index 80b0ec716ef..72384bd654d 100644
  struct wayland_gl_drawable
  {
      struct opengl_drawable base;
-@@ -262,6 +326,84 @@ static UINT wayland_pbuffer_bind(HDC hdc, struct opengl_drawable *base, GLenum b
-     return -1; /* use default implementation */
+@@ -294,6 +358,84 @@ err:
+     return FALSE;
  }
  
 +static BOOL GLAPIENTRY wayland_wglWineExportDmaBufWINE(GLuint texture, GLenum target,
@@ -3468,7 +3397,7 @@ index 80b0ec716ef..72384bd654d 100644
  static struct opengl_driver_funcs wayland_driver_funcs =
  {
      .p_init_egl_platform = wayland_init_egl_platform,
-@@ -293,7 +435,8 @@ UINT WAYLAND_OpenGLInit(UINT version, const struct opengl_funcs *opengl_funcs, c
+@@ -324,7 +466,8 @@ UINT WAYLAND_OpenGLInit(UINT version, const struct opengl_funcs *opengl_funcs, c
      if (!opengl_funcs->egl_handle) return STATUS_NOT_SUPPORTED;
      funcs = opengl_funcs;
  
@@ -3477,12 +3406,12 @@ index 80b0ec716ef..72384bd654d 100644
 +    wayland_driver_funcs.p_get_proc_address = wayland_get_proc_address;
      wayland_driver_funcs.p_init_pixel_formats = (*driver_funcs)->p_init_pixel_formats;
      wayland_driver_funcs.p_describe_pixel_format = (*driver_funcs)->p_describe_pixel_format;
-     wayland_driver_funcs.p_init_wgl_extensions = (*driver_funcs)->p_init_wgl_extensions;
+     wayland_driver_funcs.p_init_extensions = (*driver_funcs)->p_init_extensions;
 diff --git a/dlls/winewayland.drv/vulkan.c b/dlls/winewayland.drv/vulkan.c
-index ce525805b30..88736785f26 100644
+index 4f715c2..f889bb2 100644
 --- a/dlls/winewayland.drv/vulkan.c
 +++ b/dlls/winewayland.drv/vulkan.c
-@@ -225,19 +225,12 @@ static UINT wayland_vulkan_get_hwnd_dmabuf_caps(HWND hwnd, void *caps_ptr, void
+@@ -175,19 +175,12 @@ static UINT wayland_vulkan_get_hwnd_dmabuf_caps(HWND hwnd, void *caps_ptr, void
          count++;
  
      memset(caps, 0, sizeof(*caps));
@@ -3503,10 +3432,10 @@ index ce525805b30..88736785f26 100644
      }
  
 diff --git a/dlls/winewayland.drv/wayland_surface.c b/dlls/winewayland.drv/wayland_surface.c
-index 15bc684d121..71335ab5835 100644
+index b10a7c4..cbaf5a4 100644
 --- a/dlls/winewayland.drv/wayland_surface.c
 +++ b/dlls/winewayland.drv/wayland_surface.c
-@@ -235,6 +235,8 @@ struct wayland_hwnd_dmabuf_surface
+@@ -78,6 +78,8 @@ struct wayland_hwnd_dmabuf_surface
      struct wl_list buffers;
      UINT frame_seq;
      BOOL current_committed;
@@ -3515,7 +3444,7 @@ index 15bc684d121..71335ab5835 100644
      BOOL seen;
      BOOL direct;
      BOOL linked;
-@@ -2301,7 +2303,7 @@ static void wayland_hwnd_dmabuf_surface_set_opaque(struct wayland_hwnd_dmabuf_su
+@@ -2590,7 +2592,7 @@ static void wayland_hwnd_dmabuf_surface_set_opaque(struct wayland_hwnd_dmabuf_su
  {
      struct wl_region *region = NULL;
  
@@ -3524,7 +3453,7 @@ index 15bc684d121..71335ab5835 100644
          (region = wl_compositor_create_region(process_wayland.wl_compositor)))
      {
          wl_region_add(region, 0, 0, width, height);
-@@ -2555,6 +2557,11 @@ static struct wayland_hwnd_dmabuf_buffer *wayland_hwnd_dmabuf_create_buffer(
+@@ -2844,6 +2846,11 @@ static struct wayland_hwnd_dmabuf_buffer *wayland_hwnd_dmabuf_create_buffer(
      zwp_linux_buffer_params_v1_destroy(params);
      if (!buffer->wl_buffer)
      {
@@ -3536,7 +3465,7 @@ index 15bc684d121..71335ab5835 100644
          free(buffer);
          return NULL;
      }
-@@ -2597,6 +2604,13 @@ static void wayland_hwnd_dmabuf_attach_current(struct wayland_hwnd_dmabuf_surfac
+@@ -2886,6 +2893,13 @@ static void wayland_hwnd_dmabuf_attach_current(struct wayland_hwnd_dmabuf_surfac
      struct wayland_hwnd_dmabuf_buffer *buffer = surface->current;
  
      if (!buffer) return;
@@ -3550,7 +3479,7 @@ index 15bc684d121..71335ab5835 100644
      buffer->release_flags = HWND_DMABUF_RELEASE_PRESENTED;
      wl_surface_attach(surface->wl_surface, buffer->wl_buffer, 0, 0);
      wl_surface_damage_buffer(surface->wl_surface, 0, 0, buffer->width, buffer->height);
-@@ -2654,11 +2668,7 @@ static struct wayland_hwnd_dmabuf_buffer *wayland_hwnd_dmabuf_cache_slot(
+@@ -2943,11 +2957,7 @@ static struct wayland_hwnd_dmabuf_buffer *wayland_hwnd_dmabuf_cache_slot(
      }
  
      if (buffer)
@@ -3562,7 +3491,7 @@ index 15bc684d121..71335ab5835 100644
      if (fd < 0)
      {
          TRACE("hwnd=%p cache-miss-no-fd slot=%u (awaiting fd resend)\n",
-@@ -2692,6 +2702,12 @@ static void wayland_hwnd_dmabuf_retire_frame(struct wayland_hwnd_dmabuf_surface
+@@ -2981,6 +2991,12 @@ static void wayland_hwnd_dmabuf_retire_frame(struct wayland_hwnd_dmabuf_surface
                                       flags, desc->image_id, desc->ring_generation);
  }
  
@@ -3575,7 +3504,7 @@ index 15bc684d121..71335ab5835 100644
  /* Drain the channel, importing every fd-bearing slot so none is lost, then show the newest
   * frame. Stable-slot producers send a slot's fd once and fd-less references after. The fd
   * is dup'd + passed via SCM_RIGHTS once per slot, not once per frame. created_buffer reports
-@@ -2714,12 +2730,22 @@ static struct wayland_hwnd_dmabuf_buffer *wayland_hwnd_dmabuf_surface_import_buf
+@@ -3003,12 +3019,22 @@ static struct wayland_hwnd_dmabuf_buffer *wayland_hwnd_dmabuf_surface_import_buf
  
      while ((r = wayland_hwnd_dmabuf_channel_recv_one(surface->channel_fd, &desc, &fd)) > 0)
      {
@@ -3603,7 +3532,7 @@ index 15bc684d121..71335ab5835 100644
              if (fd >= 0) close(fd);
              if (desc.release_token)
                  wayland_hwnd_dmabuf_send_release(surface, desc.producer_unique_id, desc.release_token,
-@@ -2740,7 +2766,19 @@ static struct wayland_hwnd_dmabuf_buffer *wayland_hwnd_dmabuf_surface_import_buf
+@@ -3029,7 +3055,19 @@ static struct wayland_hwnd_dmabuf_buffer *wayland_hwnd_dmabuf_surface_import_buf
      if (pdesc.flags & HWND_DMABUF_FLAG_STABLE_SLOT)
          buffer = wayland_hwnd_dmabuf_cache_slot(surface, &pdesc, pfd, created_buffer);
      else if ((buffer = wayland_hwnd_dmabuf_create_buffer(surface, &pdesc, pfd, FALSE)))
@@ -3623,7 +3552,7 @@ index 15bc684d121..71335ab5835 100644
  
      if (pfd >= 0) close(pfd);
  
-@@ -2939,7 +2977,7 @@ static BOOL wayland_surface_update_direct_dmabuf(struct wayland_surface *surface
+@@ -3228,7 +3266,7 @@ static BOOL wayland_surface_update_direct_dmabuf(struct wayland_surface *surface
      if (!direct->current) return TRUE;
  
  commit_current:
@@ -3632,7 +3561,7 @@ index 15bc684d121..71335ab5835 100644
      {
          wayland_hwnd_dmabuf_drop_current_frame(direct, HWND_DMABUF_RELEASE_DROPPED);
          wayland_surface_clear_direct_dmabuf(surface, data);
-@@ -2987,9 +3025,10 @@ BOOL wayland_surface_has_hwnd_dmabuf_content(struct wayland_surface *surface)
+@@ -3276,9 +3314,10 @@ BOOL wayland_surface_has_hwnd_dmabuf_content(struct wayland_surface *surface)
  {
      struct wayland_hwnd_dmabuf_surface *dmabuf_surface;
  
@@ -3645,7 +3574,7 @@ index 15bc684d121..71335ab5835 100644
              return TRUE;
      return FALSE;
  }
-@@ -3094,8 +3133,6 @@ static void wayland_surface_update_hwnd_dmabufs(struct wayland_surface *surface)
+@@ -3383,8 +3422,6 @@ static void wayland_surface_update_hwnd_dmabufs(struct wayland_surface *surface)
          if (status != HWND_DMABUF_OK) count = 0;
      }
  
@@ -3654,7 +3583,7 @@ index 15bc684d121..71335ab5835 100644
      data = wayland_win_data_get_nolock(surface->hwnd);
      if (wayland_surface_update_direct_dmabuf(surface, data, frames, count, now))
      {
-@@ -3122,6 +3159,22 @@ static void wayland_surface_update_hwnd_dmabufs(struct wayland_surface *surface)
+@@ -3411,6 +3448,22 @@ static void wayland_surface_update_hwnd_dmabufs(struct wayland_surface *surface)
  
          TRACE("hwnd=%p child=%p frame_seq=%u opened=%u\n",
                surface->hwnd, hwnd, frames[i].frame_seq, frames[i].opened);
@@ -3678,10 +3607,10 @@ index 15bc684d121..71335ab5835 100644
          if (!(dmabuf_surface = wayland_hwnd_dmabuf_surface_get(surface, hwnd)) &&
              !(dmabuf_surface = wayland_hwnd_dmabuf_surface_create(surface, hwnd)))
 diff --git a/dlls/wow64win/user.c b/dlls/wow64win/user.c
-index f4fc84837cb..8bb35d2d3a3 100644
+index c8ae167..eadfb86 100644
 --- a/dlls/wow64win/user.c
 +++ b/dlls/wow64win/user.c
-@@ -3283,6 +3283,52 @@ NTSTATUS WINAPI wow64_NtUserHiliteMenuItem( UINT *args )
+@@ -3407,6 +3407,52 @@ NTSTATUS WINAPI wow64_NtUserHiliteMenuItem( UINT *args )
      return NtUserHiliteMenuItem( hwnd, handle, item, hilite );
  }
  
@@ -3735,10 +3664,10 @@ index f4fc84837cb..8bb35d2d3a3 100644
  {
      const ntuser_client_func_ptr *procsA = get_ptr( &args );
 diff --git a/include/ntuser.h b/include/ntuser.h
-index 3e2b7543980..941fb6491cf 100644
+index efce870..06cf392 100644
 --- a/include/ntuser.h
 +++ b/include/ntuser.h
-@@ -923,6 +923,12 @@ W32KAPI BOOL    WINAPI NtUserGetWindowDisplayAffinity( HWND hwnd, DWORD *affinit
+@@ -924,6 +924,12 @@ W32KAPI BOOL    WINAPI NtUserGetWindowDisplayAffinity( HWND hwnd, DWORD *affinit
  W32KAPI BOOL    WINAPI NtUserGetWindowPlacement( HWND hwnd, WINDOWPLACEMENT *placement );
  W32KAPI int     WINAPI NtUserGetWindowRgnEx( HWND hwnd, HRGN hrgn, UINT unk );
  W32KAPI BOOL    WINAPI NtUserHideCaret( HWND hwnd );
@@ -3752,7 +3681,7 @@ index 3e2b7543980..941fb6491cf 100644
  W32KAPI NTSTATUS WINAPI NtUserInitializeClientPfnArrays( const ntuser_client_func_ptr *client_procsA,
                                                           const ntuser_client_func_ptr *client_procsW,
 diff --git a/include/wine/hwnd_dmabuf.h b/include/wine/hwnd_dmabuf.h
-index 6d7c1f31338..4546786de88 100644
+index 6d7c1f3..4546786 100644
 --- a/include/wine/hwnd_dmabuf.h
 +++ b/include/wine/hwnd_dmabuf.h
 @@ -5,10 +5,20 @@
@@ -3828,10 +3757,10 @@ index 6d7c1f31338..4546786de88 100644
  {
      enum hwnd_dmabuf_status status = HWND_DMABUF_INVALID_ARGS;
 diff --git a/include/wine/opengl_driver.h b/include/wine/opengl_driver.h
-index a5f4ad65c02..3c3feacb73d 100644
+index 74535f2..2f852a7 100644
 --- a/include/wine/opengl_driver.h
 +++ b/include/wine/opengl_driver.h
-@@ -59,12 +59,32 @@ struct wgl_pixel_format
+@@ -59,6 +59,26 @@ struct wgl_pixel_format
      int float_components;
  };
  
@@ -3855,57 +3784,41 @@ index a5f4ad65c02..3c3feacb73d 100644
 +        const void *desc, int dmabuf_fd );
 +typedef int (GLAPIENTRY *PFN_wglWineHwndDmaBufDrainReleaseWINE)( int channel_fd, void *release );
 +
- #ifdef WINE_UNIX_LIB
- 
+ enum opengl_extension
+ {
+ #define USE_GL_EXT(x) x,
+@@ -140,7 +160,7 @@ struct opengl_wow64_str
  #include "wine/gdi_driver.h"
  
  /* Wine internal opengl driver version, needs to be bumped upon opengl_funcs changes. */
--#define WINE_OPENGL_DRIVER_VERSION 37
-+#define WINE_OPENGL_DRIVER_VERSION 38
+-#define WINE_OPENGL_DRIVER_VERSION 41
++#define WINE_OPENGL_DRIVER_VERSION 42
  
  struct opengl_drawable;
- struct wgl_context;
-@@ -130,6 +150,14 @@ struct opengl_funcs
-     BOOL       (*p_wglChoosePixelFormatARB)( HDC hdc, const int *piAttribIList, const FLOAT *pfAttribFList, UINT nMaxFormats, int *piFormats, UINT *nNumFormats );
-     struct wgl_context * (*p_wglCreateContextAttribsARB)( HDC hDC, struct wgl_context * hShareContext, const int *attribList );
-     struct wgl_pbuffer * (*p_wglCreatePbufferARB)( HDC hDC, int iPixelFormat, int iWidth, int iHeight, const int *piAttribList );
-+    BOOL       (*p_wglDXCloseDeviceNV)( HANDLE hDevice );
-+    BOOL       (*p_wglDXLockObjectsNV)( HANDLE hDevice, GLint count, HANDLE *hObjects );
-+    BOOL       (*p_wglDXObjectAccessNV)( HANDLE hObject, GLenum access );
-+    HANDLE     (*p_wglDXOpenDeviceNV)( void *dxDevice );
-+    HANDLE     (*p_wglDXRegisterObjectNV)( HANDLE hDevice, void *dxObject, GLuint name, GLenum type, GLenum access );
-+    BOOL       (*p_wglDXSetResourceShareHandleNV)( void *dxObject, HANDLE shareHandle );
-+    BOOL       (*p_wglDXUnlockObjectsNV)( HANDLE hDevice, GLint count, HANDLE *hObjects );
-+    BOOL       (*p_wglDXUnregisterObjectNV)( HANDLE hDevice, HANDLE hObject );
-     BOOL       (*p_wglDestroyPbufferARB)( struct wgl_pbuffer * hPbuffer );
-     void       (*p_wglFreeMemoryNV)( void *pointer );
-     HDC        (*p_wglGetCurrentReadDCARB)(void);
-@@ -150,6 +178,8 @@ struct opengl_funcs
-     BOOL       (*p_wglSetPbufferAttribARB)( struct wgl_pbuffer * hPbuffer, const int *piAttribList );
-     BOOL       (*p_wglSetPixelFormatWINE)( HDC hdc, int format );
-     BOOL       (*p_wglSwapIntervalEXT)( int interval );
+ 
+@@ -188,7 +208,17 @@ struct opengl_funcs
+     PFN_wglSetPixelFormatWINE p_wglSetPixelFormatWINE;
+     PFN_wglSwapBuffers p_wglSwapBuffers;
+     PFN_wglSwapIntervalEXT p_wglSwapIntervalEXT;
 +    PFN_wglWineDmaBufExportSupportedWINE p_wglWineDmaBufExportSupportedWINE;
 +    PFN_wglWineExportDmaBufWINE p_wglWineExportDmaBufWINE;
- #define USE_GL_FUNC(x) PFN_##x p_##x;
-     ALL_EGL_FUNCS
-     ALL_EGL_EXT_FUNCS
-@@ -175,6 +205,11 @@ struct egl_platform
-     EGLConfig           *configs;
-     BOOL                 has_EGL_EXT_present_opaque;
-     BOOL                 has_EGL_EXT_pixel_format_float;
-+    BOOL                 has_EGL_KHR_image_base;
-+    BOOL                 has_EGL_KHR_gl_renderbuffer_image;
-+    BOOL                 has_EGL_KHR_gl_texture_2D_image;
-+    BOOL                 has_EGL_KHR_image;
-+    BOOL                 has_EGL_MESA_image_dma_buf_export;
- 
-     /* WGL_WINE_query_renderer info */
-     UINT                 device_id;
+     PFN_wglGetSwapIntervalEXT p_wglGetSwapIntervalEXT;
++    PFN_wglDXCloseDeviceNV p_wglDXCloseDeviceNV;
++    PFN_wglDXLockObjectsNV p_wglDXLockObjectsNV;
++    PFN_wglDXObjectAccessNV p_wglDXObjectAccessNV;
++    PFN_wglDXOpenDeviceNV p_wglDXOpenDeviceNV;
++    PFN_wglDXRegisterObjectNV p_wglDXRegisterObjectNV;
++    PFN_wglDXSetResourceShareHandleNV p_wglDXSetResourceShareHandleNV;
++    PFN_wglDXUnlockObjectsNV p_wglDXUnlockObjectsNV;
++    PFN_wglDXUnregisterObjectNV p_wglDXUnregisterObjectNV;
+     PFN_wglDestroyPbufferARB p_wglDestroyPbufferARB;
+     PFN_wglGetPbufferDCARB p_wglGetPbufferDCARB;
+     PFN_wglReleasePbufferDCARB p_wglReleasePbufferDCARB;
 diff --git a/include/wine/server_protocol.h b/include/wine/server_protocol.h
-index 87c9fe7773b..00e43231f93 100644
+index 977c8c8..89338d9 100644
 --- a/include/wine/server_protocol.h
 +++ b/include/wine/server_protocol.h
-@@ -6397,6 +6397,20 @@ struct hwnd_dmabuf_get_channel_reply
+@@ -6472,6 +6472,20 @@ struct hwnd_dmabuf_get_channel_reply
  
  
  
@@ -3926,7 +3839,7 @@ index 87c9fe7773b..00e43231f93 100644
  struct hwnd_dmabuf_claim_channel_request
  {
      struct request_header __header;
-@@ -6726,6 +6740,7 @@ enum request
+@@ -6801,6 +6815,7 @@ enum request
      REQ_fsync_free_shm_idx,
      REQ_hwnd_list_dmabuf_frames,
      REQ_hwnd_dmabuf_get_channel,
@@ -3934,7 +3847,7 @@ index 87c9fe7773b..00e43231f93 100644
      REQ_hwnd_dmabuf_claim_channel,
      REQ_NB_REQUESTS
  };
-@@ -7048,6 +7063,7 @@ union generic_request
+@@ -7123,6 +7138,7 @@ union generic_request
      struct fsync_free_shm_idx_request fsync_free_shm_idx_request;
      struct hwnd_list_dmabuf_frames_request hwnd_list_dmabuf_frames_request;
      struct hwnd_dmabuf_get_channel_request hwnd_dmabuf_get_channel_request;
@@ -3942,7 +3855,7 @@ index 87c9fe7773b..00e43231f93 100644
      struct hwnd_dmabuf_claim_channel_request hwnd_dmabuf_claim_channel_request;
  };
  union generic_reply
-@@ -7368,9 +7384,10 @@ union generic_reply
+@@ -7443,9 +7459,10 @@ union generic_reply
      struct fsync_free_shm_idx_reply fsync_free_shm_idx_reply;
      struct hwnd_list_dmabuf_frames_reply hwnd_list_dmabuf_frames_reply;
      struct hwnd_dmabuf_get_channel_reply hwnd_dmabuf_get_channel_reply;
@@ -3950,25 +3863,25 @@ index 87c9fe7773b..00e43231f93 100644
      struct hwnd_dmabuf_claim_channel_reply hwnd_dmabuf_claim_channel_reply;
  };
  
--#define SERVER_PROTOCOL_VERSION 931
-+#define SERVER_PROTOCOL_VERSION 933
+-#define SERVER_PROTOCOL_VERSION 980
++#define SERVER_PROTOCOL_VERSION 981
  
  #endif /* __WINE_WINE_SERVER_PROTOCOL_H */
 diff --git a/include/wine/wgl.h b/include/wine/wgl.h
-index c9fbfdef254..3a834203517 100644
+index a4ce41d..8ac8dc2 100644
 --- a/include/wine/wgl.h
 +++ b/include/wine/wgl.h
-@@ -5806,6 +5806,9 @@ typedef unsigned int GLhandleARB;
- #define GL_ZOOM_Y                                                     0x0D17
- #define GL_Z_EXT                                                      0x87D7
- #define WGL_ACCELERATION_ARB                                          0x2003
-+#define WGL_ACCESS_READ_ONLY_NV                                       0x00000000
-+#define WGL_ACCESS_READ_WRITE_NV                                      0x00000001
-+#define WGL_ACCESS_WRITE_DISCARD_NV                                   0x00000002
- #define WGL_ACCUM_ALPHA_BITS_ARB                                      0x2021
- #define WGL_ACCUM_BITS_ARB                                            0x201D
- #define WGL_ACCUM_BLUE_BITS_ARB                                       0x2020
-@@ -9520,6 +9523,14 @@ typedef BOOL       (GLAPIENTRY *PFN_wglBindTexImageARB)( HPBUFFERARB hPbuffer, i
+@@ -6716,6 +6716,9 @@ typedef unsigned int GLhandleARB;
+ #define GL_ZOOM_Y                                                                  0x0D17
+ #define GL_Z_EXT                                                                   0x87D7
+ #define WGL_ACCELERATION_ARB                                                       0x2003
++#define WGL_ACCESS_READ_ONLY_NV                                                  0x00000000
++#define WGL_ACCESS_READ_WRITE_NV                                                 0x00000001
++#define WGL_ACCESS_WRITE_DISCARD_NV                                              0x00000002
+ #define WGL_ACCUM_ALPHA_BITS_ARB                                                   0x2021
+ #define WGL_ACCUM_BITS_ARB                                                         0x201D
+ #define WGL_ACCUM_BLUE_BITS_ARB                                                    0x2020
+@@ -10717,6 +10720,14 @@ typedef BOOL       (GLAPIENTRY *PFN_wglBindTexImageARB)( HPBUFFERARB hPbuffer, i
  typedef BOOL       (GLAPIENTRY *PFN_wglChoosePixelFormatARB)( HDC hdc, const int *piAttribIList, const FLOAT *pfAttribFList, UINT nMaxFormats, int *piFormats, UINT *nNumFormats );
  typedef HGLRC      (GLAPIENTRY *PFN_wglCreateContextAttribsARB)( HDC hDC, HGLRC hShareContext, const int *attribList );
  typedef HPBUFFERARB (GLAPIENTRY *PFN_wglCreatePbufferARB)( HDC hDC, int iPixelFormat, int iWidth, int iHeight, const int *piAttribList );
@@ -3983,7 +3896,15 @@ index c9fbfdef254..3a834203517 100644
  typedef BOOL       (GLAPIENTRY *PFN_wglDestroyPbufferARB)( HPBUFFERARB hPbuffer );
  typedef void       (GLAPIENTRY *PFN_wglFreeMemoryNV)( void *pointer );
  typedef HDC        (GLAPIENTRY *PFN_wglGetCurrentReadDCARB)(void);
-@@ -9573,6 +9584,14 @@ typedef BOOL       (GLAPIENTRY *PFN_wglSwapIntervalEXT)( int interval );
+@@ -10768,6 +10779,7 @@ typedef BOOL       (GLAPIENTRY *PFN_wglSwapIntervalEXT)( int interval );
+     USE_GL_EXT(WGL_EXT_pixel_format_packed_float) \
+     USE_GL_EXT(WGL_EXT_swap_control) \
+     USE_GL_EXT(WGL_EXT_swap_control_tear) \
++    USE_GL_EXT(WGL_NV_DX_interop) \
+     USE_GL_EXT(WGL_NV_float_buffer) \
+     USE_GL_EXT(WGL_NV_multigpu_context) \
+     USE_GL_EXT(WGL_NV_multisample_coverage) \
+@@ -10811,6 +10823,14 @@ typedef BOOL       (GLAPIENTRY *PFN_wglSwapIntervalEXT)( int interval );
      USE_GL_FUNC(wglChoosePixelFormatARB) \
      USE_GL_FUNC(wglCreateContextAttribsARB) \
      USE_GL_FUNC(wglCreatePbufferARB) \
@@ -3999,10 +3920,10 @@ index c9fbfdef254..3a834203517 100644
      USE_GL_FUNC(wglFreeMemoryNV) \
      USE_GL_FUNC(wglGetCurrentReadDCARB) \
 diff --git a/include/wine/wined3d.h b/include/wine/wined3d.h
-index c8750b7a216..dfd8d45d442 100644
+index f7f91bb..ef490dd 100644
 --- a/include/wine/wined3d.h
 +++ b/include/wine/wined3d.h
-@@ -2907,6 +2907,7 @@ HRESULT __cdecl wined3d_swapchain_get_front_buffer_data(const struct wined3d_swa
+@@ -2913,6 +2913,7 @@ HRESULT __cdecl wined3d_swapchain_get_front_buffer_data(const struct wined3d_swa
          struct wined3d_texture *dst_texture, unsigned int sub_resource_idx);
  HRESULT __cdecl wined3d_swapchain_get_gamma_ramp(const struct wined3d_swapchain *swapchain,
          struct wined3d_gamma_ramp *ramp);
@@ -4010,7 +3931,7 @@ index c8750b7a216..dfd8d45d442 100644
  void * __cdecl wined3d_swapchain_get_parent(const struct wined3d_swapchain *swapchain);
  void __cdecl wined3d_swapchain_get_desc(const struct wined3d_swapchain *swapchain,
          struct wined3d_swapchain_desc *desc);
-@@ -2914,6 +2915,9 @@ HRESULT __cdecl wined3d_swapchain_get_raster_status(const struct wined3d_swapcha
+@@ -2921,6 +2922,9 @@ HRESULT __cdecl wined3d_swapchain_get_raster_status(const struct wined3d_swapcha
          struct wined3d_raster_status *raster_status);
  struct wined3d_swapchain_state * __cdecl wined3d_swapchain_get_state(struct wined3d_swapchain *swapchain);
  ULONG __cdecl wined3d_swapchain_incref(struct wined3d_swapchain *swapchain);
@@ -4021,10 +3942,10 @@ index c8750b7a216..dfd8d45d442 100644
          const RECT *dst_rect, HWND dst_window_override, unsigned int swap_interval, uint32_t flags);
  HRESULT __cdecl wined3d_swapchain_resize_buffers(struct wined3d_swapchain *swapchain, unsigned int buffer_count,
 diff --git a/server/protocol.def b/server/protocol.def
-index 1ae0f3ffbfd..5802c50999e 100644
+index 1623d41..01d3ec0 100644
 --- a/server/protocol.def
 +++ b/server/protocol.def
-@@ -4466,6 +4466,15 @@ enum fsync_type
+@@ -4550,6 +4550,15 @@ enum fsync_type
  @END
  
  
@@ -4041,10 +3962,10 @@ index 1ae0f3ffbfd..5802c50999e 100644
  @REQ(hwnd_dmabuf_claim_channel)
      user_handle_t  hwnd;                /* child HWND owned by the caller */
 diff --git a/server/request_handlers.h b/server/request_handlers.h
-index 9caf56915f6..ef98edfca0d 100644
+index b0ed7bf..305248f 100644
 --- a/server/request_handlers.h
 +++ b/server/request_handlers.h
-@@ -321,6 +321,7 @@ DECL_HANDLER(d3dkmt_mutex_release);
+@@ -321,6 +321,7 @@ DECL_HANDLER(alpc_create_port);
  DECL_HANDLER(fsync_free_shm_idx);
  DECL_HANDLER(hwnd_list_dmabuf_frames);
  DECL_HANDLER(hwnd_dmabuf_get_channel);
@@ -4060,7 +3981,7 @@ index 9caf56915f6..ef98edfca0d 100644
      (req_handler)req_hwnd_dmabuf_claim_channel,
  };
  
-@@ -2438,6 +2440,11 @@ C_ASSERT( sizeof(struct hwnd_dmabuf_get_channel_request) == 16 );
+@@ -2450,6 +2452,11 @@ C_ASSERT( sizeof(struct hwnd_dmabuf_get_channel_request) == 16 );
  C_ASSERT( offsetof(struct hwnd_dmabuf_get_channel_reply, status) == 8 );
  C_ASSERT( offsetof(struct hwnd_dmabuf_get_channel_reply, channel_handle) == 12 );
  C_ASSERT( sizeof(struct hwnd_dmabuf_get_channel_reply) == 16 );
@@ -4073,10 +3994,10 @@ index 9caf56915f6..ef98edfca0d 100644
  C_ASSERT( sizeof(struct hwnd_dmabuf_claim_channel_request) == 16 );
  C_ASSERT( offsetof(struct hwnd_dmabuf_claim_channel_reply, status) == 8 );
 diff --git a/server/request_trace.h b/server/request_trace.h
-index 8c7a513cc6f..345e814b9e5 100644
+index 93c1cdd..1debdac 100644
 --- a/server/request_trace.h
 +++ b/server/request_trace.h
-@@ -3606,6 +3606,17 @@ static void dump_hwnd_dmabuf_get_channel_reply( const struct hwnd_dmabuf_get_cha
+@@ -3626,6 +3626,17 @@ static void dump_hwnd_dmabuf_get_channel_reply( const struct hwnd_dmabuf_get_cha
      fprintf( stderr, ", channel_handle=%04x", req->channel_handle );
  }
  
@@ -4094,7 +4015,7 @@ index 8c7a513cc6f..345e814b9e5 100644
  static void dump_hwnd_dmabuf_claim_channel_request( const struct hwnd_dmabuf_claim_channel_request *req )
  {
      fprintf( stderr, " hwnd=%08x", req->hwnd );
-@@ -3935,6 +3946,7 @@ static const dump_func req_dumpers[REQ_NB_REQUESTS] =
+@@ -3955,6 +3966,7 @@ static const dump_func req_dumpers[REQ_NB_REQUESTS] =
      (dump_func)dump_fsync_free_shm_idx_request,
      (dump_func)dump_hwnd_list_dmabuf_frames_request,
      (dump_func)dump_hwnd_dmabuf_get_channel_request,
@@ -4102,7 +4023,7 @@ index 8c7a513cc6f..345e814b9e5 100644
      (dump_func)dump_hwnd_dmabuf_claim_channel_request,
  };
  
-@@ -4254,6 +4266,7 @@ static const dump_func reply_dumpers[REQ_NB_REQUESTS] =
+@@ -4274,6 +4286,7 @@ static const dump_func reply_dumpers[REQ_NB_REQUESTS] =
      NULL,
      (dump_func)dump_hwnd_list_dmabuf_frames_reply,
      (dump_func)dump_hwnd_dmabuf_get_channel_reply,
@@ -4110,7 +4031,7 @@ index 8c7a513cc6f..345e814b9e5 100644
      (dump_func)dump_hwnd_dmabuf_claim_channel_reply,
  };
  
-@@ -4573,6 +4586,7 @@ static const char * const req_names[REQ_NB_REQUESTS] =
+@@ -4593,6 +4606,7 @@ static const char * const req_names[REQ_NB_REQUESTS] =
      "fsync_free_shm_idx",
      "hwnd_list_dmabuf_frames",
      "hwnd_dmabuf_get_channel",
@@ -4119,10 +4040,10 @@ index 8c7a513cc6f..345e814b9e5 100644
  };
  
 diff --git a/server/window.c b/server/window.c
-index e5c229de151..d23608ba5f3 100644
+index 8f105f5..8352bb2 100644
 --- a/server/window.c
 +++ b/server/window.c
-@@ -102,6 +102,9 @@ struct window
+@@ -97,6 +97,9 @@ struct window
      window_shm_t    *shared;          /* window in session shared memory */
      struct object   *dmabuf_channel_producer; /* producer end of the frame socket */
      struct object   *dmabuf_channel_consumer; /* consumer end of the frame socket */
@@ -4131,7 +4052,7 @@ index e5c229de151..d23608ba5f3 100644
 +    unsigned int     dmabuf_exclusive_count;  /* producer count from exclusive opens */
  };
  
- static void window_dump( struct object *obj, int verbose );
+ C_ASSERT( sizeof(window_shm_t) == offsetof(window_shm_t, extra[0]) );
 @@ -692,6 +695,9 @@ static struct window *create_window( struct window *parent, struct window *owner
      win->shared         = NULL;
      win->dmabuf_channel_producer = NULL;
@@ -4142,7 +4063,7 @@ index e5c229de151..d23608ba5f3 100644
      win->window_rect = win->visible_rect = win->surface_rect = win->client_rect = empty_rect;
      list_init( &win->children );
      list_init( &win->unlinked );
-@@ -1294,12 +1300,29 @@ static void hwnd_dmabuf_frame_info_from_window( struct window *host, struct wind
+@@ -1292,12 +1298,29 @@ static void hwnd_dmabuf_frame_info_from_window( struct window *host, struct wind
      info->style = win->style;
      info->ex_style = win->ex_style;
      info->dpi = get_window_dpi( win );
@@ -4175,7 +4096,7 @@ index e5c229de151..d23608ba5f3 100644
  }
  
  static unsigned int hwnd_dmabuf_count_frames( struct window *win )
-@@ -1307,7 +1330,7 @@ static unsigned int hwnd_dmabuf_count_frames( struct window *win )
+@@ -1305,7 +1328,7 @@ static unsigned int hwnd_dmabuf_count_frames( struct window *win )
      struct window *child;
      unsigned int count = 0;
  
@@ -4184,7 +4105,7 @@ index e5c229de151..d23608ba5f3 100644
      LIST_FOR_EACH_ENTRY( child, &win->children, struct window, entry )
          count += hwnd_dmabuf_count_frames( child );
      return count;
-@@ -1319,7 +1342,7 @@ static void hwnd_dmabuf_fill_frame_info( struct window *host, struct window *win
+@@ -1317,7 +1340,7 @@ static void hwnd_dmabuf_fill_frame_info( struct window *host, struct window *win
  {
      struct window *child;
  
@@ -4193,7 +4114,7 @@ index e5c229de151..d23608ba5f3 100644
      {
          if (*count < max_count)
              hwnd_dmabuf_frame_info_from_window( host, win, &frames[*count] );
-@@ -3058,6 +3081,24 @@ DECL_HANDLER(hwnd_list_dmabuf_frames)
+@@ -3122,6 +3145,24 @@ DECL_HANDLER(hwnd_list_dmabuf_frames)
  }
  
  
@@ -4218,7 +4139,7 @@ index e5c229de151..d23608ba5f3 100644
  /* Wrap a server-owned unix fd as a handle-passable object (fd consumed on failure). */
  static struct object *hwnd_dmabuf_wrap_fd( int unix_fd )
  {
-@@ -3070,41 +3111,115 @@ static struct object *hwnd_dmabuf_wrap_fd( int unix_fd )
+@@ -3134,41 +3175,115 @@ static struct object *hwnd_dmabuf_wrap_fd( int unix_fd )
      return obj;
  }
  
@@ -4351,7 +4272,7 @@ index e5c229de151..d23608ba5f3 100644
      reply->status = HWND_DMABUF_OK;
  }
  
-@@ -3116,7 +3231,7 @@ DECL_HANDLER(hwnd_dmabuf_claim_channel)
+@@ -3180,7 +3295,7 @@ DECL_HANDLER(hwnd_dmabuf_claim_channel)
      reply->status = HWND_DMABUF_NOT_FOUND;
      reply->channel_handle = 0;
      if (!win) return;
@@ -4360,7 +4281,7 @@ index e5c229de151..d23608ba5f3 100644
      {
          reply->status = HWND_DMABUF_NO_FRAME;
          return;
-@@ -3133,6 +3248,25 @@ DECL_HANDLER(hwnd_dmabuf_claim_channel)
+@@ -3197,6 +3312,25 @@ DECL_HANDLER(hwnd_dmabuf_claim_channel)
  }
  
  

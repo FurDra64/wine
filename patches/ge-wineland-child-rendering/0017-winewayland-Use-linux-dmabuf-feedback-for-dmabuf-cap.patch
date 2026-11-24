@@ -722,16 +722,16 @@ index ae0e632e500..9aaad18d28a 100644
  struct wayland
  {
      BOOL initialized;
-@@ -262,7 +290,9 @@ struct wayland
-     struct wl_subcompositor *wl_subcompositor;
+@@ -283,7 +311,9 @@ struct wayland
      struct wl_fixes *wl_fixes;
+ #endif
      struct zwp_linux_dmabuf_v1 *zwp_linux_dmabuf_v1;
 +    struct wayland_dmabuf_feedback dmabuf_default_feedback;
      struct wl_list dmabuf_formats;
 +    pthread_mutex_t dmabuf_mutex;
-     struct wp_fractional_scale_manager_v1 *wp_fractional_scale_manager_v1;
-     struct zwp_pointer_constraints_v1 *zwp_pointer_constraints_v1;
-     struct zwp_relative_pointer_manager_v1 *zwp_relative_pointer_manager_v1;
+     struct wl_array output_array;
+     /* Protects the output_array, and the wayland_output.current states. */
+     pthread_mutex_t output_mutex;
 @@ -347,15 +377,6 @@ struct wayland_output_state
      unsigned int flags;
  };

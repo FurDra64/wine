@@ -20,14 +20,14 @@ retaining the minimized-window handling.
 
 Source: https://github.com/nanomatters/wine-salkim/commit/cd4699994c7a4e4562c7d91e86579930d831524d
 ---
- dlls/winewayland.drv/window.c | 20 +++++---------------
- 1 file changed, 5 insertions(+), 15 deletions(-)
+ dlls/winewayland.drv/window.c | 30 +++++++++++-------------------
+ 1 file changed, 11 insertions(+), 19 deletions(-)
 
 diff --git a/dlls/winewayland.drv/window.c b/dlls/winewayland.drv/window.c
 index 3901b9f42ec..409ea5d2548 100644
 --- a/dlls/winewayland.drv/window.c
 +++ b/dlls/winewayland.drv/window.c
-@@ -256,15 +256,11 @@ static BOOL rect_intersects_virtual_screen(const RECT *rect)
+@@ -255,21 +255,14 @@ static BOOL rect_intersects_virtual_screen(const RECT *rect)
      return intersect_rect(&intersect, rect, &virtual_rect);
  }
  
@@ -36,16 +36,25 @@ index 3901b9f42ec..409ea5d2548 100644
 +static BOOL should_keep_minimized_toplevel_mapped(struct wayland_surface *surface,
 +                                                  DWORD style)
  {
-     if (!surface || surface->role != WAYLAND_SURFACE_ROLE_TOPLEVEL) return FALSE;
--    if (swp_flags & SWP_HIDEWINDOW) return FALSE;
+-    UINT show_cmd;
+-    BOOL keep_mapped;
 -
--    /* Invisible without an explicit hide is presumed transient; visible
--     * windows map through the normal path. */
--    if (!(style & WS_MINIMIZE)) return !(style & WS_VISIBLE);
+     if (!surface || surface->role != WAYLAND_SURFACE_ROLE_TOPLEVEL) return FALSE;
+-
+-    keep_mapped = !surface->current.caps ||
+-                  (surface->current.caps & WAYLAND_SURFACE_WM_CAPS_MINIMIZE);
+-    if (swp_flags & (SWP_HIDEWINDOW | SWP_SHOWWINDOW)) return keep_mapped;
+-    if (!(show_cmd = NtUserGetWindowLongW( surface->hwnd, GWL_STYLE ) & (WS_MINIMIZE | WS_VISIBLE)))
+-        return keep_mapped;
+-
+-    return show_cmd == (WS_MINIMIZE | WS_VISIBLE) && !(swp_flags & SWP_FRAMECHANGED);
 +    if (!(style & WS_MINIMIZE)) return FALSE;
++
++    return !surface->current.caps ||
++           (surface->current.caps & WAYLAND_SURFACE_WM_CAPS_MINIMIZE);
+ }
  
-     return !surface->current.caps ||
-            (surface->current.caps & WAYLAND_SURFACE_WM_CAPS_MINIMIZE);
+ static BOOL window_or_root_minimized(HWND hwnd)
 @@ -318,14 +314,13 @@ static BOOL wayland_win_data_create_wayland_surface(struct wayland_win_data *dat
      struct wayland_client_surface *client = data->client_surface;
      struct wayland_surface *surface;
@@ -62,15 +71,8 @@ index 3901b9f42ec..409ea5d2548 100644
  
      layer_set = !(exstyle & WS_EX_LAYERED) || data->layered_attribs_set;
      visible = ((style & WS_VISIBLE) == WS_VISIBLE);
-@@ -335,14 +330,9 @@ static BOOL wayland_win_data_create_wayland_surface(struct wayland_win_data *dat
-     if (!surface || !surface->window.visible)
-         visible = visible && layer_set;
- 
--    /* State changes can transiently clear WS_VISIBLE before the driver sees
--     * the final minimized/restored state. Keep an existing toplevel mapped
--     * unless this is an explicit hide request. */
--    if (keep_mapped) visible = TRUE;
--
+@@ -341,7 +341,7 @@ static BOOL wayland_win_data_create_wayland_surface(struct wayland_win_data *dat
+
      if (visible && !owner_surface && !use_layer_shell && !toplevel_surface &&
          !rect_intersects_virtual_screen(&data->rects.window) &&
 -        !keep_mapped)

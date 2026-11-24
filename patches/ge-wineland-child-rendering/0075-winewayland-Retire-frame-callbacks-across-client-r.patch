@@ -21,10 +21,10 @@ diff --git a/dlls/winewayland.drv/wayland_surface.c b/dlls/winewayland.drv/wayla
 index 3fe77bd..69789de 100644
 --- a/dlls/winewayland.drv/wayland_surface.c
 +++ b/dlls/winewayland.drv/wayland_surface.c
-@@ -4609,6 +4609,15 @@ static BOOL wayland_surface_has_live_role(struct wayland_surface *surface)
+@@ -4971,6 +4971,15 @@ static BOOL wayland_surface_has_live_role(struct wayland_surface *surface)
      return FALSE;
  }
- 
+
 +static void wayland_client_surface_cancel_frame_callback(struct wayland_client_surface *client)
 +{
 +    struct wl_callback *callback;
@@ -34,11 +34,11 @@ index 3fe77bd..69789de 100644
 +    if (client->throttle) NtSetEvent(client->throttle, NULL);
 +}
 +
- void wayland_client_surface_attach(struct wayland_client_surface *client, HWND toplevel)
+ void wayland_client_surface_attach(struct wayland_client_surface *client, HWND toplevel, const RECT *rect)
  {
      struct wayland_win_data *toplevel_data;
-@@ -4619,6 +4628,8 @@ void wayland_client_surface_attach(struct wayland_client_surface *client, HWND t
- 
+@@ -4980,6 +4989,8 @@ void wayland_client_surface_attach(struct wayland_client_surface *client, HWND t
+
      if (!toplevel)
      {
 +        wayland_client_surface_cancel_frame_callback(client);
@@ -46,6 +46,5 @@ index 3fe77bd..69789de 100644
          if (client->wl_subsurface)
          {
              wl_subsurface_destroy(client->wl_subsurface);
--- 
+--
 2.51.0
-
