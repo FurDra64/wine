@@ -19,10 +19,10 @@ Source: https://github.com/nanomatters/wine-salkim/commit/f84f09ec1ae13e1008df71
  3 files changed, 24 insertions(+), 3 deletions(-)
 
 diff --git a/dlls/win32u/window.c b/dlls/win32u/window.c
-index cf346dc9020..c3bf27004c0 100644
+index 48c7dc97498..231adde143f 100644
 --- a/dlls/win32u/window.c
 +++ b/dlls/win32u/window.c
-@@ -2090,10 +2090,24 @@ static BOOL has_collapsed_frame( const RECT *window, const RECT *client, BOOL al
+@@ -2238,10 +2238,24 @@ static BOOL has_collapsed_frame( const RECT *window, const RECT *client, BOOL al
             left <= 1 && top <= 1 && right <= 1 && bottom <= 1;
  }
  
@@ -47,7 +47,7 @@ index cf346dc9020..c3bf27004c0 100644
      return get_custom_frame( hwnd ) && has_collapsed_frame( &rects->window, &rects->client, TRUE );
  }
  
-@@ -2103,7 +2117,8 @@ static void update_frameless_window( HWND hwnd, WND *win )
+@@ -2251,7 +2265,8 @@ static void update_frameless_window( HWND hwnd, WND *win )
  
      if (win->dwStyle & WS_MAXIMIZE) return;
      if (window_has_frame_style( win->dwStyle ))
@@ -57,7 +57,7 @@ index cf346dc9020..c3bf27004c0 100644
  
      if (frameless) NtUserSetProp( hwnd, frameless_window_prop, (HANDLE)1 );
      else NtUserRemoveProp( hwnd, frameless_window_prop );
-@@ -2116,7 +2131,8 @@ static RECT get_visible_rect( HWND hwnd, BOOL shaped, UINT style, UINT ex_style,
+@@ -2265,7 +2280,8 @@ static RECT get_visible_rect( HWND hwnd, BOOL shaped, UINT style, UINT ex_style,
  
      if (get_present_rect( hwnd, &rect, get_thread_dpi() )) return rect;
      if (IsRectEmpty( &rects->window ) || EqualRect( &rects->window, &rects->client ) || shaped || !decorated_mode) return rects->window;
@@ -65,21 +65,21 @@ index cf346dc9020..c3bf27004c0 100644
 +    /* Kept borders are non-client space; present only the client area. */
 +    if (is_frameless_window( hwnd, style, rects )) return rects->client;
      if (!user_driver->pGetWindowStyleMasks( hwnd, style, ex_style, &style_mask, &ex_style_mask )) return rects->window;
-     if (!NtUserAdjustWindowRect( &rect, style & style_mask, FALSE, ex_style & ex_style_mask, dpi )) return rects->window;
+     if (!adjust_window_rect( &rect, style & style_mask, FALSE, ex_style & ex_style_mask, round_dpi( dpi ) )) return rects->window;
  
 diff --git a/dlls/winewayland.drv/window.c b/dlls/winewayland.drv/window.c
-index 9e8a1e85595..45c3b683b65 100644
+index 5a8668ce4cc..01bc40faf66 100644
 --- a/dlls/winewayland.drv/window.c
 +++ b/dlls/winewayland.drv/window.c
-@@ -380,6 +380,7 @@ static BOOL wayland_win_data_create_wayland_surface(struct wayland_win_data *dat
-     surface->ensured_contents = WAYLAND_SURFACE_NOT_ENSURED;
+@@ -378,6 +378,7 @@ static BOOL wayland_win_data_create_wayland_surface(struct wayland_win_data *dat
+     wayland_win_data_get_config(data, &surface->window);
  
      if (!EqualRect(&data->rects.visible, &data->rects.window)
 +        && !NtUserGetProp(data->hwnd, frameless_window_prop)
          && is_decoration_enabled(style, exstyle))
      {
          server_decor = TRUE;
-@@ -1025,7 +1026,7 @@ static void wayland_configure_window(HWND hwnd)
+@@ -1099,7 +1100,7 @@ static void wayland_configure_window(HWND hwnd)
          window_height += offset_y;
          window_width += offset_x;
      }
@@ -89,10 +89,10 @@ index 9e8a1e85595..45c3b683b65 100644
          window_width += (data->rects.client.left - data->rects.window.left) +
                          (data->rects.window.right - data->rects.client.right);
 diff --git a/dlls/winex11.drv/window.c b/dlls/winex11.drv/window.c
-index eb75e5377cd..f89ba9641ce 100644
+index 4083f34900a..7088f623d8e 100644
 --- a/dlls/winex11.drv/window.c
 +++ b/dlls/winex11.drv/window.c
-@@ -115,6 +115,8 @@ static const WCHAR clip_window_prop[] =
+@@ -114,6 +114,8 @@ static const WCHAR clip_window_prop[] =
      {'_','_','w','i','n','e','_','x','1','1','_','c','l','i','p','_','w','i','n','d','o','w',0};
  static const WCHAR focus_time_prop[] =
      {'_','_','w','i','n','e','_','x','1','1','_','f','o','c','u','s','_','t','i','m','e',0};
@@ -101,7 +101,7 @@ index eb75e5377cd..f89ba9641ce 100644
  
  static const char *debugstr_mwm_hints( const MwmHints *hints )
  {
-@@ -565,6 +567,8 @@ static unsigned long get_mwm_decorations_for_style( DWORD style, DWORD ex_style
+@@ -564,6 +566,8 @@ static unsigned long get_mwm_decorations_for_style( DWORD style, DWORD ex_style
  static unsigned long get_mwm_decorations( struct x11drv_win_data *data, DWORD style, DWORD ex_style )
  {
      if (EqualRect( &data->rects.window, &data->rects.visible )) return 0;
@@ -110,6 +110,3 @@ index eb75e5377cd..f89ba9641ce 100644
      return get_mwm_decorations_for_style( style, ex_style );
  }
  
--- 
-2.55.0
-

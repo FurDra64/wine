@@ -15,10 +15,10 @@ Source: https://github.com/nanomatters/wine-salkim/commit/42eeaa2e477d79976d90bf
  1 file changed, 1 insertion(+), 11 deletions(-)
 
 diff --git a/dlls/winewayland.drv/window.c b/dlls/winewayland.drv/window.c
-index 9d6baf83739..6f0c49ddcd1 100644
+index 5c1fa8a07ab..5499c9bd93c 100644
 --- a/dlls/winewayland.drv/window.c
 +++ b/dlls/winewayland.drv/window.c
-@@ -922,7 +922,7 @@ void WAYLAND_WindowPosChanged(HWND hwnd, HWND insert_after, HWND owner_hint, UIN
+@@ -974,7 +974,7 @@ void WAYLAND_WindowPosChanged(HWND hwnd, HWND insert_after, HWND owner_hint, UIN
  static void wayland_configure_window(HWND hwnd)
  {
      struct wayland_surface *surface;
@@ -27,8 +27,8 @@ index 9d6baf83739..6f0c49ddcd1 100644
      UINT flags = 0;
      UINT state_cmd = 0;
      uint32_t state;
-@@ -1013,19 +1013,9 @@ static void wayland_configure_window(HWND hwnd)
- 
+@@ -1087,19 +1087,9 @@ static void wayland_configure_window(HWND hwnd)
+     }
      window_width = width;
      window_height = height;
 -    offset_x = ((surface->window.rect.left - surface->window.window_rect.left) +
@@ -47,6 +47,3 @@ index 9d6baf83739..6f0c49ddcd1 100644
      SetRect(&rect, 0, 0, window_width, window_height);
      OffsetRect(&rect, data->rects.window.left, data->rects.window.top);
      if (!IsRectEmpty(&rect)) rect = window_rect_from_visible(&data->rects, rect);
--- 
-2.55.0
-

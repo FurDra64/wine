@@ -6,17 +6,17 @@ Subject: [PATCH 11/49] winewayland: Sync shaped window input regions
 Apply the shaped input region when creating or flushing a Wayland
 surface, so compositor hit testing matches the Win32 window region.
 ---
- dlls/winewayland.drv/wayland_surface.c | 68 ++++++++++++++++++++++++++
+ dlls/winewayland.drv/wayland_surface.c | 68 ++++++++++++++++++++++++++++++++++
  dlls/winewayland.drv/waylanddrv.h      |  2 +
- dlls/winewayland.drv/window.c          | 11 +----
- dlls/winewayland.drv/window_surface.c  | 15 ++++++
+ dlls/winewayland.drv/window.c          | 11 +-----
+ dlls/winewayland.drv/window_surface.c  | 15 ++++++++
  4 files changed, 87 insertions(+), 9 deletions(-)
 
 diff --git a/dlls/winewayland.drv/wayland_surface.c b/dlls/winewayland.drv/wayland_surface.c
-index 42d5f1acb82..2bb01afb426 100644
+index cb85372b4f6..f3045ad3b26 100644
 --- a/dlls/winewayland.drv/wayland_surface.c
 +++ b/dlls/winewayland.drv/wayland_surface.c
-@@ -45,6 +45,74 @@ static void wayland_surface_clear_direct_dmabuf(struct wayland_surface *surface,
+@@ -248,6 +248,74 @@ static void wayland_surface_clear_direct_dmabuf(struct wayland_surface *surface,
  static void wayland_surface_update_hwnd_dmabufs(struct wayland_surface *surface);
  static BOOL wayland_surface_try_direct_dmabuf(HWND hwnd);
  
@@ -92,10 +92,10 @@ index 42d5f1acb82..2bb01afb426 100644
  {
      /* The direct dmabuf fast path may run inline from event callbacks because
 diff --git a/dlls/winewayland.drv/waylanddrv.h b/dlls/winewayland.drv/waylanddrv.h
-index a66bfe76a85..30cb7ec0e0e 100644
+index 68040ad3ba7..4c17feef4c1 100644
 --- a/dlls/winewayland.drv/waylanddrv.h
 +++ b/dlls/winewayland.drv/waylanddrv.h
-@@ -576,6 +576,8 @@ RECT map_rect_from_surface(struct wayland_surface *surface, RECT rect);
+@@ -603,6 +603,8 @@ RECT map_rect_from_surface(struct wayland_surface *surface, RECT rect);
  POINT map_point_from_surface(struct wayland_surface *surface, POINT point);
  BOOL wayland_surface_get_max_track_size(struct wayland_surface *surface, SIZE *size);
  BOOL wayland_surface_has_hwnd_dmabuf_content(struct wayland_surface *surface);
@@ -103,12 +103,12 @@ index a66bfe76a85..30cb7ec0e0e 100644
 +void wayland_surface_sync_window_input_region(struct wayland_surface *surface);
  void wayland_surface_prepare_direct_dmabuf_shm_commit(struct wayland_surface *surface);
  void wayland_surface_finish_direct_dmabuf_shm_commit(struct wayland_surface *surface);
- struct child_overlay_snapshot *child_overlays_snapshot(HWND hwnd);
+ void wayland_client_surface_attach(struct wayland_client_surface *client, HWND toplevel, const RECT *rect);
 diff --git a/dlls/winewayland.drv/window.c b/dlls/winewayland.drv/window.c
-index 488bb18988f..dbe42950561 100644
+index 34b19db87b8..e55178c9525 100644
 --- a/dlls/winewayland.drv/window.c
 +++ b/dlls/winewayland.drv/window.c
-@@ -273,7 +273,6 @@ static BOOL wayland_win_data_create_wayland_surface(struct wayland_win_data *dat
+@@ -288,7 +288,6 @@ static BOOL wayland_win_data_create_wayland_surface(struct wayland_win_data *dat
      BOOL visible, layer_set, server_decor = FALSE;
      DWORD exstyle = NtUserGetWindowLongW(data->hwnd, GWL_EXSTYLE);
      DWORD style = NtUserGetWindowLongW(data->hwnd, GWL_STYLE);
@@ -116,7 +116,7 @@ index 488bb18988f..dbe42950561 100644
  
      TRACE("hwnd=%p\n", data->hwnd);
  
-@@ -320,14 +319,6 @@ static BOOL wayland_win_data_create_wayland_surface(struct wayland_win_data *dat
+@@ -336,14 +335,6 @@ static BOOL wayland_win_data_create_wayland_surface(struct wayland_win_data *dat
  
      if (!(surface = data->wayland_surface) && !(surface = wayland_surface_create(data->hwnd))) return FALSE;
  
@@ -130,8 +130,8 @@ index 488bb18988f..dbe42950561 100644
 -
      surface->ensured_contents = WAYLAND_SURFACE_NOT_ENSURED;
  
-     if (!EqualRect(&data->rects.visible, &data->rects.window)
-@@ -366,6 +357,8 @@ static BOOL wayland_win_data_create_wayland_surface(struct wayland_win_data *dat
+     surface->window.visible = visible;
+@@ -382,6 +373,8 @@ static BOOL wayland_win_data_create_wayland_surface(struct wayland_win_data *dat
          if (role != WAYLAND_SURFACE_ROLE_NONE) wayland_client_surface_attach(client, data->hwnd);
          else wayland_client_surface_attach(client, NULL);
      }
@@ -141,7 +141,7 @@ index 488bb18988f..dbe42950561 100644
       * it as needed. */
      if (data->hwnd == NtUserGetForegroundWindow()) reapply_cursor_clipping();
 diff --git a/dlls/winewayland.drv/window_surface.c b/dlls/winewayland.drv/window_surface.c
-index fcdba99d023..609e60e5a72 100644
+index ce0c95ef893..99bc7a42fe1 100644
 --- a/dlls/winewayland.drv/window_surface.c
 +++ b/dlls/winewayland.drv/window_surface.c
 @@ -250,6 +250,19 @@ RGNDATA *get_region_data(HRGN region)

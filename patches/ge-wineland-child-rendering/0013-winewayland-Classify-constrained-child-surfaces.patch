@@ -13,8 +13,9 @@ unmaskable cases without dropping content.
  dlls/winewayland.drv/window.c          |   4 +-
  dlls/winewayland.drv/window_surface.c  |  17 +-
  4 files changed, 268 insertions(+), 59 deletions(-)
+
 diff --git a/dlls/winewayland.drv/wayland_surface.c b/dlls/winewayland.drv/wayland_surface.c
-index a139ae3..b10a7c4 100644
+index 2ffd2208a37..596afbefa91 100644
 --- a/dlls/winewayland.drv/wayland_surface.c
 +++ b/dlls/winewayland.drv/wayland_surface.c
 @@ -84,6 +84,7 @@ struct wayland_hwnd_dmabuf_surface
@@ -148,7 +149,7 @@ index a139ae3..b10a7c4 100644
  }
  
  static void request_window_surface_expose(HWND hwnd, BOOL allow_inline)
-@@ -1419,6 +1470,12 @@ void wayland_surface_destroy(struct wayland_surface *surface)
+@@ -1378,6 +1429,12 @@ void wayland_surface_destroy(struct wayland_surface *surface)
          surface->small_icon_buffer = NULL;
      }
  
@@ -161,7 +162,7 @@ index a139ae3..b10a7c4 100644
      wl_display_flush(process_wayland.wl_display);
  
      free(surface);
-@@ -2543,15 +2600,100 @@ static void wayland_hwnd_dmabuf_surface_set_opaque(struct wayland_hwnd_dmabuf_su
+@@ -2440,15 +2497,100 @@ static void wayland_hwnd_dmabuf_surface_set_opaque(struct wayland_hwnd_dmabuf_su
      else wl_surface_set_opaque_region(surface->wl_surface, NULL);
  }
  
@@ -268,7 +269,7 @@ index a139ae3..b10a7c4 100644
  
      rect_width = rect.right - rect.left;
      rect_height = rect.bottom - rect.top;
-@@ -2567,28 +2709,63 @@ static BOOL wayland_hwnd_dmabuf_surface_configure(struct wayland_surface *parent
+@@ -2464,28 +2606,63 @@ static BOOL wayland_hwnd_dmabuf_surface_configure(struct wayland_surface *parent
      clipped.bottom = min(rect.bottom, client.bottom);
      if (IsRectEmpty(&clipped)) return FALSE;
  
@@ -349,7 +350,7 @@ index a139ae3..b10a7c4 100644
      return TRUE;
  }
  
-@@ -2900,7 +3077,11 @@ static BOOL wayland_surface_direct_dmabuf_candidate(struct wayland_surface *surf
+@@ -2797,7 +2974,11 @@ static BOOL wayland_surface_direct_dmabuf_candidate(struct wayland_surface *surf
      if (!data || data->client_surface) return FALSE;
      if (data->window_contents) return FALSE;
      if (!wl_list_empty(&surface->child_overlays)) return FALSE;
@@ -362,7 +363,7 @@ index a139ae3..b10a7c4 100644
      if (!wayland_surface_client_fills_window(surface)) return FALSE;
      return wayland_hwnd_dmabuf_frame_covers_client(surface, &frames[0]);
  }
-@@ -4096,6 +4277,8 @@ void wayland_client_surface_attach(struct wayland_client_surface *client, HWND t
+@@ -3899,6 +4080,8 @@ void wayland_client_surface_attach(struct wayland_client_surface *client, HWND t
  {
      struct wayland_win_data *toplevel_data;
      struct wayland_surface *surface;
@@ -371,7 +372,7 @@ index a139ae3..b10a7c4 100644
  
      if (!toplevel)
      {
-@@ -4153,11 +4336,16 @@ void wayland_client_surface_attach(struct wayland_client_surface *client, HWND t
+@@ -3956,11 +4139,16 @@ void wayland_client_surface_attach(struct wayland_client_surface *client, HWND t
          rect = &configured_rect;
      }
  
@@ -394,10 +395,10 @@ index a139ae3..b10a7c4 100644
  done:
      wayland_win_data_release(toplevel_data);
 diff --git a/dlls/winewayland.drv/waylanddrv.h b/dlls/winewayland.drv/waylanddrv.h
-index 4655bee..8f9f184 100644
+index 2fe85a459a6..93af2175e04 100644
 --- a/dlls/winewayland.drv/waylanddrv.h
 +++ b/dlls/winewayland.drv/waylanddrv.h
-@@ -384,6 +384,22 @@ struct wayland_toplevel_size_limits
+@@ -381,6 +381,22 @@ struct wayland_toplevel_size_limits
      BOOL valid;
  };
  
@@ -420,7 +421,7 @@ index 4655bee..8f9f184 100644
  struct wayland_window_config
  {
      RECT rect;
-@@ -413,6 +429,7 @@ struct wayland_client_surface
+@@ -412,6 +428,7 @@ struct wayland_client_surface
      BOOL has_alpha;
      BOOL has_presented;
      struct wp_color_management_surface_v1 *color_management;
@@ -428,15 +429,15 @@ index 4655bee..8f9f184 100644
  };
  
  /* A GDI child window shown on its own wl_subsurface above a client surface. Its
-@@ -527,6 +544,7 @@ struct wayland_surface
+@@ -525,6 +542,7 @@ struct wayland_surface
       * keeping the [base, client, dmabufs, overlays] order stable whichever chain
       * restacks last. Validated against the live list before use, never freed. */
      struct wl_surface *dmabuf_top;
 +    HRGN child_region;
      BOOL shaped;
      BOOL occlusion_clipped;
-     struct wayland_window_config window, comitted;
-@@ -597,10 +615,8 @@ RECT map_rect_from_surface(struct wayland_surface *surface, RECT rect);
+     RECT geometry;
+@@ -602,10 +620,8 @@ RECT map_rect_from_surface(struct wayland_surface *surface, RECT rect);
  POINT map_point_from_surface(struct wayland_surface *surface, POINT point);
  BOOL wayland_surface_get_max_track_size(struct wayland_surface *surface, SIZE *size);
  BOOL wayland_surface_has_hwnd_dmabuf_content(struct wayland_surface *surface);
@@ -450,10 +451,10 @@ index 4655bee..8f9f184 100644
  void wayland_surface_finish_direct_dmabuf_shm_commit(struct wayland_surface *surface);
  void wayland_client_surface_attach(struct wayland_client_surface *client, HWND toplevel, const RECT *rect);
 diff --git a/dlls/winewayland.drv/window.c b/dlls/winewayland.drv/window.c
-index 3e643ce..af15676 100644
+index ab877c993fb..7a748d02b84 100644
 --- a/dlls/winewayland.drv/window.c
 +++ b/dlls/winewayland.drv/window.c
-@@ -361,9 +361,7 @@ static BOOL wayland_win_data_create_wayland_surface(struct wayland_win_data *dat
+@@ -355,9 +355,7 @@ static BOOL wayland_win_data_create_wayland_surface(struct wayland_win_data *dat
          if (role != WAYLAND_SURFACE_ROLE_NONE) wayland_client_surface_attach(client, data->hwnd);
          else wayland_client_surface_attach(client, NULL);
      }
@@ -465,7 +466,7 @@ index 3e643ce..af15676 100644
      /* Size/position changes affect the effective pointer constraint, so update
       * it as needed. */
 diff --git a/dlls/winewayland.drv/window_surface.c b/dlls/winewayland.drv/window_surface.c
-index 39d2726..df6ac81 100644
+index 39d27262eb8..df6ac81a23b 100644
 --- a/dlls/winewayland.drv/window_surface.c
 +++ b/dlls/winewayland.drv/window_surface.c
 @@ -55,6 +55,13 @@ static struct wayland_window_surface *wayland_window_surface_cast(

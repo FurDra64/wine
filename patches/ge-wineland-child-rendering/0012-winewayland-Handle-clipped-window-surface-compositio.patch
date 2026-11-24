@@ -10,17 +10,17 @@ clip.
 Mirror the constraint to the Wayland surface so direct parent dmabuf is
 disabled for constrained windows.
 ---
- dlls/winewayland.drv/wayland_surface.c | 21 +++++++
+ dlls/winewayland.drv/wayland_surface.c | 21 +++++++++
  dlls/winewayland.drv/waylanddrv.h      |  4 ++
  dlls/winewayland.drv/window.c          |  7 ++-
- dlls/winewayland.drv/window_surface.c  | 81 +++++++++++++++++++++++++-
+ dlls/winewayland.drv/window_surface.c  | 81 ++++++++++++++++++++++++++++++++--
  4 files changed, 108 insertions(+), 5 deletions(-)
 
 diff --git a/dlls/winewayland.drv/wayland_surface.c b/dlls/winewayland.drv/wayland_surface.c
-index 2bb01afb426..0c13bcfcfe0 100644
+index ecfb24dafcf..2ffd2208a37 100644
 --- a/dlls/winewayland.drv/wayland_surface.c
 +++ b/dlls/winewayland.drv/wayland_surface.c
-@@ -83,6 +83,8 @@ void wayland_surface_sync_shape_input_region(struct wayland_surface *surface, HR
+@@ -286,6 +286,8 @@ void wayland_surface_sync_shape_input_region(struct wayland_surface *surface, HR
      BOOL transparent = (exstyle & WS_EX_TRANSPARENT) && (exstyle & WS_EX_LAYERED);
      struct wl_region *region = NULL;
  
@@ -29,7 +29,7 @@ index 2bb01afb426..0c13bcfcfe0 100644
      if (transparent)
      {
          region = wl_compositor_create_region(process_wayland.wl_compositor);
-@@ -113,6 +115,19 @@ void wayland_surface_sync_window_input_region(struct wayland_surface *surface)
+@@ -316,6 +318,19 @@ void wayland_surface_sync_window_input_region(struct wayland_surface *surface)
      if (shape_region) NtGdiDeleteObjectApp(shape_region);
  }
  
@@ -49,7 +49,7 @@ index 2bb01afb426..0c13bcfcfe0 100644
  static void request_window_surface_expose(HWND hwnd, BOOL allow_inline)
  {
      /* The direct dmabuf fast path may run inline from event callbacks because
-@@ -2581,6 +2596,11 @@ static BOOL wayland_hwnd_dmabuf_frame_covers_client(struct wayland_surface *surf
+@@ -2767,6 +2782,11 @@ static BOOL wayland_hwnd_dmabuf_frame_covers_client(struct wayland_surface *surf
             rect.right >= width && rect.bottom >= height;
  }
  
@@ -61,7 +61,7 @@ index 2bb01afb426..0c13bcfcfe0 100644
  static BOOL wayland_surface_direct_dmabuf_candidate(struct wayland_surface *surface,
                                                      struct wayland_win_data *data,
                                                      const hwnd_dmabuf_frame_info_t *frames,
-@@ -2591,6 +2611,7 @@ static BOOL wayland_surface_direct_dmabuf_candidate(struct wayland_surface *surf
+@@ -2777,6 +2797,7 @@ static BOOL wayland_surface_direct_dmabuf_candidate(struct wayland_surface *surf
      if (!data || data->client_surface) return FALSE;
      if (data->window_contents) return FALSE;
      if (!wl_list_empty(&surface->child_overlays)) return FALSE;
@@ -70,19 +70,19 @@ index 2bb01afb426..0c13bcfcfe0 100644
      return wayland_hwnd_dmabuf_frame_covers_client(surface, &frames[0]);
  }
 diff --git a/dlls/winewayland.drv/waylanddrv.h b/dlls/winewayland.drv/waylanddrv.h
-index 30cb7ec0e0e..c59e1855392 100644
+index f3d63c3d96b..2fe85a459a6 100644
 --- a/dlls/winewayland.drv/waylanddrv.h
 +++ b/dlls/winewayland.drv/waylanddrv.h
-@@ -521,6 +521,8 @@ struct wayland_surface
+@@ -525,6 +525,8 @@ struct wayland_surface
       * keeping the [base, client, dmabufs, overlays] order stable whichever chain
       * restacks last. Validated against the live list before use, never freed. */
      struct wl_surface *dmabuf_top;
 +    BOOL shaped;
 +    BOOL occlusion_clipped;
-     struct wayland_window_config window, comitted;
      RECT geometry;
      int content_width, content_height;
-@@ -576,5 +576,7 @@ BOOL wayland_surface_has_hwnd_dmabuf_content(struct wayland_surface *surface);
+     UINT32 alpha_multiplier;
+@@ -602,6 +604,8 @@ BOOL wayland_surface_get_max_track_size(struct wayland_surface *surface, SIZE *s
  BOOL wayland_surface_has_hwnd_dmabuf_content(struct wayland_surface *surface);
  void wayland_surface_sync_shape_input_region(struct wayland_surface *surface, HRGN shape_region);
  void wayland_surface_sync_window_input_region(struct wayland_surface *surface);
@@ -90,11 +90,13 @@ index 30cb7ec0e0e..c59e1855392 100644
 +void wayland_surface_set_occlusion_clip(struct wayland_surface *surface, BOOL clipped);
  void wayland_surface_prepare_direct_dmabuf_shm_commit(struct wayland_surface *surface);
  void wayland_surface_finish_direct_dmabuf_shm_commit(struct wayland_surface *surface);
+ void wayland_client_surface_attach(struct wayland_client_surface *client, HWND toplevel, const RECT *rect);
 diff --git a/dlls/winewayland.drv/window.c b/dlls/winewayland.drv/window.c
-index dbe42950561..2ad1180d573 100644
+index 7a33490b1ba..ab877c993fb 100644
 --- a/dlls/winewayland.drv/window.c
 +++ b/dlls/winewayland.drv/window.c
-@@ -267,6 +267,7 @@ static BOOL should_keep_minimized_toplevel_mapped(struct wayland_surface *surfac
+@@ -262,7 +262,8 @@ static BOOL wayland_win_data_create_wayland_surface(struct wayland_win_data *dat
+                                                     struct wayland_surface *toplevel_surface,
                                                      struct wayland_surface *owner_surface,
                                                      BOOL use_layer_shell,
 -                                                    BOOL layer_menu)
@@ -103,7 +105,7 @@ index dbe42950561..2ad1180d573 100644
  {
      struct wayland_client_surface *client = data->client_surface;
      struct wayland_surface *surface;
-@@ -358,6 +359,8 @@ static BOOL wayland_win_data_create_wayland_surface(struct wayland_win_data *dat
+@@ -355,6 +356,8 @@ static BOOL wayland_win_data_create_wayland_surface(struct wayland_win_data *dat
          else wayland_client_surface_attach(client, NULL);
      }
      wayland_surface_sync_window_input_region(surface);
@@ -112,7 +114,7 @@ index dbe42950561..2ad1180d573 100644
  
      /* Size/position changes affect the effective pointer constraint, so update
       * it as needed. */
-@@ -898,7 +898,7 @@ void WAYLAND_WindowPosChanged(HWND hwnd, HWND insert_after, HWND owner_hint, UIN
+@@ -892,7 +895,7 @@ void WAYLAND_WindowPosChanged(HWND hwnd, HWND insert_after, HWND owner_hint, UIN
          }
      }
      else if (wayland_win_data_create_wayland_surface(data, toplevel_surface, owner_surface,
@@ -122,7 +124,7 @@ index dbe42950561..2ad1180d573 100644
          wayland_win_data_update_wayland_state(data);
      }
 diff --git a/dlls/winewayland.drv/window_surface.c b/dlls/winewayland.drv/window_surface.c
-index 609e60e5a72..3db4b0bec17 100644
+index 99bc7a42fe1..39d27262eb8 100644
 --- a/dlls/winewayland.drv/window_surface.c
 +++ b/dlls/winewayland.drv/window_surface.c
 @@ -46,6 +46,7 @@ struct wayland_window_surface

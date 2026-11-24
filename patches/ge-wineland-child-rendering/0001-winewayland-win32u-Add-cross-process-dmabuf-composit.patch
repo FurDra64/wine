@@ -17,27 +17,27 @@ Subject: [PATCH 01/49] winewayland, win32u: Add cross-process dmabuf
  dlls/winewayland.drv/linux-dmabuf-unstable-v1.xml |  362 +++++
  dlls/winewayland.drv/vulkan.c                     |   65 +
  dlls/winewayland.drv/wayland.c                    |   58 +
- dlls/winewayland.drv/wayland_keyboard.c           |   12 +-
+ dlls/winewayland.drv/wayland_keyboard.c           |    9 +-
  dlls/winewayland.drv/wayland_pointer.c            |    7 +
- dlls/winewayland.drv/wayland_surface.c            | 1524 +++++++++++++++++++--
+ dlls/winewayland.drv/wayland_surface.c            | 1525 +++++++++++++++++++--
  dlls/winewayland.drv/wayland_text_input.c         |    8 +-
- dlls/winewayland.drv/waylanddrv.h                 |  108 +-
- dlls/winewayland.drv/window.c                     |  354 ++++-
+ dlls/winewayland.drv/waylanddrv.h                 |  105 +-
+ dlls/winewayland.drv/window.c                     |  360 ++++-
  dlls/winewayland.drv/window_surface.c             |    9 +-
  include/Makefile.in                               |    1 +
  include/wine/hwnd_dmabuf.h                        |  122 ++
  include/wine/server_protocol.h                    |  134 +-
- include/wine/vulkan_driver.h                      |    3 +-
+ include/wine/vulkan_driver.h                      |    1 +
  server/file.c                                     |    2 +-
  server/file.h                                     |    1 +
  server/protocol.def                               |  110 +-
  server/request_handlers.h                         |   21 +
  server/request_trace.h                            |   43 +
  server/window.c                                   |  171 +++
- 29 files changed, 4394 insertions(+), 181 deletions(-)
+ 29 files changed, 4395 insertions(+), 179 deletions(-)
 
 diff --git a/dlls/dwmapi/Makefile.in b/dlls/dwmapi/Makefile.in
-index 7df79cfc079f37f14a35855da40924d774ff4c79..0bf330d0011d5211cc9ffcef05c2b7845573144b 100644
+index cf889cb148e..f837e58b439 100644
 --- a/dlls/dwmapi/Makefile.in
 +++ b/dlls/dwmapi/Makefile.in
 @@ -1,5 +1,5 @@
@@ -46,9 +46,9 @@ index 7df79cfc079f37f14a35855da40924d774ff4c79..0bf330d0011d5211cc9ffcef05c2b784
 +IMPORTS   = user32 win32u
  IMPORTLIB = dwmapi
  
- SOURCES = \
+ VER_FILEDESCRIPTION_STR = "Desktop Window Manager API"
 diff --git a/dlls/dwmapi/dwmapi_main.c b/dlls/dwmapi/dwmapi_main.c
-index af14f546f3fb556af0a58f6192c2c4497c44a7ac..a4b1a33063839f1ba4739de0c606351f18998757 100644
+index 566afa8a797..e10a4138b6d 100644
 --- a/dlls/dwmapi/dwmapi_main.c
 +++ b/dlls/dwmapi/dwmapi_main.c
 @@ -27,6 +27,7 @@
@@ -59,7 +59,7 @@ index af14f546f3fb556af0a58f6192c2c4497c44a7ac..a4b1a33063839f1ba4739de0c606351f
  #include "dwmapi.h"
  #include "wine/debug.h"
  
-@@ -68,7 +34,27 @@  HRESULT WINAPI DwmEnableComposition(UINT uCompositionAction)
+@@ -68,7 +69,27 @@ HRESULT WINAPI DwmEnableComposition(UINT uCompositionAction)
   */
  HRESULT WINAPI DwmExtendFrameIntoClientArea(HWND hwnd, const MARGINS* margins)
  {
@@ -88,7 +88,7 @@ index af14f546f3fb556af0a58f6192c2c4497c44a7ac..a4b1a33063839f1ba4739de0c606351f
  
      return S_OK;
  }
-@@ -179,6 +61,137 @@  BOOL WINAPI DwmDefWindowProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam,
+@@ -179,6 +200,137 @@ BOOL WINAPI DwmDefWindowProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam,
      return FALSE;
  }
  
@@ -226,7 +226,7 @@ index af14f546f3fb556af0a58f6192c2c4497c44a7ac..a4b1a33063839f1ba4739de0c606351f
  /**********************************************************************
   *           DwmGetWindowAttribute         (DWMAPI.@)
   */
-@@ -230,8 +198,13 @@  HRESULT WINAPI DwmGetWindowAttribute(HWND hwnd, DWORD attribute, PVOID pv_attrib
+@@ -230,8 +382,13 @@ HRESULT WINAPI DwmGetWindowAttribute(HWND hwnd, DWORD attribute, PVOID pv_attrib
          if (size < sizeof(DWORD))
              return E_INVALIDARG;
  
@@ -243,10 +243,10 @@ index af14f546f3fb556af0a58f6192c2c4497c44a7ac..a4b1a33063839f1ba4739de0c606351f
          break;
  
 diff --git a/dlls/win32u/Makefile.in b/dlls/win32u/Makefile.in
-index b9fb94497eabeceade0aeedcd2a919ba15985e7a..d9ae2093bf09352646de44d612e6b5854ab9bc7a 100644
+index b9fb94497ea..d9ae2093bf0 100644
 --- a/dlls/win32u/Makefile.in
 +++ b/dlls/win32u/Makefile.in
-@@ -32,6 +32,7 @@  SOURCES = \
+@@ -32,6 +32,7 @@ SOURCES = \
  	freetype.c \
  	gdiobj.c \
  	hook.c \
@@ -256,7 +256,7 @@ index b9fb94497eabeceade0aeedcd2a919ba15985e7a..d9ae2093bf09352646de44d612e6b585
  	main.c \
 diff --git a/dlls/win32u/hwnd_dmabuf.c b/dlls/win32u/hwnd_dmabuf.c
 new file mode 100644
-index 0000000000000000000000000000000000000000..1f49c4eecd7679702386a4cea045e224f05dfbdb
+index 00000000000..1f49c4eecd7
 --- /dev/null
 +++ b/dlls/win32u/hwnd_dmabuf.c
 @@ -0,0 +1,69 @@
@@ -330,12 +330,12 @@ index 0000000000000000000000000000000000000000..1f49c4eecd7679702386a4cea045e224
 +    return n == sizeof(hwnd_dmabuf_frame_desc_t) ? 0 : n < 0 ? errno : EMSGSIZE;
 +}
 diff --git a/dlls/win32u/ntuser_private.h b/dlls/win32u/ntuser_private.h
-index de8a24d9d39a9cbb27113687c9a76c85dba44ddd..5910ed091b227eb9f26f609bf956721c35080a41 100644
+index ab796681a57..63a601f5040 100644
 --- a/dlls/win32u/ntuser_private.h
 +++ b/dlls/win32u/ntuser_private.h
-@@ -245,6 +245,11 @@  extern void release_opengl_drawables( struct list *drawables );
- /* vulkan.c */
- extern struct vulkan_instance *vulkan_instance_create( const struct vulkan_instance_extensions *extensions );
+@@ -245,6 +245,11 @@ extern struct vulkan_instance *vulkan_instance_create( const struct vulkan_insta
+ extern struct vulkan_instance *get_d3dkmt_vulkan_instance( void );
+ extern BOOL vulkan_init_in_progress( void );
  
 +/* hwnd_dmabuf.c */
 +extern int hwnd_dmabuf_open_channel( HWND hwnd );
@@ -346,7 +346,7 @@ index de8a24d9d39a9cbb27113687c9a76c85dba44ddd..5910ed091b227eb9f26f609bf956721c
  HANDLE alloc_user_handle( void *ptr, unsigned short type );
  void *free_user_handle( HANDLE handle, unsigned short type );
 diff --git a/dlls/win32u/vulkan.c b/dlls/win32u/vulkan.c
-index 2f7b4acb7e5131e8f40fc26280cecea4af769fc0..5912c61ef26940278c54021b24998ae7742c8071 100644
+index 7ebb26fb9e5..0644ca1a3c9 100644
 --- a/dlls/win32u/vulkan.c
 +++ b/dlls/win32u/vulkan.c
 @@ -29,9 +29,13 @@
@@ -363,7 +363,7 @@ index 2f7b4acb7e5131e8f40fc26280cecea4af769fc0..5912c61ef26940278c54021b24998ae7
  #include "ntuser_private.h"
  
  #include "fsr_spv.h"
-@@ -49,18 +42,36 @@  WINE_DECLARE_DEBUG_CHANNEL(fps);
+@@ -51,18 +55,36 @@ WINE_DECLARE_DEBUG_CHANNEL(fps);
  static const struct vulkan_driver_funcs *driver_funcs;
  static int fshack_enabled = -1;
  
@@ -400,7 +400,7 @@ index 2f7b4acb7e5131e8f40fc26280cecea4af769fc0..5912c61ef26940278c54021b24998ae7
  #define ROUND_SIZE(size, mask) ((((SIZE_T)(size) + (mask)) & ~(SIZE_T)(mask)))
  
  static BOOL use_external_memory(void)
-@@ -184,11 +78,75 @@  static const char *debugstr_vkextent2d( const VkExtent2D *ext )
+@@ -311,11 +333,75 @@ static const char *debugstr_vkextent2d( const VkExtent2D *ext )
      return wine_dbg_sprintf( "(%d,%d)", (int)ext->width, (int)ext->height );
  }
  
@@ -476,7 +476,7 @@ index 2f7b4acb7e5131e8f40fc26280cecea4af769fc0..5912c61ef26940278c54021b24998ae7
  
      /* fs hack data below */
      UINT fshack_dpi;
-@@ -310,6 +153,17 @@  static VkExternalMemoryHandleTypeFlagBits get_host_external_memory_type(void)
+@@ -500,6 +586,17 @@ static VkExternalMemoryHandleTypeFlagBits get_host_external_memory_type(void)
      return 0;
  }
  
@@ -494,9 +494,9 @@ index 2f7b4acb7e5131e8f40fc26280cecea4af769fc0..5912c61ef26940278c54021b24998ae7
  static VkExternalSemaphoreHandleTypeFlagBits get_host_external_semaphore_type(void)
  {
      struct vulkan_device_extensions extensions = {.has_VK_KHR_external_semaphore_win32 = 1};
-@@ -844,6 +170,28 @@  static VkResult convert_device_create_info( struct vulkan_physical_device *physi
-         physical_device->extensions.has_VK_EXT_swapchain_maintenance1)
-         device->extensions.has_VK_EXT_swapchain_maintenance1 = 1;
+@@ -1554,6 +1651,28 @@ static VkResult convert_device_create_info( struct vulkan_physical_device *physi
+     }
+ 
  
 +    /* Force-enable the extensions the cross-process producer needs so we can
 +     * interpose a managed swapchain even when the app did not request them.
@@ -523,7 +523,7 @@ index 2f7b4acb7e5131e8f40fc26280cecea4af769fc0..5912c61ef26940278c54021b24998ae7
      if (!(extensions = mem_alloc( pool, sizeof(device->extensions) * 8 * sizeof(*extensions) ))) return VK_ERROR_OUT_OF_HOST_MEMORY;
  #define USE_VK_EXT(x) if (device->extensions.has_ ## x) extensions[count++] = #x;
      ALL_VK_DEVICE_EXTS
-@@ -1062,6 +198,7 @@  static VkResult win32u_vkAllocateMemory( VkDevice client_device, const VkMemoryA
+@@ -1815,6 +1934,7 @@ static VkResult win32u_vkAllocateMemory( VkDevice client_device, const VkMemoryA
      VkDeviceMemory host_device_memory = VK_NULL_HANDLE;
      VkExportMemoryAllocateInfo *export_info = NULL;
      struct device_memory *memory;
@@ -531,7 +531,7 @@ index 2f7b4acb7e5131e8f40fc26280cecea4af769fc0..5912c61ef26940278c54021b24998ae7
      BOOL nt_shared = FALSE;
      uint32_t mem_flags;
      void *mapping = NULL;
-@@ -1074,14 +205,13 @@  static VkResult win32u_vkAllocateMemory( VkDevice client_device, const VkMemoryA
+@@ -1827,14 +1947,13 @@ static VkResult win32u_vkAllocateMemory( VkDevice client_device, const VkMemoryA
          case VK_STRUCTURE_TYPE_DEDICATED_ALLOCATION_MEMORY_ALLOCATE_INFO_NV: break;
          case VK_STRUCTURE_TYPE_EXPORT_MEMORY_ALLOCATE_INFO:
              export_info = (VkExportMemoryAllocateInfo *)*next;
@@ -549,7 +549,7 @@ index 2f7b4acb7e5131e8f40fc26280cecea4af769fc0..5912c61ef26940278c54021b24998ae7
              break;
          case VK_STRUCTURE_TYPE_EXPORT_MEMORY_WIN32_HANDLE_INFO_KHR:
              export_win32 = *(VkExportMemoryWin32HandleInfoKHR *)*next;
-@@ -1170,7 +218,7 @@  static VkResult win32u_vkAllocateMemory( VkDevice client_device, const VkMemoryA
+@@ -1922,7 +2041,7 @@ static VkResult win32u_vkAllocateMemory( VkDevice client_device, const VkMemoryA
      set_transient_client_handle(instance, (uintptr_t)&memory->obj.obj);
      if ((res = device->p_vkAllocateMemory( device->host.device, alloc_info, NULL, &host_device_memory ))) goto failed;
  
@@ -558,7 +558,7 @@ index 2f7b4acb7e5131e8f40fc26280cecea4af769fc0..5912c61ef26940278c54021b24998ae7
      {
          if (!memory->local)
          {
-@@ -1450,10 +225,7 @@  static VkResult win32u_vkCreateBuffer( VkDevice client_device, const VkBufferCre
+@@ -2204,10 +2323,7 @@ static VkResult win32u_vkCreateBuffer( VkDevice client_device, const VkBufferCre
          case VK_STRUCTURE_TYPE_DEDICATED_ALLOCATION_BUFFER_CREATE_INFO_NV: break;
          case VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_BUFFER_CREATE_INFO:
              external_info = (VkExternalMemoryBufferCreateInfo *)*next;
@@ -570,7 +570,7 @@ index 2f7b4acb7e5131e8f40fc26280cecea4af769fc0..5912c61ef26940278c54021b24998ae7
              break;
          case VK_STRUCTURE_TYPE_OPAQUE_CAPTURE_DESCRIPTOR_DATA_CREATE_INFO_EXT: break;
          case VK_STRUCTURE_TYPE_VIDEO_PROFILE_LIST_INFO_KHR: break;
-@@ -1491,10 +232,7 @@  static void win32u_vkGetDeviceBufferMemoryRequirements( VkDevice client_device,
+@@ -2245,10 +2361,7 @@ static void win32u_vkGetDeviceBufferMemoryRequirements( VkDevice client_device,
          case VK_STRUCTURE_TYPE_DEDICATED_ALLOCATION_BUFFER_CREATE_INFO_NV: break;
          case VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_BUFFER_CREATE_INFO:
              external_info = (VkExternalMemoryBufferCreateInfo *)*next;
@@ -582,7 +582,7 @@ index 2f7b4acb7e5131e8f40fc26280cecea4af769fc0..5912c61ef26940278c54021b24998ae7
              break;
          case VK_STRUCTURE_TYPE_OPAQUE_CAPTURE_DESCRIPTOR_DATA_CREATE_INFO_EXT: break;
          case VK_STRUCTURE_TYPE_VIDEO_PROFILE_LIST_INFO_KHR: break;
-@@ -1512,7 +239,7 @@  static void get_physical_device_external_buffer_properties( struct vulkan_physic
+@@ -2266,7 +2379,7 @@ static void get_physical_device_external_buffer_properties( struct vulkan_physic
      VkExternalMemoryHandleTypeFlagBits handle_type = 0;
  
      handle_type = buffer_info->handleType;
@@ -591,7 +591,7 @@ index 2f7b4acb7e5131e8f40fc26280cecea4af769fc0..5912c61ef26940278c54021b24998ae7
  
      p_vkGetPhysicalDeviceExternalBufferProperties( physical_device->host.physical_device, buffer_info, buffer_properties );
      buffer_properties->externalMemoryProperties.compatibleHandleTypes = handle_type;
-@@ -1556,11 +246,10 @@  static VkResult win32u_vkCreateImage( VkDevice client_device, const VkImageCreat
+@@ -2310,11 +2423,10 @@ static VkResult win32u_vkCreateImage( VkDevice client_device, const VkImageCreat
          case VK_STRUCTURE_TYPE_DEDICATED_ALLOCATION_IMAGE_CREATE_INFO_NV: break;
          case VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO:
              external_info = (VkExternalMemoryImageCreateInfo *)*next;
@@ -606,7 +606,7 @@ index 2f7b4acb7e5131e8f40fc26280cecea4af769fc0..5912c61ef26940278c54021b24998ae7
          case VK_STRUCTURE_TYPE_IMAGE_ALIGNMENT_CONTROL_CREATE_INFO_MESA: break;
          case VK_STRUCTURE_TYPE_IMAGE_COMPRESSION_CONTROL_EXT: break;
          case VK_STRUCTURE_TYPE_IMAGE_FORMAT_LIST_CREATE_INFO: break;
-@@ -1600,11 +256,10 @@  static void win32u_vkGetDeviceImageMemoryRequirements( VkDevice client_device, c
+@@ -2354,11 +2466,10 @@ static void win32u_vkGetDeviceImageMemoryRequirements( VkDevice client_device, c
          case VK_STRUCTURE_TYPE_DEDICATED_ALLOCATION_IMAGE_CREATE_INFO_NV: break;
          case VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO:
              external_info = (VkExternalMemoryImageCreateInfo *)*next;
@@ -621,7 +621,7 @@ index 2f7b4acb7e5131e8f40fc26280cecea4af769fc0..5912c61ef26940278c54021b24998ae7
          case VK_STRUCTURE_TYPE_IMAGE_ALIGNMENT_CONTROL_CREATE_INFO_MESA: break;
          case VK_STRUCTURE_TYPE_IMAGE_COMPRESSION_CONTROL_EXT: break;
          case VK_STRUCTURE_TYPE_IMAGE_FORMAT_LIST_CREATE_INFO: break;
-@@ -1641,9 +266,10 @@  static VkResult get_physical_device_image_format_properties( struct vulkan_physi
+@@ -2395,9 +2506,10 @@ static VkResult get_physical_device_image_format_properties( struct vulkan_physi
          {
              VkPhysicalDeviceExternalImageFormatInfo *external_info = (VkPhysicalDeviceExternalImageFormatInfo *)*next;
              handle_type = external_info->handleType;
@@ -633,7 +633,7 @@ index 2f7b4acb7e5131e8f40fc26280cecea4af769fc0..5912c61ef26940278c54021b24998ae7
          case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_VIEW_IMAGE_FORMAT_INFO_EXT: break;
          case VK_STRUCTURE_TYPE_VIDEO_PROFILE_LIST_INFO_KHR: break;
          default: FIXME( "Unhandled sType %u.\n", (*next)->sType ); break;
-@@ -2528,6 +276,776 @@  static BOOL surface_get_fshack_dpi( struct surface *surface )
+@@ -3613,6 +3725,776 @@ static BOOL surface_get_fshack_dpi( struct surface *surface )
      return fshack_enabled && dpi != raw ? raw : 0;
  }
  
@@ -1410,7 +1410,7 @@ index 2f7b4acb7e5131e8f40fc26280cecea4af769fc0..5912c61ef26940278c54021b24998ae7
  static VkResult win32u_vkCreateSwapchainKHR( VkDevice client_device, const VkSwapchainCreateInfoKHR *create_info,
                                               const VkAllocationCallbacks *allocator, VkSwapchainKHR *ret )
  {
-@@ -2638,6 +1052,45 @@  static VkResult win32u_vkCreateSwapchainKHR( VkDevice client_device, const VkSwa
+@@ -3772,6 +4654,45 @@ static VkResult win32u_vkCreateSwapchainKHR( VkDevice client_device, const VkSwa
  
      InterlockedIncrement( &surface->client->busy_ref );
  
@@ -1456,7 +1456,7 @@ index 2f7b4acb7e5131e8f40fc26280cecea4af769fc0..5912c61ef26940278c54021b24998ae7
      if ((res = device->p_vkCreateSwapchainKHR( device->host.device, &create_info_host, NULL, &host_swapchain )))
      {
          InterlockedDecrement( &surface->client->busy_ref );
-@@ -2710,7 +1097,16 @@  void win32u_vkDestroySwapchainKHR( VkDevice client_device, VkSwapchainKHR client
+@@ -3846,7 +4767,16 @@ static void win32u_vkDestroySwapchainKHR( VkDevice client_device, VkSwapchainKHR
          free( swapchain->fs_hack_images );
      }
  
@@ -1474,7 +1474,7 @@ index 2f7b4acb7e5131e8f40fc26280cecea4af769fc0..5912c61ef26940278c54021b24998ae7
      if ((surface = swapchain->surface))
      {
          surface->swapchain = NULL;
-@@ -2733,6 +1113,10 @@  static VkResult win32u_vkAcquireNextImage2KHR( VkDevice client_device, const VkA
+@@ -3869,6 +4799,10 @@ static VkResult win32u_vkAcquireNextImage2KHR( VkDevice client_device, const VkA
      RECT client_rect;
      VkResult res;
  
@@ -1485,7 +1485,7 @@ index 2f7b4acb7e5131e8f40fc26280cecea4af769fc0..5912c61ef26940278c54021b24998ae7
      acquire_info_host.swapchain = swapchain->obj.host.swapchain;
      acquire_info_host.semaphore = semaphore ? semaphore->host.semaphore : 0;
      acquire_info_host.fence = fence ? fence->host.fence : 0;
-@@ -2766,6 +1123,10 @@  static VkResult win32u_vkAcquireNextImageKHR( VkDevice client_device, VkSwapchai
+@@ -3902,6 +4836,10 @@ static VkResult win32u_vkAcquireNextImageKHR( VkDevice client_device, VkSwapchai
      RECT client_rect;
      VkResult res;
  
@@ -1496,7 +1496,7 @@ index 2f7b4acb7e5131e8f40fc26280cecea4af769fc0..5912c61ef26940278c54021b24998ae7
      res = device->p_vkAcquireNextImageKHR( device->host.device, swapchain->obj.host.swapchain, timeout,
                                                semaphore ? semaphore->host.semaphore : 0, fence ? fence->host.fence : 0,
                                                image_index );
-@@ -2794,6 +1133,22 @@  static VkResult win32u_vkGetSwapchainImagesKHR( VkDevice client_device, VkSwapch
+@@ -3930,6 +4868,22 @@ static VkResult win32u_vkGetSwapchainImagesKHR( VkDevice client_device, VkSwapch
      struct swapchain *swapchain = swapchain_from_handle( client_swapchain );
      uint32_t i;
  
@@ -1519,7 +1519,7 @@ index 2f7b4acb7e5131e8f40fc26280cecea4af769fc0..5912c61ef26940278c54021b24998ae7
      if (images && swapchain->fshack_dpi)
      {
          if (*count > swapchain->n_images) *count = swapchain->n_images;
-@@ -2954,16 +1155,43 @@  static VkResult record_compute_cmd( struct vulkan_device *device, struct swapcha
+@@ -4222,16 +5176,43 @@ static VkResult record_fsr_cmd(struct vulkan_device *device, struct swapchain *s
      return VK_SUCCESS;
  }
  
@@ -1533,7 +1533,7 @@ index 2f7b4acb7e5131e8f40fc26280cecea4af769fc0..5912c61ef26940278c54021b24998ae7
 +    VkSubmitInfo submit = { .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO };
 +    VkResult res;
 +    uint32_t i;
-+
+ 
 +    if (!count) return VK_SUCCESS;
 +    if (count > ARRAY_SIZE(stack_stages) && !(stages = malloc( count * sizeof(*stages) )))
 +        return VK_ERROR_OUT_OF_HOST_MEMORY;
@@ -1548,7 +1548,7 @@ index 2f7b4acb7e5131e8f40fc26280cecea4af769fc0..5912c61ef26940278c54021b24998ae7
 +    if (stages != stack_stages) free( stages );
 +    return res;
 +}
- 
++
 +static VkResult win32u_vkQueuePresentKHR( VkQueue client_queue, const VkPresentInfoKHR *client_present_info )
 +{
      VkPresentInfoKHR *present_info = (VkPresentInfoKHR *)client_present_info; /* cast away const, it has been copied in the thunks */
@@ -1565,7 +1565,7 @@ index 2f7b4acb7e5131e8f40fc26280cecea4af769fc0..5912c61ef26940278c54021b24998ae7
      VkCommandBuffer *blit_cmds;
      struct mempool pool = {0};
      uint32_t blit_count = 0;
-@@ -2973,6 +1198,8 @@  static VkResult win32u_vkQueuePresentKHR( VkQueue client_queue, const VkPresentI
+@@ -4241,6 +5222,8 @@ static VkResult win32u_vkQueuePresentKHR( VkQueue client_queue, const VkPresentI
  
      if (!(swapchains = mem_alloc( &pool, present_info->swapchainCount * sizeof(*swapchains) ))) return VK_ERROR_OUT_OF_HOST_MEMORY;
      if (!(blit_cmds = mem_alloc( &pool, present_info->swapchainCount * sizeof(blit_cmds) ))) goto failed;
@@ -1574,7 +1574,7 @@ index 2f7b4acb7e5131e8f40fc26280cecea4af769fc0..5912c61ef26940278c54021b24998ae7
  
      for (uint32_t i = 0; i < present_info->swapchainCount; ++i)
      {
-@@ -3000,21 +1206,25 @@  static VkResult win32u_vkQueuePresentKHR( VkQueue client_queue, const VkPresentI
+@@ -4269,21 +5252,25 @@ static VkResult win32u_vkQueuePresentKHR( VkQueue client_queue, const VkPresentI
          blit_cmds[blit_count++] = hack->cmd;
      }
  
@@ -1605,7 +1605,7 @@ index 2f7b4acb7e5131e8f40fc26280cecea4af769fc0..5912c61ef26940278c54021b24998ae7
  
      for (uint32_t i = 0; i < present_info->swapchainCount; i++)
      {
-@@ -3039,15 +1231,104 @@  static VkResult win32u_vkQueuePresentKHR( VkQueue client_queue, const VkPresentI
+@@ -4308,15 +5295,104 @@ static VkResult win32u_vkQueuePresentKHR( VkQueue client_queue, const VkPresentI
          submit_info.pCommandBuffers = blit_cmds;
          submit_info.signalSemaphoreCount = 1;
          submit_info.pSignalSemaphores = &blit_sema;
@@ -1713,15 +1713,15 @@ index 2f7b4acb7e5131e8f40fc26280cecea4af769fc0..5912c61ef26940278c54021b24998ae7
  
      for (uint32_t i = 0; i < present_info->swapchainCount; i++)
      {
-@@ -3058,6 +1335,7 @@  static VkResult win32u_vkQueuePresentKHR( VkQueue client_queue, const VkPresentI
+@@ -4327,6 +5403,7 @@ static VkResult win32u_vkQueuePresentKHR( VkQueue client_queue, const VkPresentI
  
          client_surface_present( surface->client );
  
 +        if (swapchain->managed) continue; /* managed already set its own result */
          if (swapchain_res < VK_SUCCESS) continue;
-         if (!get_surface_rect( surface->hwnd, &client_rect, NtUserGetDpiForWindow( surface->hwnd ) ))
+         if (!get_surface_rect( surface->hwnd, &client_rect, get_dpi_for_window( surface->hwnd ) ))
          {
-@@ -4023,6 +1342,7 @@  static struct vulkan_funcs vulkan_funcs =
+@@ -5493,6 +6570,7 @@ static struct vulkan_funcs vulkan_funcs =
      .p_vkGetPhysicalDeviceSurfaceCapabilitiesKHR = win32u_vkGetPhysicalDeviceSurfaceCapabilitiesKHR,
      .p_vkGetPhysicalDeviceSurfaceFormats2KHR = win32u_vkGetPhysicalDeviceSurfaceFormats2KHR,
      .p_vkGetPhysicalDeviceSurfaceFormatsKHR = win32u_vkGetPhysicalDeviceSurfaceFormatsKHR,
@@ -1729,7 +1729,7 @@ index 2f7b4acb7e5131e8f40fc26280cecea4af769fc0..5912c61ef26940278c54021b24998ae7
      .p_vkGetPhysicalDeviceWin32PresentationSupportKHR = win32u_vkGetPhysicalDeviceWin32PresentationSupportKHR,
      .p_vkGetSemaphoreWin32HandleKHR = win32u_vkGetSemaphoreWin32HandleKHR,
      .p_vkGetSwapchainImagesKHR = win32u_vkGetSwapchainImagesKHR,
-@@ -4064,6 +1349,13 @@  static VkBool32 nulldrv_get_physical_device_presentation_support( struct vulkan_
+@@ -5530,6 +6608,13 @@ static VkBool32 nulldrv_get_physical_device_presentation_support( struct vulkan_
      return VK_TRUE;
  }
  
@@ -1743,7 +1743,7 @@ index 2f7b4acb7e5131e8f40fc26280cecea4af769fc0..5912c61ef26940278c54021b24998ae7
  static void nulldrv_map_instance_extensions( struct vulkan_instance_extensions *extensions )
  {
      if (extensions->has_VK_KHR_win32_surface) extensions->has_VK_EXT_headless_surface = 1;
-@@ -4087,6 +1362,7 @@  static const struct vulkan_driver_funcs nulldrv_funcs =
+@@ -5553,6 +6638,7 @@ static const struct vulkan_driver_funcs nulldrv_funcs =
      .p_vulkan_surface_create = nulldrv_vulkan_surface_create,
      .p_vulkan_map_colorspace = nulldrv_vulkan_map_colorspace,
      .p_get_physical_device_presentation_support = nulldrv_get_physical_device_presentation_support,
@@ -1751,7 +1751,7 @@ index 2f7b4acb7e5131e8f40fc26280cecea4af769fc0..5912c61ef26940278c54021b24998ae7
      .p_map_instance_extensions = nulldrv_map_instance_extensions,
      .p_map_device_extensions = nulldrv_map_device_extensions,
  };
-@@ -4130,6 +1369,19 @@  static VkBool32 lazydrv_get_physical_device_presentation_support( struct vulkan_
+@@ -5595,6 +6681,19 @@ static VkBool32 lazydrv_get_physical_device_presentation_support( struct vulkan_
      return driver_funcs->p_get_physical_device_presentation_support( physical_device, queue );
  }
  
@@ -1771,7 +1771,7 @@ index 2f7b4acb7e5131e8f40fc26280cecea4af769fc0..5912c61ef26940278c54021b24998ae7
  static void lazydrv_map_instance_extensions( struct vulkan_instance_extensions *extensions )
  {
      vulkan_driver_load();
-@@ -4147,6 +1388,7 @@  static const struct vulkan_driver_funcs lazydrv_funcs =
+@@ -5612,6 +6711,7 @@ static const struct vulkan_driver_funcs lazydrv_funcs =
      .p_vulkan_surface_create = lazydrv_vulkan_surface_create,
      .p_vulkan_map_colorspace = lazydrv_vulkan_map_colorspace,
      .p_get_physical_device_presentation_support = lazydrv_get_physical_device_presentation_support,
@@ -1780,10 +1780,10 @@ index 2f7b4acb7e5131e8f40fc26280cecea4af769fc0..5912c61ef26940278c54021b24998ae7
      .p_map_device_extensions = lazydrv_map_device_extensions,
  };
 diff --git a/dlls/win32u/window.c b/dlls/win32u/window.c
-index 29172893e5ade3c40ab0f7adfb73a00970fb792c..31c3fece227ee571204db5fc439b5d15aee9aaee 100644
+index c50ffe315df..dbbf792e8a5 100644
 --- a/dlls/win32u/window.c
 +++ b/dlls/win32u/window.c
-@@ -2020,6 +2020,52 @@  done:
+@@ -2168,6 +2168,52 @@ done:
  }
  
  
@@ -1835,16 +1835,16 @@ index 29172893e5ade3c40ab0f7adfb73a00970fb792c..31c3fece227ee571204db5fc439b5d15
 +
  static RECT get_visible_rect( HWND hwnd, BOOL shaped, UINT style, UINT ex_style, const struct window_rects *rects )
  {
-     UINT dpi = get_dpi_for_window( hwnd ), style_mask, ex_style_mask;
-@@ -2027,6 +2072,7 @@  static RECT get_visible_rect( HWND hwnd, BOOL shaped, UINT style, UINT ex_style,
+     struct ratio dpi = get_dpi_for_window( hwnd );
+@@ -2176,6 +2222,7 @@ static RECT get_visible_rect( HWND hwnd, BOOL shaped, UINT style, UINT ex_style,
  
      if (get_present_rect( hwnd, &rect, get_thread_dpi() )) return rect;
      if (IsRectEmpty( &rects->window ) || EqualRect( &rects->window, &rects->client ) || shaped || !decorated_mode) return rects->window;
 +    if (is_frameless_window( hwnd, style, rects )) return rects->window;
      if (!user_driver->pGetWindowStyleMasks( hwnd, style, ex_style, &style_mask, &ex_style_mask )) return rects->window;
-     if (!NtUserAdjustWindowRect( &rect, style & style_mask, FALSE, ex_style & ex_style_mask, dpi )) return rects->window;
+     if (!adjust_window_rect( &rect, style & style_mask, FALSE, ex_style & ex_style_mask, round_dpi( dpi ) )) return rects->window;
  
-@@ -2349,6 +2079,7 @@  static BOOL apply_window_pos( HWND hwnd, HWND insert_after, UINT swp_flags, stru
+@@ -2503,6 +2550,7 @@ static BOOL apply_window_pos( HWND hwnd, HWND insert_after, UINT swp_flags, stru
              win->dwStyle      = reply->new_style;
              win->dwExStyle    = reply->new_ex_style;
              win->rects        = *new_rects;
@@ -1853,10 +1853,10 @@ index 29172893e5ade3c40ab0f7adfb73a00970fb792c..31c3fece227ee571204db5fc439b5d15
              surface_win       = wine_server_ptr_handle( reply->surface_win );
              if (get_window_long( win->parent, GWL_EXSTYLE ) & WS_EX_LAYOUTRTL)
 diff --git a/dlls/winevulkan/make_vulkan b/dlls/winevulkan/make_vulkan
-index 6defde8f27271bf16749b557502fc777edfb6556..d5428a48a838ed5e201d0c5b664ba748cf817a5f 100755
+index 24717496325..f2212f57c98 100755
 --- a/dlls/winevulkan/make_vulkan
 +++ b/dlls/winevulkan/make_vulkan
-@@ -126,12 +126,9 @@  UNEXPOSED_EXTENSIONS = {
+@@ -126,12 +126,9 @@ UNEXPOSED_EXTENSIONS = {
      "VK_EXT_map_memory_placed",
      "VK_EXT_headless_surface",
      # Extensions for other platforms
@@ -1870,10 +1870,10 @@ index 6defde8f27271bf16749b557502fc777edfb6556..d5428a48a838ed5e201d0c5b664ba748
      "VK_KHR_external_semaphore_fd",
      "VK_KHR_wayland_surface",
 diff --git a/dlls/winewayland.drv/Makefile.in b/dlls/winewayland.drv/Makefile.in
-index 0ae76ef79b2dd7393abb8860b7c11025eefa1931..d591d28ae78af387b61330eb002bf7ddeb0ddfe2 100644
+index 7de8fb93531..bc930ba0238 100644
 --- a/dlls/winewayland.drv/Makefile.in
 +++ b/dlls/winewayland.drv/Makefile.in
-@@ -10,6 +10,7 @@  SOURCES = \
+@@ -12,6 +12,7 @@ SOURCES = \
  	content-type-v1.xml \
  	cursor-shape-v1.xml \
  	display.c \
@@ -1883,7 +1883,7 @@ index 0ae76ef79b2dd7393abb8860b7c11025eefa1931..d591d28ae78af387b61330eb002bf7dd
  	ext-data-control-v1.xml \
 diff --git a/dlls/winewayland.drv/linux-dmabuf-unstable-v1.xml b/dlls/winewayland.drv/linux-dmabuf-unstable-v1.xml
 new file mode 100644
-index 0000000000000000000000000000000000000000..a17d930f2aed03c2b8cd9741910bebafc9693ae0
+index 00000000000..a17d930f2ae
 --- /dev/null
 +++ b/dlls/winewayland.drv/linux-dmabuf-unstable-v1.xml
 @@ -0,0 +1,362 @@
@@ -2251,18 +2251,17 @@ index 0000000000000000000000000000000000000000..a17d930f2aed03c2b8cd9741910bebaf
 +</protocol>
 \ No newline at end of file
 diff --git a/dlls/winewayland.drv/vulkan.c b/dlls/winewayland.drv/vulkan.c
-index d00782c9e1b379e44bc11da5b461055730bf36c1..0813ca4dab25def539486f356c35e96825624c83 100644
+index b74bc0bbaf5..4f715c2ee03 100644
 --- a/dlls/winewayland.drv/vulkan.c
 +++ b/dlls/winewayland.drv/vulkan.c
-@@ -26,6 +26,7 @@
+@@ -26,12 +26,14 @@
  
  #include <dlfcn.h>
  #include <stdlib.h>
 +#include <string.h>
  
  #include "ntstatus.h"
- #define WIN32_NO_STATUS
-@@ -33,6 +33,7 @@
+ #include "waylanddrv.h"
  #include "wine/debug.h"
  
  #include "wine/vulkan.h"
@@ -2270,7 +2269,7 @@ index d00782c9e1b379e44bc11da5b461055730bf36c1..0813ca4dab25def539486f356c35e968
  #include "wine/vulkan_driver.h"
  
  WINE_DEFAULT_DEBUG_CHANNEL(waylanddrv);
-@@ -182,10 +40,73 @@  err:
+@@ -132,10 +134,73 @@ err:
      return colorspace;
  }
  
@@ -2345,10 +2344,10 @@ index d00782c9e1b379e44bc11da5b461055730bf36c1..0813ca4dab25def539486f356c35e968
      .p_map_instance_extensions = wayland_map_instance_extensions,
      .p_map_device_extensions = wayland_map_device_extensions,
 diff --git a/dlls/winewayland.drv/wayland.c b/dlls/winewayland.drv/wayland.c
-index 75119ba749b379210b1c11cb170b4bac07b0de5c..843f979fea8f502d0e8e816598a52a9ba6f372af 100644
+index 915883756e3..04af7c95cd7 100644
 --- a/dlls/winewayland.drv/wayland.c
 +++ b/dlls/winewayland.drv/wayland.c
-@@ -40,6 +40,7 @@  struct wayland process_wayland =
+@@ -40,6 +40,7 @@ struct wayland process_wayland =
      .touch.touch_points = { &process_wayland.touch.touch_points,
                              &process_wayland.touch.touch_points },
      .text_input.mutex = PTHREAD_MUTEX_INITIALIZER,
@@ -2356,7 +2355,7 @@ index 75119ba749b379210b1c11cb170b4bac07b0de5c..843f979fea8f502d0e8e816598a52a9b
      .data_device.mutex = PTHREAD_MUTEX_INITIALIZER,
      .output_mutex = PTHREAD_MUTEX_INITIALIZER,
  };
-@@ -155,6 +47,52 @@  static int wayland_use_ime(void)
+@@ -157,6 +158,52 @@ static int wayland_use_ime(void)
          enabled = (env = getenv("WAYLANDDRV_IME")) && !strcmp(env, "1");
  
      return enabled;
@@ -2409,8 +2408,8 @@ index 75119ba749b379210b1c11cb170b4bac07b0de5c..843f979fea8f502d0e8e816598a52a9b
  }
  
  /**********************************************************************
-@@ -339,6 +99,14 @@  static void registry_handle_global(void *data, struct wl_registry *registry,
-         process_wayland.wl_fixes = wl_registry_bind(registry, id, &wl_fixes_interface, 2);
+@@ -344,6 +391,14 @@ static void registry_handle_global(void *data, struct wl_registry *registry,
+             wl_registry_bind(registry, id, &wl_fixes_interface, 2);
      }
  #endif
 +    else if (strcmp(interface, "zwp_linux_dmabuf_v1") == 0)
@@ -2424,7 +2423,7 @@ index 75119ba749b379210b1c11cb170b4bac07b0de5c..843f979fea8f502d0e8e816598a52a9b
  }
  
  static void registry_handle_global_remove(void *data, struct wl_registry *registry,
-@@ -514,6 +113,9 @@  BOOL wayland_process_init(void)
+@@ -522,6 +577,9 @@ BOOL wayland_process_init(void)
      if (!process_wayland.supports_win_scrgb)
          ERR("Wayland compositor doesn't expose windows_scrgb image description (HDR may look broken)!\n");
  
@@ -2435,10 +2434,10 @@ index 75119ba749b379210b1c11cb170b4bac07b0de5c..843f979fea8f502d0e8e816598a52a9b
  
      return TRUE;
 diff --git a/dlls/winewayland.drv/wayland_keyboard.c b/dlls/winewayland.drv/wayland_keyboard.c
-index a135e346a76d73faf3b26adcab17cbf01c8bf4a8..b6d3072e3866c0ebe7bb984f8c76a122e32e74a1 100644
+index be265e79055..803b5ae17c9 100644
 --- a/dlls/winewayland.drv/wayland_keyboard.c
 +++ b/dlls/winewayland.drv/wayland_keyboard.c
-@@ -951,7 +951,7 @@  static void keyboard_handle_leave(void *private, struct wl_keyboard *wl_keyboard
+@@ -997,7 +997,7 @@ static void keyboard_handle_leave(void *private, struct wl_keyboard *wl_keyboard
                                    uint32_t serial, struct wl_surface *wl_surface)
  {
      struct wayland_keyboard *keyboard = &process_wayland.keyboard;
@@ -2447,14 +2446,17 @@ index a135e346a76d73faf3b26adcab17cbf01c8bf4a8..b6d3072e3866c0ebe7bb984f8c76a122
  
      InterlockedExchange(&process_wayland.input_serial, serial);
  
-@@ -1018,14 +958,18 @@  static void keyboard_handle_leave(void *private, struct wl_keyboard *wl_keyboard
+@@ -1017,17 +1017,20 @@ static void keyboard_handle_leave(void *private, struct wl_keyboard *wl_keyboard
+      * and for any key repetition to stop. */
      release_all_keys(hwnd);
  
 +    foreground = NtUserGetForegroundWindow();
      if (wayland_is_layer_menu_hwnd(hwnd))
      {
          wayland_cancel_layer_menu(hwnd);
+         return;
      }
+-
 -    if (hwnd == NtUserGetForegroundWindow())
 +    else if (hwnd == foreground || wayland_is_menu_popup(hwnd))
      {
@@ -2468,7 +2470,7 @@ index a135e346a76d73faf3b26adcab17cbf01c8bf4a8..b6d3072e3866c0ebe7bb984f8c76a122
              NtUserPostMessage(hwnd, WM_WINE_WINDOW_STATE_CHANGED, 0, 0);
      }
 diff --git a/dlls/winewayland.drv/wayland_pointer.c b/dlls/winewayland.drv/wayland_pointer.c
-index b081b93e90e7cbbc39afdd098ba53c98b59c9538..ecb06e334488e4ad0de623659d518d7c8ae3845b 100644
+index a719f6d0da9..7e7d24d94a6 100644
 --- a/dlls/winewayland.drv/wayland_pointer.c
 +++ b/dlls/winewayland.drv/wayland_pointer.c
 @@ -28,6 +28,7 @@
@@ -2479,7 +2481,7 @@ index b081b93e90e7cbbc39afdd098ba53c98b59c9538..ecb06e334488e4ad0de623659d518d7c
  
  #define OEMRESOURCE
  
-@@ -280,6 +35,12 @@  static void pointer_handle_button(void *data, struct wl_pointer *wl_pointer,
+@@ -281,6 +282,12 @@ static void pointer_handle_button(void *data, struct wl_pointer *wl_pointer,
      pthread_mutex_lock(&pointer->mutex);
      pointer->button_serial = state == WL_POINTER_BUTTON_STATE_PRESSED ?
                               serial : 0;
@@ -2493,10 +2495,10 @@ index b081b93e90e7cbbc39afdd098ba53c98b59c9538..ecb06e334488e4ad0de623659d518d7c
  
      TRACE("hwnd=%p button=%#x state=%u\n", hwnd, button, state);
 diff --git a/dlls/winewayland.drv/wayland_surface.c b/dlls/winewayland.drv/wayland_surface.c
-index 8d8cf4d851094af724dbdbc8de2a5a9508dfa96e..c8a750f06372bb7b22fe3daeb7c4ff844905a169 100644
+index ab04e1173d2..e314cebd0bf 100644
 --- a/dlls/winewayland.drv/wayland_surface.c
 +++ b/dlls/winewayland.drv/wayland_surface.c
-@@ -26,15 +26,213 @@
+@@ -26,14 +26,212 @@
  
  #include <assert.h>
  #include <stdlib.h>
@@ -2709,8 +2711,7 @@ index 8d8cf4d851094af724dbdbc8de2a5a9508dfa96e..c8a750f06372bb7b22fe3daeb7c4ff84
  static struct wp_image_description_v1 *scrgb_desc;
  static struct wp_image_description_v1 *bt2100_desc;
  static BOOL color_manager_initialized;
- 
-@@ -381,6 +239,332 @@  static const struct zxdg_toplevel_decoration_v1_listener zxdg_toplevel_decoratio
+@@ -482,6 +680,332 @@ static const struct zxdg_toplevel_decoration_v1_listener zxdg_toplevel_decoratio
   *
   * Creates a role-less wayland surface.
   */
@@ -3043,7 +3044,7 @@ index 8d8cf4d851094af724dbdbc8de2a5a9508dfa96e..c8a750f06372bb7b22fe3daeb7c4ff84
  struct wayland_surface *wayland_surface_create(HWND hwnd)
  {
      struct wayland_surface *surface;
-@@ -395,6 +571,8 @@  struct wayland_surface *wayland_surface_create(HWND hwnd)
+@@ -496,6 +1020,8 @@ struct wayland_surface *wayland_surface_create(HWND hwnd)
      TRACE("surface=%p\n", surface);
  
      surface->hwnd = hwnd;
@@ -3052,7 +3053,7 @@ index 8d8cf4d851094af724dbdbc8de2a5a9508dfa96e..c8a750f06372bb7b22fe3daeb7c4ff84
      wl_list_init(&surface->output_list);
  
      surface->wl_surface = wl_compositor_create_surface(process_wayland.wl_compositor);
-@@ -429,6 +579,7 @@  struct wayland_surface *wayland_surface_create(HWND hwnd)
+@@ -530,6 +1056,7 @@ struct wayland_surface *wayland_surface_create(HWND hwnd)
      surface->window.scale = 1.0;
      surface->comitted.scale = 0.0;
      surface->ensured_contents = WAYLAND_SURFACE_NOT_ENSURED;
@@ -3060,7 +3061,7 @@ index 8d8cf4d851094af724dbdbc8de2a5a9508dfa96e..c8a750f06372bb7b22fe3daeb7c4ff84
  
      return surface;
  
-@@ -444,6 +586,14 @@  err:
+@@ -545,6 +1072,14 @@ err:
   */
  void wayland_surface_destroy(struct wayland_surface *surface)
  {
@@ -3075,7 +3076,7 @@ index 8d8cf4d851094af724dbdbc8de2a5a9508dfa96e..c8a750f06372bb7b22fe3daeb7c4ff84
      pthread_mutex_lock(&process_wayland.pointer.mutex);
      if (process_wayland.pointer.focused_hwnd == surface->hwnd)
      {
-@@ -452,6 +600,12 @@  void wayland_surface_destroy(struct wayland_surface *surface)
+@@ -553,6 +1088,12 @@ void wayland_surface_destroy(struct wayland_surface *surface)
      }
      if (process_wayland.pointer.constraint_hwnd == surface->hwnd)
          wayland_pointer_clear_constraint();
@@ -3088,7 +3089,7 @@ index 8d8cf4d851094af724dbdbc8de2a5a9508dfa96e..c8a750f06372bb7b22fe3daeb7c4ff84
      pthread_mutex_unlock(&process_wayland.pointer.mutex);
  
      pthread_mutex_lock(&process_wayland.keyboard.mutex);
-@@ -550,6 +612,33 @@  static void wayland_surface_init_decoration(struct wayland_surface *surface)
+@@ -651,6 +1192,33 @@ static void wayland_surface_init_decoration(struct wayland_surface *surface)
          surface->hwnd);
  }
  
@@ -3122,7 +3123,7 @@ index 8d8cf4d851094af724dbdbc8de2a5a9508dfa96e..c8a750f06372bb7b22fe3daeb7c4ff84
  /**********************************************************************
   *          wayland_surface_make_toplevel
   *
-@@ -618,6 +645,8 @@  void wayland_surface_make_toplevel(struct wayland_surface *surface, BOOL server_
+@@ -719,6 +1287,8 @@ void wayland_surface_make_toplevel(struct wayland_surface *surface, BOOL server_
  
      wayland_surface_init_fractional_scale(surface, 1.0);
  
@@ -3131,7 +3132,7 @@ index 8d8cf4d851094af724dbdbc8de2a5a9508dfa96e..c8a750f06372bb7b22fe3daeb7c4ff84
      if (server_decor) wayland_surface_init_decoration(surface);
  
      wl_surface_commit(surface->wl_surface);
-@@ -630,6 +653,39 @@  err:
+@@ -731,6 +1301,39 @@ err:
      ERR("Failed to assign toplevel role to wayland surface\n");
  }
  
@@ -3171,7 +3172,7 @@ index 8d8cf4d851094af724dbdbc8de2a5a9508dfa96e..c8a750f06372bb7b22fe3daeb7c4ff84
  static struct xdg_positioner *create_xdg_positioner(RECT rect)
  {
      int width, height;
-@@ -659,6 +692,73 @@  static struct xdg_positioner *create_xdg_positioner(RECT rect)
+@@ -752,6 +1355,73 @@ static struct xdg_positioner *create_xdg_positioner(RECT rect)
      return xdg_positioner;
  }
  
@@ -3245,7 +3246,7 @@ index 8d8cf4d851094af724dbdbc8de2a5a9508dfa96e..c8a750f06372bb7b22fe3daeb7c4ff84
  /**********************************************************************
   *          wayland_surface_make_popup
   *
-@@ -669,6 +765,7 @@  void wayland_surface_make_popup(struct wayland_surface *surface,
+@@ -762,6 +1432,7 @@ void wayland_surface_make_popup(struct wayland_surface *surface,
  {
      struct xdg_positioner *xdg_positioner = NULL;
      RECT rect = surface->window.rect;
@@ -3253,7 +3254,7 @@ index 8d8cf4d851094af724dbdbc8de2a5a9508dfa96e..c8a750f06372bb7b22fe3daeb7c4ff84
  
      OffsetRect(&rect, -owner->window.rect.left, -owner->window.rect.top);
  
-@@ -700,6 +772,8 @@  void wayland_surface_make_popup(struct wayland_surface *surface,
+@@ -793,6 +1464,8 @@ void wayland_surface_make_popup(struct wayland_surface *surface,
  
      wayland_surface_clear_role(surface);
      surface->role = WAYLAND_SURFACE_ROLE_POPUP;
@@ -3261,8 +3262,8 @@ index 8d8cf4d851094af724dbdbc8de2a5a9508dfa96e..c8a750f06372bb7b22fe3daeb7c4ff84
 +    surface->xdg_popup_grabbed = FALSE;
  
      wayland_surface_init_fractional_scale(surface, owner->window.scale);
-     rect = map_rect_to_surface(surface, rect);
-@@ -718,6 +780,22 @@  void wayland_surface_make_popup(struct wayland_surface *surface,
+ 
+@@ -811,6 +1484,22 @@ void wayland_surface_make_popup(struct wayland_surface *surface,
      if (!surface->xdg_popup) goto err;
      xdg_popup_add_listener(surface->xdg_popup, &xdg_popup_listener, surface->hwnd);
  
@@ -3285,7 +3286,7 @@ index 8d8cf4d851094af724dbdbc8de2a5a9508dfa96e..c8a750f06372bb7b22fe3daeb7c4ff84
      surface->owner_hwnd = owner->hwnd;
      wl_surface_commit(surface->wl_surface);
      wl_display_flush(process_wayland.wl_display);
-@@ -880,6 +802,7 @@  void wayland_surface_clear_role(struct wayland_surface *surface)
+@@ -999,6 +1688,7 @@ void wayland_surface_clear_role(struct wayland_surface *surface)
          }
  
          surface->owner_hwnd = NULL;
@@ -3293,9 +3294,9 @@ index 8d8cf4d851094af724dbdbc8de2a5a9508dfa96e..c8a750f06372bb7b22fe3daeb7c4ff84
          break;
  
      case WAYLAND_SURFACE_ROLE_TOPLEVEL:
-@@ -929,6 +809,16 @@  void wayland_surface_clear_role(struct wayland_surface *surface)
-         }
+@@ -1042,6 +1732,16 @@ void wayland_surface_clear_role(struct wayland_surface *surface)
          surface->layer_output = NULL;
+         surface->layer_menu = FALSE;
          break;
 +
 +    case WAYLAND_SURFACE_ROLE_SUBSURFACE:
@@ -3310,7 +3311,7 @@ index 8d8cf4d851094af724dbdbc8de2a5a9508dfa96e..c8a750f06372bb7b22fe3daeb7c4ff84
      }
  
      memset(&surface->pending, 0, sizeof(surface->pending));
-@@ -946,6 +825,8 @@  void wayland_surface_clear_role(struct wayland_surface *surface)
+@@ -1059,6 +1759,8 @@ void wayland_surface_clear_role(struct wayland_surface *surface)
      surface->content_width = 0;
      surface->content_height = 0;
      surface->ensured_contents = WAYLAND_SURFACE_NOT_ENSURED;
@@ -3319,7 +3320,7 @@ index 8d8cf4d851094af724dbdbc8de2a5a9508dfa96e..c8a750f06372bb7b22fe3daeb7c4ff84
  
      wl_display_flush(process_wayland.wl_display);
  }
-@@ -1046,6 +833,32 @@  BOOL wayland_surface_config_is_compatible(struct wayland_surface_config *conf, R
+@@ -1166,6 +1868,32 @@ BOOL wayland_surface_config_is_compatible(struct wayland_surface_config *conf, R
      return TRUE;
  }
  
@@ -3352,7 +3353,7 @@ index 8d8cf4d851094af724dbdbc8de2a5a9508dfa96e..c8a750f06372bb7b22fe3daeb7c4ff84
  /**********************************************************************
   *          wayland_surface_get_rect_in_monitor
   *
-@@ -1133,7 +865,8 @@  static void wayland_surface_reconfigure_geometry(struct wayland_surface *surface
+@@ -1253,7 +1981,8 @@ static void wayland_surface_reconfigure_geometry(struct wayland_surface *surface
      {
          int width = rect.right - rect.left, height = rect.bottom - rect.top;
          xdg_surface_set_window_geometry(surface->xdg_surface, 0, 0, width, height);
@@ -3362,7 +3363,7 @@ index 8d8cf4d851094af724dbdbc8de2a5a9508dfa96e..c8a750f06372bb7b22fe3daeb7c4ff84
          if (!wayland_surface_is_toplevel(surface)) return;
  
          if (surface->window.resizeable)
-@@ -1172,7 +873,7 @@  static void wayland_surface_reconfigure_size(struct wayland_surface *surface,
+@@ -1292,7 +2021,7 @@ static void wayland_surface_reconfigure_size(struct wayland_surface *surface,
   *
   * Reconfigures the subsurface covering the client area.
   */
@@ -3371,7 +3372,9 @@ index 8d8cf4d851094af724dbdbc8de2a5a9508dfa96e..c8a750f06372bb7b22fe3daeb7c4ff84
                                                 struct wayland_client_surface *client,
                                                 const RECT *client_rect)
  {
-@@ -1408,17 +880,533 @@  static BOOL wayland_surface_reconfigure_client(struct wayland_surface *surface,
+@@ -1303,25 +2032,541 @@ static BOOL wayland_surface_reconfigure_client(struct wayland_surface *surface,
+ 
+     TRACE("hwnd=%p rect=%s\n", surface->hwnd, wine_dbgstr_rect(&rect));
  
 -    if (EqualRect(&rect, &client->viewport_rect)) return FALSE;
 -    client->viewport_rect = rect;
@@ -3405,9 +3408,11 @@ index 8d8cf4d851094af724dbdbc8de2a5a9508dfa96e..c8a750f06372bb7b22fe3daeb7c4ff84
 +    }
  }
  
+-static BOOL wayland_surface_reconfigure_layer(struct wayland_surface *surface)
 +static struct wayland_hwnd_dmabuf_surface *wayland_hwnd_dmabuf_surface_get(struct wayland_surface *parent,
 +                                                                           HWND hwnd)
-+{
+ {
+-    if (surface->processing.serial && surface->processing.processed)
 +    struct wayland_hwnd_dmabuf_surface *surface;
 +
 +    wl_list_for_each(surface, &parent->hwnd_dmabuf_surfaces, link)
@@ -3915,8 +3920,14 @@ index 8d8cf4d851094af724dbdbc8de2a5a9508dfa96e..c8a750f06372bb7b22fe3daeb7c4ff84
 +
 +/**********************************************************************
 + *          wayland_surface_reconfigure_xdg
-@@ -1293,6 +1413,10 @@  BOOL wayland_surface_reconfigure(struct wayland_surface *surface)
-         if (!surface->zwlr_layer_surface_v1) break;
++static BOOL wayland_surface_reconfigure_layer(struct wayland_surface *surface)
++{
++    if (surface->processing.serial && surface->processing.processed)
+     {
+         if (surface->processing.serial != surface->current.serial)
+             zwlr_layer_surface_v1_ack_configure(surface->zwlr_layer_surface_v1,
+@@ -1412,6 +2657,10 @@ BOOL wayland_surface_reconfigure(struct wayland_surface *surface)
+         if (!surface->zwlr_layer_surface_v1) break; /* surface role has been cleared */
          if (!wayland_surface_reconfigure_layer(surface)) return FALSE;
          break;
 +    case WAYLAND_SURFACE_ROLE_SUBSURFACE:
@@ -3926,30 +3937,20 @@ index 8d8cf4d851094af724dbdbc8de2a5a9508dfa96e..c8a750f06372bb7b22fe3daeb7c4ff84
      }
  
      rect = map_rect_to_surface(surface, rect);
-@@ -1948,4 +1451,10 @@  static void wayland_client_surface_detach(struct client_surface *client)
-         wayland_client_surface_attach(surface, NULL, NULL);
-+        /* the occluder is gone, GDI children show through the base again */
-+        if (data->wayland_surface && !wl_list_empty(&data->wayland_surface->child_overlays))
-+        {
-+            wayland_surface_clear_child_overlays(data->wayland_surface);
-+            wl_surface_commit(data->wayland_surface->wl_surface);
-+        }
-         wayland_win_data_release(data);
-     }
+@@ -1773,89 +3022,47 @@ RECT map_rect_from_surface(struct wayland_surface *surface, RECT rect)
+     rect.bottom  = round(rect.bottom * surface->window.scale);
+     return rect;
  }
-@@ -1973,117 +1461,67 @@  static void wayland_client_surface_update(struct client_surface *client)
- }
- 
 -static void dummy_buffer_release(void *data, struct wl_buffer *buffer)
-+static BOOL wayland_client_surface_is_hwnd_dmabuf_producer(struct wayland_client_surface *surface)
- {
+-{
 -    struct wayland_shm_buffer *shm_buffer = data;
 -    TRACE("shm_buffer=%p\n", shm_buffer);
 -    wayland_shm_buffer_unref(shm_buffer);
 -}
--
+ 
 -static const struct wl_buffer_listener dummy_buffer_listener =
--{
++static BOOL wayland_client_surface_is_hwnd_dmabuf_producer(struct wayland_client_surface *surface)
+ {
 -    dummy_buffer_release
 -};
 -
@@ -3985,12 +3986,11 @@ index 8d8cf4d851094af724dbdbc8de2a5a9508dfa96e..c8a750f06372bb7b22fe3daeb7c4ff84
 -     * expose to ensure the window title bar and buttons are present */
 -    if (!needs_contents && !surface->ensured_contents)
 -        needs_contents = WAYLAND_SURFACE_ENSURED_FLUSH;
+-
+-    TRACE("surface=%p hwnd=%p needs_contents=%u\n", surface, hwnd, needs_contents);
 +    struct wayland_win_data *data;
 +    HANDLE handle = 0;
 +    HWND hwnd = surface->client.hwnd;
- 
--    TRACE("surface=%p hwnd=%p needs_contents=%u\n", surface, hwnd, needs_contents);
-+    if (surface->hwnd_dmabuf_producer) return TRUE;
  
 -    switch (needs_contents)
 -    {
@@ -3998,7 +3998,8 @@ index 8d8cf4d851094af724dbdbc8de2a5a9508dfa96e..c8a750f06372bb7b22fe3daeb7c4ff84
 -    case WAYLAND_SURFACE_NOT_ENSURED: return FALSE;
 -    case WAYLAND_SURFACE_ENSURED_DUMMY_BUFFER: break;
 -    }
--
++    if (surface->hwnd_dmabuf_producer) return TRUE;
+ 
 -    if (!wayland_surface_reconfigure(surface))
 +    if ((data = wayland_win_data_get(hwnd)))
      {
@@ -4015,41 +4016,57 @@ index 8d8cf4d851094af724dbdbc8de2a5a9508dfa96e..c8a750f06372bb7b22fe3daeb7c4ff84
 -    }
  
 -    if (!(damage = NtGdiCreateRectRgn(0, 0, width, height)))
--    {
--        wayland_shm_buffer_unref(dummy_shm_buffer);
--        return FALSE;
--    }
 +    NtClose(handle);
 +    surface->hwnd_dmabuf_producer = TRUE;
 +    TRACE("hwnd=%p is an HWND dmabuf producer without local wayland data; skipping client surface presents\n",
 +          hwnd);
 +    return TRUE;
 +}
- 
--    wl_buffer_add_listener(dummy_shm_buffer->wl_buffer, &dummy_buffer_listener,
--                           dummy_shm_buffer);
++
 +static void wayland_client_surface_expose_placeholder(struct wayland_client_surface *surface)
 +{
 +    struct wayland_win_data *data;
 +    HWND hwnd = surface->client.hwnd;
 +    BOOL expose = FALSE;
++
++    if ((data = wayland_win_data_get(hwnd)))
+     {
+-        wayland_shm_buffer_unref(dummy_shm_buffer);
+-        return FALSE;
++        expose = data->wayland_surface && data->wayland_surface->client_placeholder &&
++                 data->window_contents && data->wayland_surface->window.visible;
++        wayland_win_data_release(data);
+     }
  
+-    wl_buffer_add_listener(dummy_shm_buffer->wl_buffer, &dummy_buffer_listener,
+-                           dummy_shm_buffer);
 -    wayland_surface_attach_shm(surface, dummy_shm_buffer, damage);
 -    wl_surface_commit(surface->wl_surface);
 -    surface->ensured_contents = WAYLAND_SURFACE_ENSURED_DUMMY_BUFFER;
 -    NtGdiDeleteObjectApp(damage);
-+    if ((data = wayland_win_data_get(hwnd)))
-+    {
-+        expose = data->wayland_surface && data->wayland_surface->client_placeholder &&
-+                 data->window_contents && data->wayland_surface->window.visible;
-+        wayland_win_data_release(data);
-+    }
- 
+-
 -    return FALSE;
-+    if (expose) NtUserExposeWindowSurface(hwnd, 0, NULL, 0);
++    if (expose) NtUserExposeWindowSurface(hwnd, 0, NULL);
  }
  
- static void wayland_client_surface_present(struct client_surface *client, HDC hdc)
+-
+ /**********************************************************************
+  *          map_point_from_surface
+  *
+@@ -1901,6 +3108,12 @@ static void wayland_client_surface_detach(struct client_surface *client)
+     {
+         if (data->client_surface == surface) data->client_surface = NULL;
+         wayland_client_surface_attach(surface, NULL, NULL);
++        /* the occluder is gone, GDI children show through the base again */
++        if (data->wayland_surface && !wl_list_empty(&data->wayland_surface->child_overlays))
++        {
++            wayland_surface_clear_child_overlays(data->wayland_surface);
++            wl_surface_commit(data->wayland_surface->wl_surface);
++        }
+         wayland_win_data_release(data);
+     }
+ }
+@@ -1931,30 +3144,23 @@ static void wayland_client_surface_present(struct client_surface *client, HDC hd
  {
      struct wayland_client_surface *surface = impl_from_client_surface(client);
      HWND hwnd = client->hwnd, toplevel = client->toplevel;
@@ -4083,7 +4100,7 @@ index 8d8cf4d851094af724dbdbc8de2a5a9508dfa96e..c8a750f06372bb7b22fe3daeb7c4ff84
  
 -    wayland_win_data_release(data);
 -
--    if (expose) NtUserExposeWindowSurface(hwnd, 0, NULL, 0);
+-    if (expose) NtUserExposeWindowSurface(hwnd, 0, NULL);
      set_client_surface(hwnd, surface);
 +    ensure_window_surface_contents(toplevel);
 +    surface->has_presented = TRUE;
@@ -4091,10 +4108,9 @@ index 8d8cf4d851094af724dbdbc8de2a5a9508dfa96e..c8a750f06372bb7b22fe3daeb7c4ff84
  }
  
  static BOOL wayland_client_surface_set_color_space(struct client_surface *client, VkColorSpaceKHR color_space)
- {
-@@ -1628,6 +1423,28 @@  POINT map_point_from_surface(struct wayland_surface *surface, POINT point)
-     return point;
- }
+@@ -2036,6 +3242,28 @@ static const struct client_surface_funcs wayland_client_surface_funcs =
+     .set_color_space = wayland_client_surface_set_color_space,
+ };
  
 +void wayland_surface_coords_from_window(struct wayland_surface *surface,
 +                                        int window_x, int window_y,
@@ -4120,9 +4136,9 @@ index 8d8cf4d851094af724dbdbc8de2a5a9508dfa96e..c8a750f06372bb7b22fe3daeb7c4ff84
 +
  struct wayland_client_surface *impl_from_client_surface(struct client_surface *client)
  {
-     return CONTAINING_RECORD(client, struct wayland_client_surface, client);
-@@ -2035,6 +1528,103 @@  void wayland_client_surface_attach_image_description(struct wayland_client_surfa
-     wp_image_description_v1_add_listener(image_desc, &image_description_listener, surface);
+     assert(client->funcs == &wayland_client_surface_funcs);
+@@ -2289,6 +3517,103 @@ void wayland_surface_set_icon_buffer(struct wayland_surface *surface, UINT type,
+     }
  }
  
 +void wayland_client_surface_set_alpha(struct client_surface *client, BOOL alpha)
@@ -4223,13 +4239,13 @@ index 8d8cf4d851094af724dbdbc8de2a5a9508dfa96e..c8a750f06372bb7b22fe3daeb7c4ff84
 +}
 +
  /**********************************************************************
-  *          wayland_surface_set_title
+  *          wayland_surface_assign_icon
   */
 diff --git a/dlls/winewayland.drv/wayland_text_input.c b/dlls/winewayland.drv/wayland_text_input.c
-index 6e6288b7a30ad682511bee1eb46122de3c40fe71..324a2ba8d3828cbecf444578bbd186cbcb11fe9e 100644
+index a57a9c3e714..f1372706030 100644
 --- a/dlls/winewayland.drv/wayland_text_input.c
 +++ b/dlls/winewayland.drv/wayland_text_input.c
-@@ -262,6 +262,11 @@  BOOL WAYLAND_SetIMECompositionRect(HWND hwnd, RECT rect)
+@@ -267,6 +267,11 @@ BOOL WAYLAND_SetIMECompositionRect(HWND hwnd, RECT rect)
  
      TRACE("hwnd %p, rect %s.\n", hwnd, wine_dbgstr_rect(&rect));
  
@@ -4241,7 +4257,7 @@ index 6e6288b7a30ad682511bee1eb46122de3c40fe71..324a2ba8d3828cbecf444578bbd186cb
      pthread_mutex_lock(&text_input->mutex);
  
      if (!text_input->zwp_text_input_v3 || !text_input->enabled || hwnd != text_input->focused_hwnd)
-@@ -278,7 +273,6 @@  BOOL WAYLAND_SetIMECompositionRect(HWND hwnd, RECT rect)
+@@ -283,7 +288,6 @@ BOOL WAYLAND_SetIMECompositionRect(HWND hwnd, RECT rect)
  
      OffsetRect(&rect, -surface->window.rect.left, -surface->window.rect.top);
      surface_rect = map_rect_to_surface(surface, rect);
@@ -4249,7 +4265,7 @@ index 6e6288b7a30ad682511bee1eb46122de3c40fe71..324a2ba8d3828cbecf444578bbd186cb
  
      zwp_text_input_v3_set_cursor_rectangle(text_input->zwp_text_input_v3,
              surface_rect.left, surface_rect.top, surface_rect.right - surface_rect.left,
-@@ -286,10 +279,12 @@  BOOL WAYLAND_SetIMECompositionRect(HWND hwnd, RECT rect)
+@@ -291,10 +295,12 @@ BOOL WAYLAND_SetIMECompositionRect(HWND hwnd, RECT rect)
      zwp_text_input_v3_commit(text_input->zwp_text_input_v3);
  
      pthread_mutex_unlock(&text_input->mutex);
@@ -4263,10 +4279,10 @@ index 6e6288b7a30ad682511bee1eb46122de3c40fe71..324a2ba8d3828cbecf444578bbd186cb
  }
  
 diff --git a/dlls/winewayland.drv/waylanddrv.h b/dlls/winewayland.drv/waylanddrv.h
-index 025b23c7eba096bab527b3c4494e61050c51022c..a02d064d45cef57fbb79658f88726279c7302acd 100644
+index 82ef56ba3a1..53c5843fdd9 100644
 --- a/dlls/winewayland.drv/waylanddrv.h
 +++ b/dlls/winewayland.drv/waylanddrv.h
-@@ -41,6 +41,7 @@  struct xkb_compose_table;
+@@ -40,6 +40,7 @@ struct xkb_compose_table;
  #include "relative-pointer-unstable-v1-client-protocol.h"
  #include "text-input-unstable-v3-client-protocol.h"
  #include "viewporter-client-protocol.h"
@@ -4274,7 +4290,7 @@ index 025b23c7eba096bab527b3c4494e61050c51022c..a02d064d45cef57fbb79658f88726279
  #include "xdg-output-unstable-v1-client-protocol.h"
  #include "xdg-shell-client-protocol.h"
  #include "ext-data-control-v1-client-protocol.h"
-@@ -84,6 +48,7 @@  enum wayland_window_message
+@@ -84,6 +85,7 @@ enum wayland_window_message
      WM_WAYLAND_INIT_DISPLAY_DEVICES = WM_WINE_FIRST_DRIVER_MSG,
      WM_WAYLAND_CONFIGURE,
      WM_WAYLAND_SET_FOREGROUND,
@@ -4282,7 +4298,7 @@ index 025b23c7eba096bab527b3c4494e61050c51022c..a02d064d45cef57fbb79658f88726279
  };
  
  enum wayland_surface_config_state
-@@ -98,6 +55,7 @@  enum wayland_surface_role
+@@ -98,6 +100,7 @@ enum wayland_surface_role
  {
      WAYLAND_SURFACE_ROLE_NONE,
      WAYLAND_SURFACE_ROLE_TOPLEVEL,
@@ -4290,7 +4306,7 @@ index 025b23c7eba096bab527b3c4494e61050c51022c..a02d064d45cef57fbb79658f88726279
      WAYLAND_SURFACE_ROLE_POPUP,
      WAYLAND_SURFACE_ROLE_LAYER,
  };
-@@ -165,6 +62,9 @@  struct wayland_pointer
+@@ -165,6 +168,9 @@ struct wayland_pointer
      POINT warp;
      uint32_t enter_serial;
      uint32_t button_serial;
@@ -4300,7 +4316,7 @@ index 025b23c7eba096bab527b3c4494e61050c51022c..a02d064d45cef57fbb79658f88726279
      struct wayland_cursor cursor;
      struct wayland_pointer_frame frame;
      pthread_mutex_t mutex;
-@@ -266,8 +71,10 @@  struct wayland
+@@ -263,6 +269,8 @@ struct wayland
  #ifdef WL_FIXES_ACK_GLOBAL_REMOVE
      struct wl_fixes *wl_fixes;
  #endif
@@ -4309,9 +4325,7 @@ index 025b23c7eba096bab527b3c4494e61050c51022c..a02d064d45cef57fbb79658f88726279
      struct wl_array output_array;
      /* Protects the output_array, and the wayland_output.current states. */
      pthread_mutex_t output_mutex;
-     LONG input_serial;
-     BOOL supports_win_scrgb;
-@@ -321,6 +81,15 @@  struct wayland_output_state
+@@ -323,6 +331,15 @@ struct wayland_output_state
      unsigned int flags;
  };
  
@@ -4327,12 +4341,13 @@ index 025b23c7eba096bab527b3c4494e61050c51022c..a02d064d45cef57fbb79658f88726279
  struct wayland_output
  {
      struct wl_list link;
-@@ -368,9 +96,39 @@  struct wayland_client_surface
+@@ -366,13 +383,43 @@ struct wayland_client_surface
+     struct wl_callback *wl_callback;
+     RECT rect;
      RECT viewport_rect;
 +    BOOL hwnd_dmabuf_producer;
      struct wl_surface *wl_surface;
      struct wl_subsurface *wl_subsurface;
-     struct wp_color_management_surface_v1 *wp_color_management_surface_v1;
      struct wp_viewport *wp_viewport;
      struct wp_content_type_v1 *wp_content_type_v1;
 +    /* if true then the client surface has an alpha channel controlling transparency */
@@ -4340,7 +4355,7 @@ index 025b23c7eba096bab527b3c4494e61050c51022c..a02d064d45cef57fbb79658f88726279
 +    BOOL has_presented;
      struct wp_color_management_surface_v1 *color_management;
  };
-+
+ 
 +/* A GDI child window shown on its own wl_subsurface above a client surface. Its
 + * toplevel's GDI window-surface is hidden behind that client. */
 +struct wayland_child_overlay
@@ -4366,8 +4381,11 @@ index 025b23c7eba096bab527b3c4494e61050c51022c..a02d064d45cef57fbb79658f88726279
 +        int rx, ry, rw, rh; /* visible part, toplevel-window-relative */
 +    } entries[];
 +};
++
+ extern struct wayland_client_surface *impl_from_client_surface(struct client_surface *client);
  
-@@ -419,6 +163,17 @@  struct wayland_surface
+ struct wayland_shm_buffer
+@@ -422,19 +469,37 @@ struct wayland_surface
          struct
          {
              struct xdg_popup *xdg_popup;
@@ -4385,8 +4403,6 @@ index 025b23c7eba096bab527b3c4494e61050c51022c..a02d064d45cef57fbb79658f88726279
          };
      };
      struct wp_alpha_modifier_surface_v1 *wp_alpha_modifier_surface_v1;
-@@ -428,19 +135,28 @@  struct wayland_surface
-     struct wp_alpha_modifier_surface_v1 *wp_alpha_modifier_surface_v1;
      struct wl_list output_list;
 -    struct zwlr_layer_surface_v1 *zwlr_layer_surface_v1;
 -    struct wl_output *layer_output;
@@ -4394,8 +4410,7 @@ index 025b23c7eba096bab527b3c4494e61050c51022c..a02d064d45cef57fbb79658f88726279
  
      struct wayland_surface_config pending, requested, processing, current;
      BOOL resizing;
-     /* TODO: We can remove this once FSHack is implemented in opengl and vulkan upstream for all drivers.
-      * The opengl implementation is already merged. Then we would only need to ensure contents via expose. */
+     struct wayland_window_config window, comitted;
      enum wayland_surface_ensure_type ensured_contents;
 +    struct wl_list hwnd_dmabuf_surfaces;
 +    struct wl_list child_overlays; /* GDI child windows shown above a client surface */
@@ -4404,27 +4419,21 @@ index 025b23c7eba096bab527b3c4494e61050c51022c..a02d064d45cef57fbb79658f88726279
 +     * keeping the [base, client, dmabufs, overlays] order stable whichever chain
 +     * restacks last. Validated against the live list before use, never freed. */
 +    struct wl_surface *dmabuf_top;
-     struct wayland_window_config window, comitted;
 +    RECT geometry;
      int content_width, content_height;
 +    UINT32 alpha_multiplier;
      HCURSOR hcursor;
  };
  
-+BOOL wayland_dmabuf_format_supported(uint32_t format, uint64_t modifier);
-+
- /**********************************************************************
-  *          Wayland initialization
-  */
-@@ -456,6 +180,7 @@  void wayland_output_array_arrange_physical_coords(void);
-  *          Wayland surface
-  */
+@@ -467,6 +532,7 @@ struct wl_output *wayland_layer_output_for_rect(const RECT *rect, RECT *output_r
+ extern const struct wp_color_manager_v1_listener color_manager_listener;
+ void color_management_init(void);
  
 +unsigned long long wayland_time_ms(void);
  struct wayland_surface *wayland_surface_create(HWND hwnd);
  void wayland_surface_destroy(struct wayland_surface *surface);
  void wayland_surface_make_toplevel(struct wayland_surface *surface, BOOL server_decor);
-@@ -468,6 +187,9 @@  void wayland_surface_clear_role(struct wayland_surface *surface);
+@@ -479,6 +545,9 @@ void wayland_surface_clear_role(struct wayland_surface *surface);
  void wayland_surface_attach_shm(struct wayland_surface *surface,
                                  struct wayland_shm_buffer *shm_buffer,
                                  HRGN surface_damage_region);
@@ -4434,8 +4443,9 @@ index 025b23c7eba096bab527b3c4494e61050c51022c..a02d064d45cef57fbb79658f88726279
  BOOL wayland_surface_reconfigure(struct wayland_surface *surface);
  BOOL wayland_surface_config_is_compatible(struct wayland_surface_config *conf, RECT rect,
                                            enum wayland_surface_config_state state);
-@@ -500,4 +196,19 @@  RECT map_rect_to_surface(struct wayland_surface *surface, RECT rect);
- void wayland_client_surface_attach(struct wayland_client_surface *client, HWND toplevel, const RECT *rect);
+@@ -486,6 +555,21 @@ void wayland_surface_update_toplevel_parent(struct wayland_surface *surface);
+ RECT map_rect_to_surface(struct wayland_surface *surface, RECT rect);
+ POINT map_point_to_surface(struct wayland_surface *surface, POINT point);
  void wayland_client_surface_attach_image_description(struct wayland_client_surface *surface,
 +struct child_overlay_snapshot *child_overlays_snapshot(HWND hwnd);
 +void wayland_surface_apply_child_overlays(struct wayland_surface *surface,
@@ -4453,8 +4463,9 @@ index 025b23c7eba096bab527b3c4494e61050c51022c..a02d064d45cef57fbb79658f88726279
 +void wayland_surface_ensure_contents(struct wayland_surface *surface,
 +                                     struct wayland_client_surface *client);
                                                       struct wp_image_description_v1 *image_desc);
- void wayland_surface_set_title(struct wayland_surface *surface, LPCWSTR title);
-@@ -488,6 +215,14 @@  void wayland_surface_set_opacity(struct wayland_surface *surface, BYTE alpha, UI
+ RECT map_rect_from_surface(struct wayland_surface *surface, RECT rect);
+ POINT map_point_from_surface(struct wayland_surface *surface, POINT point);
+@@ -497,6 +581,14 @@ void wayland_surface_set_opacity(struct wayland_surface *surface, BYTE alpha, UI
  void wayland_surface_flash_window(struct wayland_surface *surface);
  void wayland_surface_activate(struct wayland_surface *surface);
  void wayland_surface_shortcut_control(struct wayland_surface *surface, BOOL inhibit);
@@ -4469,7 +4480,7 @@ index 025b23c7eba096bab527b3c4494e61050c51022c..a02d064d45cef57fbb79658f88726279
  
  static inline BOOL wayland_surface_is_toplevel(struct wayland_surface *surface)
  {
-@@ -540,15 +229,22 @@  struct wayland_win_data
+@@ -549,15 +641,22 @@ struct wayland_win_data
      BOOL managed;
      BOOL layered_attribs_set;
      int ime_ref;
@@ -4494,7 +4505,7 @@ index 025b23c7eba096bab527b3c4494e61050c51022c..a02d064d45cef57fbb79658f88726279
  BOOL wayland_is_popup_menu_class(HWND hwnd);
  BOOL wayland_is_layer_menu_hwnd(HWND hwnd);
 diff --git a/dlls/winewayland.drv/window.c b/dlls/winewayland.drv/window.c
-index ff302701b65057b849aced295cc549b1a2633aa8..99f59680dfdec0473c4b37a6df0b2049ea72ab18 100644
+index 980ad52e027..21001413fdd 100644
 --- a/dlls/winewayland.drv/window.c
 +++ b/dlls/winewayland.drv/window.c
 @@ -26,6 +26,7 @@
@@ -4504,8 +4515,8 @@ index ff302701b65057b849aced295cc549b1a2633aa8..99f59680dfdec0473c4b37a6df0b2049
 +#include <string.h>
  
  #include "ntstatus.h"
- #define WIN32_NO_STATUS
-@@ -51,6 +33,8 @@  static int wayland_win_data_cmp_rb(const void *key,
+ 
+@@ -50,6 +51,8 @@ static int wayland_win_data_cmp_rb(const void *key,
  
  static pthread_mutex_t win_data_mutex;
  static struct rb_tree win_data_rb = { wayland_win_data_cmp_rb };
@@ -4514,7 +4525,7 @@ index ff302701b65057b849aced295cc549b1a2633aa8..99f59680dfdec0473c4b37a6df0b2049
  static const WCHAR layer_menu_hwnd_prop[] =
      {'_','_','w','i','n','e','_','w','a','y','l','a','n','d','_','l','a','y','e','r','_','m','e','n','u',0};
  static const WCHAR layer_menu_restore_hwnd_prop[] =
-@@ -76,6 +41,9 @@  static struct wayland_win_data *wayland_win_data_create(HWND hwnd, const struct
+@@ -75,6 +78,9 @@ static struct wayland_win_data *wayland_win_data_create(HWND hwnd, const struct
  
      data->hwnd = hwnd;
      data->rects = *rects;
@@ -4524,7 +4535,7 @@ index ff302701b65057b849aced295cc549b1a2633aa8..99f59680dfdec0473c4b37a6df0b2049
  
      pthread_mutex_lock(&win_data_mutex);
  
-@@ -115,15 +50,22 @@  static void wayland_win_data_destroy(struct wayland_win_data *data)
+@@ -114,15 +120,22 @@ static void wayland_win_data_destroy(struct wayland_win_data *data)
   *
   * Lock and return the data structure associated with a window.
   */
@@ -4539,18 +4550,18 @@ index ff302701b65057b849aced295cc549b1a2633aa8..99f59680dfdec0473c4b37a6df0b2049
 -    pthread_mutex_unlock(&win_data_mutex);
 +    return NULL;
 +}
- 
++
 +struct wayland_win_data *wayland_win_data_get(HWND hwnd)
 +{
 +    struct wayland_win_data *data;
-+
+ 
 +    pthread_mutex_lock(&win_data_mutex);
 +    if ((data = wayland_win_data_get_nolock(hwnd))) return data;
 +    pthread_mutex_unlock(&win_data_mutex);
      return NULL;
  }
  
-@@ -138,6 +72,16 @@  void wayland_win_data_release(struct wayland_win_data *data)
+@@ -137,6 +150,16 @@ void wayland_win_data_release(struct wayland_win_data *data)
      pthread_mutex_unlock(&win_data_mutex);
  }
  
@@ -4567,17 +4578,16 @@ index ff302701b65057b849aced295cc549b1a2633aa8..99f59680dfdec0473c4b37a6df0b2049
  static void wayland_win_data_get_config(struct wayland_win_data *data,
                                          struct wayland_window_config *conf)
  {
-@@ -157,8 +88,8 @@  static void wayland_win_data_get_config(struct wayland_win_data *data,
-         conf->minimized = TRUE;
-     }
+@@ -153,7 +176,7 @@ static void wayland_win_data_get_config(struct wayland_win_data *data,
+     conf->minimized = !!(style & WS_MINIMIZE);
  
      /* The fullscreen state is implied by the window position and style. */
--    else if (data->is_fullscreen)
-+    else if (wayland_win_data_is_fullscreen(data, style))
+-    if (!conf->minimized && data->is_fullscreen)
++    if (!conf->minimized && wayland_win_data_is_fullscreen(data, style))
      {
          if ((style & WS_MAXIMIZE) && (style & WS_CAPTION) == WS_CAPTION)
              window_state |= WAYLAND_SURFACE_CONFIG_STATE_MAXIMIZED;
-@@ -183,11 +96,26 @@  static void reapply_cursor_clipping(void)
+@@ -179,11 +202,26 @@ static void reapply_cursor_clipping(void)
      NtUserSetThreadDpiAwarenessContext(context);
  }
  
@@ -4604,7 +4614,7 @@ index ff302701b65057b849aced295cc549b1a2633aa8..99f59680dfdec0473c4b37a6df0b2049
      struct wayland_surface *surface;
      enum wayland_surface_role role;
      BOOL visible, layer_set, server_decor = FALSE;
-@@ -205,10 +122,26 @@  static BOOL wayland_win_data_create_wayland_surface(struct wayland_win_data *dat
+@@ -201,10 +239,26 @@ static BOOL wayland_win_data_create_wayland_surface(struct wayland_win_data *dat
      if (!(surface = data->wayland_surface) || !surface->window.visible)
          visible = visible && layer_set;
  
@@ -4634,9 +4644,9 @@ index ff302701b65057b849aced295cc549b1a2633aa8..99f59680dfdec0473c4b37a6df0b2049
  
      /* we can temporarily clear the role of a surface but cannot assign a different one after it's set */
      if (surface && role && surface->role && surface->role != role)
-@@ -256,6 +148,9 @@  static BOOL wayland_win_data_create_wayland_surface(struct wayland_win_data *dat
+@@ -252,6 +306,9 @@ static BOOL wayland_win_data_create_wayland_surface(struct wayland_win_data *dat
      case WAYLAND_SURFACE_ROLE_LAYER:
-         wayland_surface_make_layer(surface, &data->rects.window);
+         wayland_surface_make_layer(surface, &data->rects.window, layer_menu);
          break;
 +    case WAYLAND_SURFACE_ROLE_SUBSURFACE:
 +        wayland_surface_make_subsurface(surface, toplevel_surface);
@@ -4644,7 +4654,7 @@ index ff302701b65057b849aced295cc549b1a2633aa8..99f59680dfdec0473c4b37a6df0b2049
      case WAYLAND_SURFACE_ROLE_TOPLEVEL:
          wayland_surface_make_toplevel(surface, server_decor);
          break;
-@@ -365,6 +157,7 @@  static void wayland_win_data_update_wayland_state(struct wayland_win_data *data)
+@@ -366,6 +423,7 @@ static void wayland_win_data_update_wayland_state(struct wayland_win_data *data)
      {
      case WAYLAND_SURFACE_ROLE_NONE:
      /* popups do not have any state to update */
@@ -4652,7 +4662,7 @@ index ff302701b65057b849aced295cc549b1a2633aa8..99f59680dfdec0473c4b37a6df0b2049
      case WAYLAND_SURFACE_ROLE_POPUP:
      case WAYLAND_SURFACE_ROLE_LAYER:
          break;
-@@ -523,6 +164,51 @@  static inline HWND get_active_window(void)
+@@ -527,6 +585,51 @@ static inline HWND get_active_window(void)
   *
   * Check if a given window should be managed
   */
@@ -4704,7 +4714,7 @@ index ff302701b65057b849aced295cc549b1a2633aa8..99f59680dfdec0473c4b37a6df0b2049
  static BOOL is_window_managed(HWND hwnd, UINT swp_flags, BOOL fullscreen)
  {
      DWORD style, ex_style;
-@@ -530,6 +215,7 @@  static BOOL is_window_managed(HWND hwnd, UINT swp_flags, BOOL fullscreen)
+@@ -534,6 +637,7 @@ static BOOL is_window_managed(HWND hwnd, UINT swp_flags, BOOL fullscreen)
      /* child windows are not managed */
      style = NtUserGetWindowLongW(hwnd, GWL_STYLE);
      if ((style & (WS_CHILD|WS_POPUP)) == WS_CHILD) return FALSE;
@@ -4712,7 +4722,7 @@ index ff302701b65057b849aced295cc549b1a2633aa8..99f59680dfdec0473c4b37a6df0b2049
      /* activated windows are managed */
      if (!(swp_flags & (SWP_NOACTIVATE|SWP_HIDEWINDOW))) return TRUE;
      if (hwnd == get_active_window()) return TRUE;
-@@ -558,11 +222,17 @@  static BOOL is_window_managed(HWND hwnd, UINT swp_flags, BOOL fullscreen)
+@@ -601,11 +705,17 @@ static BOOL is_notification_window(HWND hwnd, UINT swp_flags,
   */
  void WAYLAND_DestroyWindow(HWND hwnd)
  {
@@ -4731,7 +4741,7 @@ index ff302701b65057b849aced295cc549b1a2633aa8..99f59680dfdec0473c4b37a6df0b2049
      wayland_win_data_destroy(data);
  }
  
-@@ -588,9 +239,13 @@  BOOL WAYLAND_WindowPosChanging(HWND hwnd, UINT swp_flags, BOOL shaped, const str
+@@ -631,9 +741,13 @@ BOOL WAYLAND_WindowPosChanging(HWND hwnd, UINT swp_flags, BOOL shaped, const str
  void WAYLAND_WindowPosChanged(HWND hwnd, HWND insert_after, HWND owner_hint, UINT swp_flags,
                                const struct window_rects *new_rects, struct window_surface *surface)
  {
@@ -4747,15 +4757,15 @@ index ff302701b65057b849aced295cc549b1a2633aa8..99f59680dfdec0473c4b37a6df0b2049
 +    struct wayland_win_data *data, *toplevel_data, *owner_data, *overlay_data;
      BOOL managed, fullscreen = swp_flags & WINE_SWP_FULLSCREEN;
      BOOL tray_menu = swp_flags & WINE_SWP_TRAY_MENU;
-     BOOL use_layer_shell = FALSE;
-@@ -648,37 +252,101 @@  void WAYLAND_WindowPosChanged(HWND hwnd, HWND insert_after, HWND owner_hint, UIN
+     BOOL notification = FALSE;
+@@ -642,37 +756,101 @@ void WAYLAND_WindowPosChanged(HWND hwnd, HWND insert_after, HWND owner_hint, UIN
      /* Get the managed state with win_data unlocked, as is_window_managed
       * may need to query win_data information about other HWNDs and thus
       * acquire the lock itself internally. */
 -    if (!(managed = is_window_managed(hwnd, swp_flags, fullscreen)) && surface) owner = owner_hint;
-+    managed = is_window_managed(hwnd, swp_flags, fullscreen);
 -    TRACE("hwnd %p owner %p new_rects %s after %p flags %08x\n", hwnd,
 -          owner, debugstr_window_rects(new_rects), insert_after, swp_flags);
++    managed = is_window_managed(hwnd, swp_flags, fullscreen);
  
      if (!tray_menu && surface && process_wayland.zwlr_layer_shell_v1)
          notification = is_notification_window(hwnd, swp_flags, new_rects);
@@ -4772,10 +4782,10 @@ index ff302701b65057b849aced295cc549b1a2633aa8..99f59680dfdec0473c4b37a6df0b2049
 +        owner = owner_hint;
 +    }
  
-+    TRACE("hwnd %p owner %p new_rects %s after %p flags %08x\n", hwnd,
-+          owner, debugstr_window_rects(new_rects), insert_after, swp_flags);
 -    if (!(data = wayland_win_data_get(hwnd))) return;
 -    owner_data = owner && owner != hwnd ? wayland_win_data_get(owner) : NULL;
++    TRACE("hwnd %p owner %p new_rects %s after %p flags %08x\n", hwnd,
++          owner, debugstr_window_rects(new_rects), insert_after, swp_flags);
 +    /* A child moved, restacked or changed visibility. Snapshot the toplevel's
 +     * overlay stack outside win_data_mutex so overlays track the window tree
 +     * without waiting for the next GDI flush. */
@@ -4862,7 +4872,7 @@ index ff302701b65057b849aced295cc549b1a2633aa8..99f59680dfdec0473c4b37a6df0b2049
      {
          wayland_win_data_update_wayland_state(data);
      }
-@@ -637,7 +353,7 @@  void WAYLAND_WindowPosChanged(HWND hwnd, HWND insert_after, HWND owner_hint, UIN
+@@ -684,7 +862,7 @@ void WAYLAND_WindowPosChanged(HWND hwnd, HWND insert_after, HWND owner_hint, UIN
  static void wayland_configure_window(HWND hwnd)
  {
      struct wayland_surface *surface;
@@ -4871,10 +4881,10 @@ index ff302701b65057b849aced295cc549b1a2633aa8..99f59680dfdec0473c4b37a6df0b2049
      UINT flags = 0;
      uint32_t state;
      DWORD style;
-@@ -725,7 +360,30 @@  static void wayland_configure_window(HWND hwnd)
-         flags |= SWP_NOSIZE;
+@@ -794,7 +972,30 @@ static void wayland_configure_window(HWND hwnd)
+         send_message(hwnd, WM_SYSCOMMAND, SC_RESTORE, 0);
+         return;
      }
- 
 -    SetRect(&rect, 0, 0, width, height);
 +    wayland_surface_coords_to_window(surface, width, height,
 +                                     &window_width, &window_height);
@@ -4902,8 +4912,8 @@ index ff302701b65057b849aced295cc549b1a2633aa8..99f59680dfdec0473c4b37a6df0b2049
 +    SetRect(&rect, 0, 0, window_width, window_height);
      OffsetRect(&rect, data->rects.window.left, data->rects.window.top);
      if (!IsRectEmpty(&rect)) rect = window_rect_from_visible(&data->rects, rect);
-     wayland_win_data_release(data);
-@@ -798,6 +390,10 @@  LRESULT WAYLAND_WindowMessage(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
+ 
+@@ -883,6 +1084,10 @@ LRESULT WAYLAND_WindowMessage(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
      case WM_WINE_MAP_NOTIFY_ICON_POINT:
          WAYLAND_MapNotifyIconPoint((POINT *)lp);
          return 0;
@@ -4914,7 +4924,7 @@ index ff302701b65057b849aced295cc549b1a2633aa8..99f59680dfdec0473c4b37a6df0b2049
      default:
          FIXME("got window msg %x hwnd %p wp %lx lp %lx\n", msg, hwnd, (long)wp, lp);
          return 0;
-@@ -1128,10 +400,38 @@  BOOL WAYLAND_GetWindowStateUpdates(HWND hwnd, UINT *state_cmd, UINT *swp_flags,
+@@ -1213,10 +1418,38 @@ BOOL WAYLAND_GetWindowStateUpdates(HWND hwnd, UINT *state_cmd, UINT *swp_flags,
      return TRUE;
  }
  
@@ -4954,7 +4964,7 @@ index ff302701b65057b849aced295cc549b1a2633aa8..99f59680dfdec0473c4b37a6df0b2049
      BOOL committed = FALSE;
  
      if (!(data = wayland_win_data_get(hwnd))) return FALSE;
-@@ -1140,8 +438,27 @@  BOOL set_window_surface_contents(HWND hwnd, struct wayland_shm_buffer *shm_buffe
+@@ -1225,8 +1458,27 @@ BOOL set_window_surface_contents(HWND hwnd, struct wayland_shm_buffer *shm_buffe
      {
          if (wayland_surface_reconfigure(wayland_surface))
          {
@@ -4983,7 +4993,7 @@ index ff302701b65057b849aced295cc549b1a2633aa8..99f59680dfdec0473c4b37a6df0b2049
              wayland_surface->ensured_contents = WAYLAND_SURFACE_ENSURED_FLUSH;
              committed = TRUE;
          }
-@@ -1151,6 +465,14 @@  BOOL set_window_surface_contents(HWND hwnd, struct wayland_shm_buffer *shm_buffe
+@@ -1236,6 +1488,14 @@ BOOL set_window_surface_contents(HWND hwnd, struct wayland_shm_buffer *shm_buffe
          }
      }
  
@@ -4998,7 +5008,7 @@ index ff302701b65057b849aced295cc549b1a2633aa8..99f59680dfdec0473c4b37a6df0b2049
      /* Update the latest window buffer for the wayland surface. Note that we
       * only care whether the buffer contains the latest window contents,
       * it's irrelevant if it was actually committed or not. */
-@@ -1158,6 +479,7 @@  BOOL set_window_surface_contents(HWND hwnd, struct wayland_shm_buffer *shm_buffe
+@@ -1243,6 +1503,7 @@ BOOL set_window_surface_contents(HWND hwnd, struct wayland_shm_buffer *shm_buffe
          wayland_shm_buffer_unref(data->window_contents);
      wayland_shm_buffer_ref((data->window_contents = shm_buffer));
  
@@ -5006,7 +5016,7 @@ index ff302701b65057b849aced295cc549b1a2633aa8..99f59680dfdec0473c4b37a6df0b2049
      wayland_win_data_release(data);
  
      return committed;
-@@ -1184,3 +486,48 @@  void wayland_window_init(void)
+@@ -1269,3 +1530,48 @@ void wayland_window_init(void)
      pthread_mutex_init(&win_data_mutex, &attr);
      pthread_mutexattr_destroy(&attr);
  }
@@ -5053,13 +5063,13 @@ index ff302701b65057b849aced295cc549b1a2633aa8..99f59680dfdec0473c4b37a6df0b2049
 +
 +    wayland_win_data_release(data);
 +
-+    if (expose) NtUserExposeWindowSurface(hwnd, 0, NULL, 0);
++    if (expose) NtUserExposeWindowSurface(hwnd, 0, NULL);
 +}
 diff --git a/dlls/winewayland.drv/window_surface.c b/dlls/winewayland.drv/window_surface.c
-index 98cf8123fea8fa0a6fcc4a035b4b8355265ef8ff..fcdba99d0236170b7dc4d4f3d8855a6b0c196a4c 100644
+index 87474c65964..ce0c95ef893 100644
 --- a/dlls/winewayland.drv/window_surface.c
 +++ b/dlls/winewayland.drv/window_surface.c
-@@ -385,6 +385,7 @@  static BOOL wayland_window_surface_flush(struct window_surface *window_surface,
+@@ -385,6 +385,7 @@ static BOOL wayland_window_surface_flush(struct window_surface *window_surface,
      RECT surface_rect = {.right = color_info->bmiHeader.biWidth, .bottom = abs(color_info->bmiHeader.biHeight)};
      struct wayland_window_surface *wws = wayland_window_surface_cast(window_surface);
      struct wayland_shm_buffer *shm_buffer = NULL, *latest_buffer;
@@ -5067,7 +5077,7 @@ index 98cf8123fea8fa0a6fcc4a035b4b8355265ef8ff..fcdba99d0236170b7dc4d4f3d8855a6b
      BOOL flushed = FALSE;
      HRGN surface_damage_region = NULL;
      HRGN copy_from_window_region;
-@@ -455,10 +392,16 @@  static BOOL wayland_window_surface_flush(struct window_surface *window_surface,
+@@ -455,10 +456,16 @@ static BOOL wayland_window_surface_flush(struct window_surface *window_surface,
  
      NtGdiSetRectRgn(shm_buffer->damage_region, 0, 0, 0, 0);
  
@@ -5086,10 +5096,10 @@ index 98cf8123fea8fa0a6fcc4a035b4b8355265ef8ff..fcdba99d0236170b7dc4d4f3d8855a6b
      return flushed;
  }
 diff --git a/include/Makefile.in b/include/Makefile.in
-index 435158167fc0a66596214ee5de29adc5a2830443..4c282cd3b76606e87380099ebf3cd8dcd111dc58 100644
+index 3f23c63d3ea..6359ad1a3f4 100644
 --- a/include/Makefile.in
 +++ b/include/Makefile.in
-@@ -972,6 +972,7 @@  SOURCES = \
+@@ -1126,6 +1126,7 @@ SOURCES = \
  	wine/gdi_driver.h \
  	wine/glu.h \
  	wine/hid.h \
@@ -5099,7 +5109,7 @@ index 435158167fc0a66596214ee5de29adc5a2830443..4c282cd3b76606e87380099ebf3cd8dc
  	wine/irot.idl \
 diff --git a/include/wine/hwnd_dmabuf.h b/include/wine/hwnd_dmabuf.h
 new file mode 100644
-index 0000000000000000000000000000000000000000..6d7c1f3133805d6ddf32da804dd55a6eb517fd61
+index 00000000000..6d7c1f31338
 --- /dev/null
 +++ b/include/wine/hwnd_dmabuf.h
 @@ -0,0 +1,122 @@
@@ -5227,10 +5237,10 @@ index 0000000000000000000000000000000000000000..6d7c1f3133805d6ddf32da804dd55a6e
 +#endif /* __WINE_HWND_DMABUF_H */
 \ No newline at end of file
 diff --git a/include/wine/server_protocol.h b/include/wine/server_protocol.h
-index 601536d0bccc325b83449aeb60a1333e7d6a992c..87c9fe7773b9a806427607ae74cb03e0a7923b61 100644
+index f2b49d3feb4..f8594fd5fe1 100644
 --- a/include/wine/server_protocol.h
 +++ b/include/wine/server_protocol.h
-@@ -260,6 +260,87 @@  struct rectangle
+@@ -272,6 +272,87 @@ struct rectangle
      int  bottom;
  };
  
@@ -5318,7 +5328,7 @@ index 601536d0bccc325b83449aeb60a1333e7d6a992c..87c9fe7773b9a806427607ae74cb03e0
  
  struct async_data
  {
-@@ -3893,7 +347,6 @@  struct set_window_region_reply
+@@ -3988,7 +4069,6 @@ struct set_window_region_reply
  };
  
  
@@ -5326,7 +5336,7 @@ index 601536d0bccc325b83449aeb60a1333e7d6a992c..87c9fe7773b9a806427607ae74cb03e0
  struct get_update_region_request
  {
      struct request_header __header;
-@@ -6287,6 +353,49 @@  struct fsync_free_shm_idx_reply
+@@ -6385,6 +6465,49 @@ struct fsync_free_shm_idx_reply
  };
  
  
@@ -5376,9 +5386,9 @@ index 601536d0bccc325b83449aeb60a1333e7d6a992c..87c9fe7773b9a806427607ae74cb03e0
  enum request
  {
      REQ_new_process,
-@@ -6601,6 +402,9 @@  enum request
-     REQ_d3dkmt_mutex_acquire,
-     REQ_d3dkmt_mutex_release,
+@@ -6701,6 +6824,9 @@ enum request
+     REQ_d3dkmt_sync_signal,
+     REQ_alpc_create_port,
      REQ_fsync_free_shm_idx,
 +    REQ_hwnd_list_dmabuf_frames,
 +    REQ_hwnd_dmabuf_get_channel,
@@ -5386,9 +5396,9 @@ index 601536d0bccc325b83449aeb60a1333e7d6a992c..87c9fe7773b9a806427607ae74cb03e0
      REQ_NB_REQUESTS
  };
  
-@@ -6920,6 +411,9 @@  union generic_request
-     struct d3dkmt_mutex_acquire_request d3dkmt_mutex_acquire_request;
-     struct d3dkmt_mutex_release_request d3dkmt_mutex_release_request;
+@@ -7022,6 +7148,9 @@ union generic_request
+     struct d3dkmt_sync_signal_request d3dkmt_sync_signal_request;
+     struct alpc_create_port_request alpc_create_port_request;
      struct fsync_free_shm_idx_request fsync_free_shm_idx_request;
 +    struct hwnd_list_dmabuf_frames_request hwnd_list_dmabuf_frames_request;
 +    struct hwnd_dmabuf_get_channel_request hwnd_dmabuf_get_channel_request;
@@ -5396,21 +5406,21 @@ index 601536d0bccc325b83449aeb60a1333e7d6a992c..87c9fe7773b9a806427607ae74cb03e0
  };
  union generic_reply
  {
-@@ -7237,6 +420,9 @@  union generic_reply
-     struct d3dkmt_mutex_acquire_reply d3dkmt_mutex_acquire_reply;
-     struct d3dkmt_mutex_release_reply d3dkmt_mutex_release_reply;
+@@ -7341,6 +7470,9 @@ union generic_reply
+     struct d3dkmt_sync_signal_reply d3dkmt_sync_signal_reply;
+     struct alpc_create_port_reply alpc_create_port_reply;
      struct fsync_free_shm_idx_reply fsync_free_shm_idx_reply;
 +    struct hwnd_list_dmabuf_frames_reply hwnd_list_dmabuf_frames_reply;
 +    struct hwnd_dmabuf_get_channel_reply hwnd_dmabuf_get_channel_reply;
 +    struct hwnd_dmabuf_claim_channel_reply hwnd_dmabuf_claim_channel_reply;
  };
  
- #define SERVER_PROTOCOL_VERSION 931
+ #define SERVER_PROTOCOL_VERSION 981
 diff --git a/include/wine/vulkan_driver.h b/include/wine/vulkan_driver.h
-index 33ec7aef655f9d2b76648d67f0e6c5d91b65a659..fd3f52824bae3aa2c7270269606cc7cbeaa1e80c 100644
+index f3aaa94a60e..b98f726453a 100644
 --- a/include/wine/vulkan_driver.h
 +++ b/include/wine/vulkan_driver.h
-@@ -394,6 +368,7 @@  struct vulkan_driver_funcs
+@@ -394,6 +394,7 @@ struct vulkan_driver_funcs
      VkResult (*p_vulkan_surface_create)(struct client_surface *, const struct vulkan_instance *, VkSurfaceKHR *);
      VkColorSpaceKHR (*p_vulkan_map_colorspace)( VkColorSpaceKHR, struct client_surface * );
      VkBool32 (*p_get_physical_device_presentation_support)(struct vulkan_physical_device *, uint32_t);
@@ -5419,10 +5429,10 @@ index 33ec7aef655f9d2b76648d67f0e6c5d91b65a659..fd3f52824bae3aa2c7270269606cc7cb
      void (*p_map_device_extensions)( struct vulkan_device_extensions *extensions );
  };
 diff --git a/server/file.c b/server/file.c
-index 55f304e0068d7fa31fff7134a80eadbbe92c03a6..f0714989847fd29f45d9ba5d8c2fc9c0f3b07d7b 100644
+index d500d9f1a4a..ab8d282f2bf 100644
 --- a/server/file.c
 +++ b/server/file.c
-@@ -216,7 +216,7 @@  struct file *create_file_for_fd_obj( struct fd *fd, unsigned int access, unsigne
+@@ -199,7 +199,7 @@ struct file *create_file_for_fd_obj( struct fd *fd, unsigned int access, unsigne
      return file;
  }
  
@@ -5432,11 +5442,11 @@ index 55f304e0068d7fa31fff7134a80eadbbe92c03a6..f0714989847fd29f45d9ba5d8c2fc9c0
  {
      struct file *file = alloc_object( &file_ops );
 diff --git a/server/file.h b/server/file.h
-index d5166815565f6d676af6fe9d145084924af69523..c64ac9136c3e5235246a85fd08bbacf3e5cb9d01 100644
+index 666508ad8bd..7408fb7012f 100644
 --- a/server/file.h
 +++ b/server/file.h
-@@ -86,6 +86,7 @@  extern struct fd *open_fd( struct fd *root, const char *name, struct unicode_str
-                            unsigned int sharing, unsigned int options );
+@@ -90,6 +90,7 @@ extern struct fd *open_fd( struct fd *root, const char *name, struct unicode_str
+                            unsigned int disposition, unsigned int options );
  extern struct fd *create_anonymous_fd( const struct fd_ops *fd_user_ops,
                                         int unix_fd, struct object *user, unsigned int options );
 +extern struct object *create_file_obj( struct fd *fd, unsigned int access, mode_t mode, const struct security_descriptor *sd );
@@ -5444,10 +5454,10 @@ index d5166815565f6d676af6fe9d145084924af69523..c64ac9136c3e5235246a85fd08bbacf3
                                   unsigned int options );
  extern struct fd *get_fd_object_for_mapping( struct fd *fd, unsigned int access, unsigned int sharing );
 diff --git a/server/protocol.def b/server/protocol.def
-index bebc55f072831c9376dbb20bfe1c1af57ceb0d26..c58f1c333ddcd419de1d34be8352006e085c0098 100644
+index 6adb4e9d4ae..1623d418647 100644
 --- a/server/protocol.def
 +++ b/server/protocol.def
-@@ -281,6 +281,87 @@  struct rectangle
+@@ -288,6 +288,87 @@ struct rectangle
      int  bottom;
  };
  
@@ -5535,7 +5545,7 @@ index bebc55f072831c9376dbb20bfe1c1af57ceb0d26..c58f1c333ddcd419de1d34be8352006e
  /* structure for parameters of async I/O calls */
  struct async_data
  {
-@@ -2895,7 +368,6 @@  enum coords_relative
+@@ -2973,7 +3054,6 @@ enum coords_relative
      VARARG(region,rectangles);    /* list of rectangles for the region (in window coords) */
  @END
  
@@ -5543,7 +5553,7 @@ index bebc55f072831c9376dbb20bfe1c1af57ceb0d26..c58f1c333ddcd419de1d34be8352006e
  /* Get the window update region */
  @REQ(get_update_region)
      user_handle_t  window;        /* handle to the window */
-@@ -4370,3 +374,31 @@  enum fsync_type
+@@ -4449,3 +4529,31 @@ enum fsync_type
      unsigned int shm_idx;
  @REPLY
  @END
@@ -5576,12 +5586,12 @@ index bebc55f072831c9376dbb20bfe1c1af57ceb0d26..c58f1c333ddcd419de1d34be8352006e
 +    obj_handle_t   channel_handle;      /* consumer end or zero if none */
 +@END
 diff --git a/server/request_handlers.h b/server/request_handlers.h
-index d24f97212527fc5ff4807b4ac6997f7f7d0b221e..9caf56915f6e8e1e34d834c4754224d250753937 100644
+index c527a1463f5..b945b0e57ba 100644
 --- a/server/request_handlers.h
 +++ b/server/request_handlers.h
-@@ -319,6 +319,9 @@  DECL_HANDLER(d3dkmt_object_open_name);
- DECL_HANDLER(d3dkmt_mutex_acquire);
- DECL_HANDLER(d3dkmt_mutex_release);
+@@ -321,6 +321,9 @@ DECL_HANDLER(d3dkmt_sync_wait);
+ DECL_HANDLER(d3dkmt_sync_signal);
+ DECL_HANDLER(alpc_create_port);
  DECL_HANDLER(fsync_free_shm_idx);
 +DECL_HANDLER(hwnd_list_dmabuf_frames);
 +DECL_HANDLER(hwnd_dmabuf_get_channel);
@@ -5589,9 +5599,9 @@ index d24f97212527fc5ff4807b4ac6997f7f7d0b221e..9caf56915f6e8e1e34d834c4754224d2
  
  typedef void (*req_handler)( const void *req, void *reply );
  static const req_handler req_handlers[REQ_NB_REQUESTS] =
-@@ -635,6 +328,9 @@  static const req_handler req_handlers[REQ_NB_REQUESTS] =
-     (req_handler)req_d3dkmt_mutex_acquire,
-     (req_handler)req_d3dkmt_mutex_release,
+@@ -639,6 +642,9 @@ static const req_handler req_handlers[REQ_NB_REQUESTS] =
+     (req_handler)req_d3dkmt_sync_signal,
+     (req_handler)req_alpc_create_port,
      (req_handler)req_fsync_free_shm_idx,
 +    (req_handler)req_hwnd_list_dmabuf_frames,
 +    (req_handler)req_hwnd_dmabuf_get_channel,
@@ -5599,7 +5609,7 @@ index d24f97212527fc5ff4807b4ac6997f7f7d0b221e..9caf56915f6e8e1e34d834c4754224d2
  };
  
  C_ASSERT( sizeof(abstime_t) == 8 );
-@@ -2422,3 +337,18 @@  C_ASSERT( sizeof(struct d3dkmt_mutex_release_request) == 40 );
+@@ -2445,3 +2451,18 @@ C_ASSERT( sizeof(struct alpc_create_port_reply) == 16 );
  C_ASSERT( offsetof(struct fsync_free_shm_idx_request, shm_idx) == 12 );
  C_ASSERT( sizeof(struct fsync_free_shm_idx_request) == 16 );
  C_ASSERT( sizeof(struct fsync_free_shm_idx_reply) == 8 );
@@ -5619,10 +5629,10 @@ index d24f97212527fc5ff4807b4ac6997f7f7d0b221e..9caf56915f6e8e1e34d834c4754224d2
 +C_ASSERT( offsetof(struct hwnd_dmabuf_claim_channel_reply, channel_handle) == 12 );
 +C_ASSERT( sizeof(struct hwnd_dmabuf_claim_channel_reply) == 16 );
 diff --git a/server/request_trace.h b/server/request_trace.h
-index 7c673e5e228eb4345670542274458572b265bcac..8bbe0e39199712443b3499a7c5678990a7d495e1 100644
+index 5ebdba25b08..29054c9d639 100644
 --- a/server/request_trace.h
 +++ b/server/request_trace.h
-@@ -3583,6 +3583,40 @@  static void dump_fsync_free_shm_idx_request( const struct fsync_free_shm_idx_req
+@@ -3619,6 +3619,40 @@ static void dump_fsync_free_shm_idx_request( const struct fsync_free_shm_idx_req
      fprintf( stderr, " shm_idx=%08x", req->shm_idx );
  }
  
@@ -5663,9 +5673,9 @@ index 7c673e5e228eb4345670542274458572b265bcac..8bbe0e39199712443b3499a7c5678990
  typedef void (*dump_func)( const void *req );
  
  static const dump_func req_dumpers[REQ_NB_REQUESTS] =
-@@ -3899,6 +3623,9 @@  static const dump_func req_dumpers[REQ_NB_REQUESTS] =
-     (dump_func)dump_d3dkmt_mutex_acquire_request,
-     (dump_func)dump_d3dkmt_mutex_release_request,
+@@ -3937,6 +3971,9 @@ static const dump_func req_dumpers[REQ_NB_REQUESTS] =
+     (dump_func)dump_d3dkmt_sync_signal_request,
+     (dump_func)dump_alpc_create_port_request,
      (dump_func)dump_fsync_free_shm_idx_request,
 +    (dump_func)dump_hwnd_list_dmabuf_frames_request,
 +    (dump_func)dump_hwnd_dmabuf_get_channel_request,
@@ -5673,9 +5683,9 @@ index 7c673e5e228eb4345670542274458572b265bcac..8bbe0e39199712443b3499a7c5678990
  };
  
  static const dump_func reply_dumpers[REQ_NB_REQUESTS] =
-@@ -4215,6 +3632,9 @@  static const dump_func reply_dumpers[REQ_NB_REQUESTS] =
-     (dump_func)dump_d3dkmt_mutex_acquire_reply,
+@@ -4255,6 +4292,9 @@ static const dump_func reply_dumpers[REQ_NB_REQUESTS] =
      NULL,
+     (dump_func)dump_alpc_create_port_reply,
      NULL,
 +    (dump_func)dump_hwnd_list_dmabuf_frames_reply,
 +    (dump_func)dump_hwnd_dmabuf_get_channel_reply,
@@ -5683,9 +5693,9 @@ index 7c673e5e228eb4345670542274458572b265bcac..8bbe0e39199712443b3499a7c5678990
  };
  
  static const char * const req_names[REQ_NB_REQUESTS] =
-@@ -4531,6 +3641,9 @@  static const char * const req_names[REQ_NB_REQUESTS] =
-     "d3dkmt_mutex_acquire",
-     "d3dkmt_mutex_release",
+@@ -4573,6 +4613,9 @@ static const char * const req_names[REQ_NB_REQUESTS] =
+     "d3dkmt_sync_signal",
+     "alpc_create_port",
      "fsync_free_shm_idx",
 +    "hwnd_list_dmabuf_frames",
 +    "hwnd_dmabuf_get_channel",
@@ -5694,7 +5704,7 @@ index 7c673e5e228eb4345670542274458572b265bcac..8bbe0e39199712443b3499a7c5678990
  
  static const struct
 diff --git a/server/window.c b/server/window.c
-index 28e7828ef9e172327f96722ce0d24dc75d9255d2..53b9039fafc813be9963621ddb8a559fb9edff7a 100644
+index 1415c96de1f..8f105f55923 100644
 --- a/server/window.c
 +++ b/server/window.c
 @@ -23,6 +23,7 @@
@@ -5704,8 +5714,8 @@ index 28e7828ef9e172327f96722ce0d24dc75d9255d2..53b9039fafc813be9963621ddb8a559f
 +#include <sys/socket.h>
  
  #include "ntstatus.h"
- #define WIN32_NO_STATUS
-@@ -32,6 +30,7 @@
+ #include "windef.h"
+@@ -31,6 +32,7 @@
  
  #include "object.h"
  #include "file.h"
@@ -5713,16 +5723,16 @@ index 28e7828ef9e172327f96722ce0d24dc75d9255d2..53b9039fafc813be9963621ddb8a559f
  #include "request.h"
  #include "thread.h"
  #include "process.h"
-@@ -99,6 +37,8 @@  struct window
-     int              nb_extra_bytes;  /* number of extra bytes */
-     char            *extra_bytes;     /* extra bytes storage */
+@@ -93,6 +95,8 @@ struct window
+     int              prop_alloc;      /* number of allocated window properties */
+     struct property *properties;      /* window properties array */
      window_shm_t    *shared;          /* window in session shared memory */
 +    struct object   *dmabuf_channel_producer; /* producer end of the frame socket */
 +    struct object   *dmabuf_channel_consumer; /* consumer end of the frame socket */
  };
  
- static void window_dump( struct object *obj, int verbose );
-@@ -170,6 +45,9 @@  static void window_destroy( struct object *obj )
+ C_ASSERT( sizeof(window_shm_t) == offsetof(window_shm_t, extra[0]) );
+@@ -149,6 +153,9 @@ static void window_destroy( struct object *obj )
  
      assert( !win->handle );
  
@@ -5732,16 +5742,16 @@ index 28e7828ef9e172327f96722ce0d24dc75d9255d2..53b9039fafc813be9963621ddb8a559f
      if (win->parent)
      {
          list_remove( &win->entry );
-@@ -699,6 +54,8 @@  static struct window *create_window( struct window *parent, struct window *owner
-     win->nb_extra_bytes = 0;
-     win->extra_bytes    = NULL;
+@@ -683,6 +690,8 @@ static struct window *create_window( struct window *parent, struct window *owner
+     win->prop_alloc     = 0;
+     win->properties     = NULL;
      win->shared         = NULL;
 +    win->dmabuf_channel_producer = NULL;
 +    win->dmabuf_channel_consumer = NULL;
      win->window_rect = win->visible_rect = win->surface_rect = win->client_rect = empty_rect;
      list_init( &win->children );
      list_init( &win->unlinked );
-@@ -1272,6 +62,65 @@  static inline struct window *get_top_clipping_window( struct window *win )
+@@ -1259,6 +1268,65 @@ static inline struct window *get_top_clipping_window( struct window *win )
      return win;
  }
  
@@ -5807,7 +5817,7 @@ index 28e7828ef9e172327f96722ce0d24dc75d9255d2..53b9039fafc813be9963621ddb8a559f
  
  /* compute the visible region of a window, in window coordinates */
  static struct region *get_visible_region( struct window *win, unsigned int flags )
-@@ -2973,6 +127,109 @@  DECL_HANDLER(set_window_region)
+@@ -3026,6 +3094,109 @@ DECL_HANDLER(set_window_region)
  }
  
  

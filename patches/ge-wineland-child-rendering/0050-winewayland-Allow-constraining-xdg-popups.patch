@@ -13,10 +13,10 @@ popups when the requested position is constrained.
  1 file changed, 7 insertions(+)
 
 diff --git a/dlls/winewayland.drv/wayland_surface.c b/dlls/winewayland.drv/wayland_surface.c
-index a45e9a44ea2..0b90d1025de 100644
+index 12834088647..9aef2c8d396 100644
 --- a/dlls/winewayland.drv/wayland_surface.c
 +++ b/dlls/winewayland.drv/wayland_surface.c
-@@ -1641,6 +1641,13 @@ static struct xdg_positioner *create_xdg_positioner(RECT rect)
+@@ -1809,6 +1809,13 @@ static struct xdg_positioner *create_xdg_positioner(RECT rect)
      xdg_positioner_set_anchor_rect(xdg_positioner, 0, 0, 1, 1);
      xdg_positioner_set_anchor(xdg_positioner, XDG_POSITIONER_ANCHOR_TOP_LEFT);
      xdg_positioner_set_gravity(xdg_positioner, XDG_POSITIONER_GRAVITY_BOTTOM_RIGHT);
@@ -29,4 +29,4 @@ index a45e9a44ea2..0b90d1025de 100644
 +                                             XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_RESIZE_Y);
      xdg_positioner_set_offset(xdg_positioner, rect.left, rect.top);
      xdg_positioner_set_size(xdg_positioner, width, height);
-     xdg_positioner_set_constraint_adjustment(
+ 

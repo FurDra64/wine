@@ -5,15 +5,15 @@ Subject: [PATCH 05/49] winewayland: Avoid fallback contents before client
  presents
 
 ---
- dlls/winewayland.drv/wayland_surface.c | 28 +++++++++-----------------
- dlls/winewayland.drv/window.c          | 20 +++++++++---------
- 2 files changed, 20 insertions(+), 28 deletions(-)
+ dlls/winewayland.drv/wayland_surface.c | 25 ++++++++++---------------
+ dlls/winewayland.drv/window.c          | 17 ++++++++++-------
+ 2 files changed, 20 insertions(+), 22 deletions(-)
 
 diff --git a/dlls/winewayland.drv/wayland_surface.c b/dlls/winewayland.drv/wayland_surface.c
-index 3cb43a0d524..ad39bcfd229 100644
+index 2c5210c28bf..0d968e1c5e8 100644
 --- a/dlls/winewayland.drv/wayland_surface.c
 +++ b/dlls/winewayland.drv/wayland_surface.c
-@@ -2518,17 +2518,10 @@ static BOOL is_client_visible(HWND hwnd)
+@@ -3151,17 +3151,10 @@ static BOOL is_client_visible(HWND hwnd)
  static void wayland_client_surface_update(struct client_surface *client)
  {
      struct wayland_client_surface *surface = impl_from_client_surface(client);
@@ -31,8 +31,8 @@ index 3cb43a0d524..ad39bcfd229 100644
 +    set_client_surface(client->hwnd, surface);
  }
  
- static BOOL wayland_client_surface_is_hwnd_dmabuf_producer(struct wayland_client_surface *surface)
-@@ -3008,13 +2998,15 @@ void set_client_surface(HWND hwnd, struct wayland_client_surface *new_client)
+ static void wayland_client_surface_present(struct client_surface *client, HDC hdc)
+@@ -3244,13 +3237,15 @@ void set_client_surface(HWND hwnd, struct wayland_client_surface *new_client)
          if ((old_client = data->client_surface))
              wayland_client_surface_attach(old_client, NULL, NULL);
  
@@ -56,10 +56,10 @@ index 3cb43a0d524..ad39bcfd229 100644
  
      wayland_win_data_release(data);
 diff --git a/dlls/winewayland.drv/window.c b/dlls/winewayland.drv/window.c
-index f8a2b0a8fd4..370585f591d 100644
+index 39045e518fd..2e92bfb1a8b 100644
 --- a/dlls/winewayland.drv/window.c
 +++ b/dlls/winewayland.drv/window.c
-@@ -1423,6 +1420,11 @@ static BOOL window_client_surface_attached(struct wayland_win_data *data)
+@@ -1512,6 +1512,11 @@ static BOOL window_client_surface_attached(struct wayland_win_data *data)
             data->client_surface->toplevel == data->hwnd;
  }
  
@@ -71,7 +71,7 @@ index f8a2b0a8fd4..370585f591d 100644
  /* Whether the flush path should snapshot child geometry for overlays before
   * taking win_data_mutex in set_window_surface_contents. Overlays exist only
   * while an attached client surface occludes the whole GDI buffer. Dmabuf
-@@ -1462,7 +1464,7 @@ BOOL set_window_surface_contents(HWND hwnd, struct wayland_shm_buffer *shm_buffe
+@@ -1551,7 +1556,7 @@ BOOL set_window_surface_contents(HWND hwnd, struct wayland_shm_buffer *shm_buffe
                  wayland_surface_sync_alpha(wayland_surface);
              }
  
@@ -80,7 +80,7 @@ index f8a2b0a8fd4..370585f591d 100644
                  dummy_buffer = wayland_surface_create_dummy_buffer(wayland_surface,
                                                                     WL_SHM_FORMAT_ARGB8888,
                                                                     &dummy_damage);
-@@ -1658,13 +1658,11 @@ BOOL set_window_surface_contents(HWND hwnd, struct wayland_shm_buffer *shm_buffe
+@@ -1575,13 +1580,11 @@ BOOL set_window_surface_contents(HWND hwnd, struct wayland_shm_buffer *shm_buffe
      }
  
      /* An attached client stays attached on GDI commits. Detaching would flash

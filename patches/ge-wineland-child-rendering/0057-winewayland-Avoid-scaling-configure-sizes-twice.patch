@@ -18,13 +18,13 @@ Source: https://github.com/nanomatters/wine-salkim/commit/f29ef33258625d1562e679
  1 file changed, 2 insertions(+), 2 deletions(-)
 
 diff --git a/dlls/winewayland.drv/window.c b/dlls/winewayland.drv/window.c
-index 17152af6cae..9e8a1e85595 100644
+index ad042b8cb20..5a8668ce4cc 100644
 --- a/dlls/winewayland.drv/window.c
 +++ b/dlls/winewayland.drv/window.c
-@@ -1010,8 +1010,8 @@ static void wayland_configure_window(HWND hwnd)
-         flags |= SWP_NOSIZE;
+@@ -1084,8 +1084,8 @@ static void wayland_configure_window(HWND hwnd)
+         send_message(hwnd, WM_SYSCOMMAND, SC_RESTORE, 0);
+         return;
      }
- 
 -    wayland_surface_coords_to_window(surface, width, height,
 -                                     &window_width, &window_height);
 +    window_width = width;
@@ -32,6 +32,3 @@ index 17152af6cae..9e8a1e85595 100644
      offset_x = ((surface->window.rect.left - surface->window.window_rect.left) +
                  (surface->window.window_rect.right - surface->window.rect.right));
      offset_y = ((surface->window.rect.top - surface->window.window_rect.top) +
--- 
-2.55.0
-

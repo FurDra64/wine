@@ -14,15 +14,15 @@ live client subtree attached, otherwise stale CEF/dmabuf children can survive
 close/restore races and keep the previous window intercepting interaction.
 ---
  dlls/winewayland.drv/wayland_surface.c | 82 +++++++++++++++++++---------------
- dlls/winewayland.drv/waylanddrv.h      |  7 ++-
- dlls/winewayland.drv/window.c          | 74 ++++++++++++++++++++++++++----
- 3 files changed, 118 insertions(+), 45 deletions(-)
+ dlls/winewayland.drv/waylanddrv.h      |  5 +++
+ dlls/winewayland.drv/window.c          | 73 ++++++++++++++++++++++++++----
+ 3 files changed, 116 insertions(+), 44 deletions(-)
 
 diff --git a/dlls/winewayland.drv/wayland_surface.c b/dlls/winewayland.drv/wayland_surface.c
-index 665aa5a530f06813c1722ace478347331b76c6d8..e655c2b9c0bba00c322a98be6b6b602921e10853 100644
+index 42cba96aa82..2c5210c28bf 100644
 --- a/dlls/winewayland.drv/wayland_surface.c
 +++ b/dlls/winewayland.drv/wayland_surface.c
-@@ -623,6 +623,47 @@ void wayland_surface_clear_child_overlays(struct wayland_surface *surface)
+@@ -724,6 +724,47 @@ void wayland_surface_clear_child_overlays(struct wayland_surface *surface)
          wayland_child_overlay_destroy(overlay);
  }
  
@@ -70,7 +70,7 @@ index 665aa5a530f06813c1722ace478347331b76c6d8..e655c2b9c0bba00c322a98be6b6b6029
  /* Prune on hide/destroy: a client-rendered toplevel may never flush GDI again. */
  void wayland_surface_remove_child_overlay(struct wayland_surface *surface, HWND child)
  {
-@@ -985,40 +1026,6 @@ err:
+@@ -1086,40 +1127,6 @@ err:
   */
  void wayland_surface_destroy(struct wayland_surface *surface)
  {
@@ -111,7 +111,7 @@ index 665aa5a530f06813c1722ace478347331b76c6d8..e655c2b9c0bba00c322a98be6b6b6029
      wayland_surface_clear_role(surface);
  
      if (surface->wp_alpha_modifier_surface_v1)
-@@ -1555,6 +1562,9 @@ void wayland_surface_clear_role(struct wayland_surface *surface)
+@@ -1674,6 +1681,9 @@ void wayland_surface_clear_role(struct wayland_surface *surface)
  {
      TRACE("surface=%p\n", surface);
  
@@ -121,7 +121,7 @@ index 665aa5a530f06813c1722ace478347331b76c6d8..e655c2b9c0bba00c322a98be6b6b6029
      /* some objects are shared between several roles */
  
      if (surface->wp_fractional_scale_v1)
-@@ -3164,7 +3174,9 @@ void wayland_client_surface_attach(struct wayland_client_surface *client, HWND t
+@@ -3361,7 +3371,9 @@ void wayland_client_surface_attach(struct wayland_client_surface *client, HWND t
          return;
      }
  
@@ -131,12 +131,12 @@ index 665aa5a530f06813c1722ace478347331b76c6d8..e655c2b9c0bba00c322a98be6b6b6029
 +        surface->role == WAYLAND_SURFACE_ROLE_NONE)
      {
          if (toplevel_data) wayland_win_data_release(toplevel_data);
-         return wayland_client_surface_attach(client, NULL);
+         return wayland_client_surface_attach(client, NULL, NULL);
 diff --git a/dlls/winewayland.drv/waylanddrv.h b/dlls/winewayland.drv/waylanddrv.h
-index 967895ac73f4df688a47b7a2e9e128d367796ae1..c06899375981043953bdc59ad8721a29f6787842 100644
+index 26a39271178..dfb8900c08f 100644
 --- a/dlls/winewayland.drv/waylanddrv.h
 +++ b/dlls/winewayland.drv/waylanddrv.h
-@@ -639,6 +639,11 @@ struct wayland_win_data
+@@ -645,6 +645,11 @@ struct wayland_win_data
      BOOL ime_enabled;
      int num_ime_children;
      UINT32 alpha_multiplier;
@@ -148,25 +148,11 @@ index 967895ac73f4df688a47b7a2e9e128d367796ae1..c06899375981043953bdc59ad8721a29
  };
  
  struct wayland_win_data *wayland_win_data_get_nolock(HWND hwnd);
-@@ -727,11 +727,11 @@ LRESULT WAYLAND_WindowMessage(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp);
- void WAYLAND_WindowPosChanged(HWND hwnd, HWND insert_after, HWND owner_hint, UINT swp_flags,
-                               const struct window_rects *new_rects, struct window_surface *surface);
- BOOL WAYLAND_WindowPosChanging(HWND hwnd, UINT swp_flags, BOOL shaped, const struct window_rects *rects);
-+BOOL WAYLAND_GetWindowStateUpdates(HWND hwnd, UINT *state_cmd, UINT *swp_flags, RECT *rect, HWND *foreground);
- struct client_surface *WAYLAND_CreateClientSurface(HWND hwnd, int pixel_format, BOOL raw);
- BOOL WAYLAND_CreateWindowSurface(HWND hwnd, BOOL layered, const RECT *surface_rect, struct window_surface **surface);
- BOOL WAYLAND_GetWindowStyleMasks(HWND hwnd,  UINT style, UINT ex_style, UINT *style_mask, UINT *ex_style_mask);
--BOOL WAYLAND_GetWindowStateUpdates(HWND hwnd, UINT *state_cmd, UINT *swp_flags, RECT *rect, HWND *foreground);
- BOOL WAYLAND_HasWindowManager(const char *name);
- UINT WAYLAND_VulkanInit(UINT version, void *vulkan_handle, const struct vulkan_driver_funcs **driver_funcs);
- UINT WAYLAND_OpenGLInit(UINT version, const struct opengl_funcs *opengl_funcs, const struct opengl_driver_funcs **driver_funcs);
- UINT WAYLAND_VulkanInit(UINT version, void *vulkan_handle, const struct vulkan_driver_funcs **driver_funcs);
- UINT WAYLAND_OpenGLInit(UINT version, const struct opengl_funcs *opengl_funcs, const struct opengl_driver_funcs **driver_funcs);
 diff --git a/dlls/winewayland.drv/window.c b/dlls/winewayland.drv/window.c
-index 26dd2b9dd862c9b73cdcd8f47fc1712351110b03..b87ed14c399fef3fe097d69471ab1afc76c983bb 100644
+index ce509c25c4d..39045e518fd 100644
 --- a/dlls/winewayland.drv/window.c
 +++ b/dlls/winewayland.drv/window.c
-@@ -151,6 +151,15 @@ void wayland_win_data_release(struct wayland_win_data *data)
+@@ -150,6 +150,15 @@ void wayland_win_data_release(struct wayland_win_data *data)
      pthread_mutex_unlock(&win_data_mutex);
  }
  
@@ -182,7 +168,7 @@ index 26dd2b9dd862c9b73cdcd8f47fc1712351110b03..b87ed14c399fef3fe097d69471ab1afc
  static BOOL wayland_win_data_is_fullscreen(struct wayland_win_data *data, DWORD style)
  {
      RECT rect;
-@@ -317,6 +326,11 @@ static BOOL wayland_win_data_create_wayland_surface(struct wayland_win_data *dat
+@@ -314,6 +323,11 @@ static BOOL wayland_win_data_create_wayland_surface(struct wayland_win_data *dat
          break;
      }
  
@@ -194,7 +180,7 @@ index 26dd2b9dd862c9b73cdcd8f47fc1712351110b03..b87ed14c399fef3fe097d69471ab1afc
      /* Size/position changes affect the effective pointer constraint, so update
       * it as needed. */
      if (data->hwnd == NtUserGetForegroundWindow()) reapply_cursor_clipping();
-@@ -817,6 +831,7 @@ static void wayland_configure_window(HWND hwnd)
+@@ -864,6 +878,7 @@ static void wayland_configure_window(HWND hwnd)
      struct wayland_surface *surface;
      INT width, height, window_width, window_height, offset_x, offset_y;
      UINT flags = 0;
@@ -202,7 +188,7 @@ index 26dd2b9dd862c9b73cdcd8f47fc1712351110b03..b87ed14c399fef3fe097d69471ab1afc
      uint32_t state;
      DWORD style;
      BOOL needs_enter_size_move = FALSE;
-@@ -929,6 +944,18 @@ static void wayland_configure_window(HWND hwnd)
+@@ -998,6 +1013,17 @@ static void wayland_configure_window(HWND hwnd)
      SetRect(&rect, 0, 0, window_width, window_height);
      OffsetRect(&rect, data->rects.window.left, data->rects.window.top);
      if (!IsRectEmpty(&rect)) rect = window_rect_from_visible(&data->rects, rect);
@@ -217,11 +203,10 @@ index 26dd2b9dd862c9b73cdcd8f47fc1712351110b03..b87ed14c399fef3fe097d69471ab1afc
 +            state_cmd = SC_RESTORE;
 +    }
 +    if (state_cmd) wayland_win_data_queue_state_update(data, state_cmd, &rect);
-+
+ 
      wayland_win_data_release(data);
  
-     TRACE("hwnd=%p processing=%s,%#x\n", hwnd, wine_dbgstr_rect(&rect), state);
-@@ -936,6 +963,14 @@ static void wayland_configure_window(HWND hwnd)
+@@ -1006,6 +1032,14 @@ static void wayland_configure_window(HWND hwnd)
      if (needs_enter_size_move) send_message(hwnd, WM_ENTERSIZEMOVE, 0, 0);
      if (needs_exit_size_move) send_message(hwnd, WM_EXITSIZEMOVE, 0, 0);
  
@@ -236,7 +221,7 @@ index 26dd2b9dd862c9b73cdcd8f47fc1712351110b03..b87ed14c399fef3fe097d69471ab1afc
      flags |= SWP_NOACTIVATE | SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_NOMOVE;
      if (IsRectEmpty(&rect)) flags |= SWP_NOSIZE;
  
-@@ -1311,16 +1346,36 @@ BOOL WAYLAND_GetWindowStyleMasks(HWND hwnd, UINT style, UINT ex_style,
+@@ -1396,16 +1430,36 @@ BOOL WAYLAND_GetWindowStyleMasks(HWND hwnd, UINT style, UINT ex_style,
  BOOL WAYLAND_GetWindowStateUpdates(HWND hwnd, UINT *state_cmd, UINT *swp_flags,
                                     RECT *rect, HWND *foreground)
  {
@@ -277,7 +262,7 @@ index 26dd2b9dd862c9b73cdcd8f47fc1712351110b03..b87ed14c399fef3fe097d69471ab1afc
  
      pthread_mutex_lock(&keyboard->mutex);
      focused_hwnd = keyboard->focused_hwnd;
-@@ -1331,13 +1386,13 @@ BOOL WAYLAND_GetWindowStateUpdates(HWND hwnd, UINT *state_cmd, UINT *swp_flags,
+@@ -1416,13 +1470,13 @@ BOOL WAYLAND_GetWindowStateUpdates(HWND hwnd, UINT *state_cmd, UINT *swp_flags,
          focused_hwnd = NtUserGetDesktopWindow();
      else if (focused_hwnd != hwnd) focused_hwnd = NULL;
  
@@ -295,7 +280,7 @@ index 26dd2b9dd862c9b73cdcd8f47fc1712351110b03..b87ed14c399fef3fe097d69471ab1afc
      {
          struct surface_output_entry *output_entry;
  
-@@ -1359,7 +1414,8 @@ BOOL WAYLAND_GetWindowStateUpdates(HWND hwnd, UINT *state_cmd, UINT *swp_flags,
+@@ -1444,7 +1498,8 @@ BOOL WAYLAND_GetWindowStateUpdates(HWND hwnd, UINT *state_cmd, UINT *swp_flags,
          wayland_win_data_release(data);
      }
  

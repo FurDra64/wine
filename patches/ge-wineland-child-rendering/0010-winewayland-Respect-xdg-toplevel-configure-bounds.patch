@@ -19,7 +19,7 @@ Win32 sizing uses the same limit as the compositor.
  7 files changed, 240 insertions(+), 13 deletions(-)
 
 diff --git a/dlls/win32u/driver.c b/dlls/win32u/driver.c
-index 48f3159b44bbf8ac52ecbd95645701c35e9cba31..6f7b383ed4d66184e310d952455352402c992d13 100644
+index 48f3159b44b..6f7b383ed4d 100644
 --- a/dlls/win32u/driver.c
 +++ b/dlls/win32u/driver.c
 @@ -918,6 +918,11 @@ static struct client_surface *nulldrv_CreateClientSurface( HWND hwnd, int pixel_
@@ -51,10 +51,10 @@ index 48f3159b44bbf8ac52ecbd95645701c35e9cba31..6f7b383ed4d66184e310d95245535240
      SET_USER_FUNC(CreateWindowSurface);
      SET_USER_FUNC(MoveWindowBits);
 diff --git a/dlls/win32u/window.c b/dlls/win32u/window.c
-index 4bd1e5521daf926d7b6ab25e0c2b37cd0fdf7322..985f419b76694c2cc4fbf9b08a2897ef991534eb 100644
+index cadfafb7f5a..a0c76993c94 100644
 --- a/dlls/win32u/window.c
 +++ b/dlls/win32u/window.c
-@@ -4743,6 +4743,17 @@ static void send_parent_notify( HWND hwnd, UINT msg )
+@@ -4796,6 +4796,17 @@ static void send_parent_notify( HWND hwnd, UINT msg )
      }
  }
  
@@ -72,7 +72,7 @@ index 4bd1e5521daf926d7b6ab25e0c2b37cd0fdf7322..985f419b76694c2cc4fbf9b08a2897ef
  /*******************************************************************
   *           get_min_max_info
   *
-@@ -4822,6 +4833,8 @@ MINMAXINFO get_min_max_info( HWND hwnd )
+@@ -4875,6 +4886,8 @@ MINMAXINFO get_min_max_info( HWND hwnd )
          }
      }
  
@@ -82,7 +82,7 @@ index 4bd1e5521daf926d7b6ab25e0c2b37cd0fdf7322..985f419b76694c2cc4fbf9b08a2897ef
             minmax.ptMaxSize.x, minmax.ptMaxSize.y,
             minmax.ptMaxPosition.x, minmax.ptMaxPosition.y,
 diff --git a/dlls/winewayland.drv/wayland_surface.c b/dlls/winewayland.drv/wayland_surface.c
-index 187302ce88f259da611f14f1d1ed4ceaeade1368..19b8c3a23e57aeade2f708a6f5742f55c3e2d00c 100644
+index 9b58a7a5e5e..cb85372b4f6 100644
 --- a/dlls/winewayland.drv/wayland_surface.c
 +++ b/dlls/winewayland.drv/wayland_surface.c
 @@ -421,6 +421,35 @@ static const struct wl_surface_listener wayland_surface_listener = {
@@ -222,7 +222,7 @@ index 187302ce88f259da611f14f1d1ed4ceaeade1368..19b8c3a23e57aeade2f708a6f5742f55
  };
  
  static void xdg_popup_handle_configure(void *private, struct xdg_popup *xdg_popup,
-@@ -1807,6 +1918,7 @@ void wayland_surface_clear_role(struct wayland_surface *surface)
+@@ -1801,6 +1912,7 @@ void wayland_surface_clear_role(struct wayland_surface *surface)
  
      memset(&surface->comitted, 0, sizeof(surface->comitted));
      surface->comitted.scale = 0.0;
@@ -230,7 +230,7 @@ index 187302ce88f259da611f14f1d1ed4ceaeade1368..19b8c3a23e57aeade2f708a6f5742f55
  
      /* Ensure no buffer is attached, otherwise future role assignments may fail. */
      wl_surface_attach(surface->wl_surface, NULL, 0, 0);
-@@ -1987,6 +2099,72 @@ void wayland_surface_update_toplevel_parent(struct wayland_surface *surface)
+@@ -1988,6 +2100,72 @@ void wayland_surface_update_toplevel_parent(struct wayland_surface *surface)
      xdg_toplevel_set_parent(surface->xdg_toplevel, owner_surface ? owner_surface->xdg_toplevel : NULL);
  }
  
@@ -303,7 +303,7 @@ index 187302ce88f259da611f14f1d1ed4ceaeade1368..19b8c3a23e57aeade2f708a6f5742f55
  /**********************************************************************
   *          wayland_surface_reconfigure_geometry
   *
-@@ -2028,22 +2206,13 @@ static void wayland_surface_reconfigure_geometry(struct wayland_surface *surface
+@@ -2029,22 +2207,13 @@ static void wayland_surface_reconfigure_geometry(struct wayland_surface *surface
      if (!IsRectEmpty(&rect))
      {
          int width = rect.right - rect.left, height = rect.bottom - rect.top;
@@ -329,7 +329,7 @@ index 187302ce88f259da611f14f1d1ed4ceaeade1368..19b8c3a23e57aeade2f708a6f5742f55
      }
  }
 diff --git a/dlls/winewayland.drv/waylanddrv.h b/dlls/winewayland.drv/waylanddrv.h
-index 081a31fe1685f89c72f677f7d33bc2d0ba57906f..3fdeec6f8f4df0d2e2abab59eba3db39419de8b8 100644
+index fbd1d45859b..68040ad3ba7 100644
 --- a/dlls/winewayland.drv/waylanddrv.h
 +++ b/dlls/winewayland.drv/waylanddrv.h
 @@ -107,6 +107,15 @@ enum wayland_surface_role
@@ -348,7 +348,7 @@ index 081a31fe1685f89c72f677f7d33bc2d0ba57906f..3fdeec6f8f4df0d2e2abab59eba3db39
  enum wayland_surface_ensure_type
  {
      WAYLAND_SURFACE_NOT_ENSURED = 0,
-@@ -359,10 +368,20 @@ struct wayland_output
+@@ -357,10 +366,20 @@ struct wayland_output
  struct wayland_surface_config
  {
      RECT rect;
@@ -375,9 +375,9 @@ index 081a31fe1685f89c72f677f7d33bc2d0ba57906f..3fdeec6f8f4df0d2e2abab59eba3db39
      struct wayland_surface_config pending, requested, processing, current;
 +    struct wayland_toplevel_size_limits toplevel_size_limits;
      BOOL resizing;
-     /* TODO: We can remove this once FSHack is implemented in opengl and vulkan upstream for all drivers.
-      * The opengl implementation is already merged. Then we would only need to ensure contents via expose. */
-@@ -585,6 +605,7 @@ void wayland_surface_ensure_contents(struct wayland_surface *surface,
+     struct wayland_window_config window, comitted;
+     enum wayland_surface_ensure_type ensured_contents;
+@@ -581,6 +601,7 @@ void wayland_surface_ensure_contents(struct wayland_surface *surface,
                                                       struct wp_image_description_v1 *image_desc);
  RECT map_rect_from_surface(struct wayland_surface *surface, RECT rect);
  POINT map_point_from_surface(struct wayland_surface *surface, POINT point);
@@ -385,16 +385,16 @@ index 081a31fe1685f89c72f677f7d33bc2d0ba57906f..3fdeec6f8f4df0d2e2abab59eba3db39
  BOOL wayland_surface_has_hwnd_dmabuf_content(struct wayland_surface *surface);
  void wayland_surface_prepare_direct_dmabuf_shm_commit(struct wayland_surface *surface);
  void wayland_surface_finish_direct_dmabuf_shm_commit(struct wayland_surface *surface);
-@@ -783,6 +804,7 @@ void WAYLAND_WindowPosChanged(HWND hwnd, HWND insert_after, HWND owner_hint, UIN
-                               const struct window_rects *new_rects, struct window_surface *surface);
- BOOL WAYLAND_WindowPosChanging(HWND hwnd, UINT swp_flags, BOOL shaped, const struct window_rects *rects);
- BOOL WAYLAND_GetWindowStateUpdates(HWND hwnd, UINT *state_cmd, UINT *swp_flags, RECT *rect, HWND *foreground);
-+BOOL WAYLAND_GetWindowMaxTrackSize(HWND hwnd, SIZE *size);
- struct client_surface *WAYLAND_CreateClientSurface(HWND hwnd, int pixel_format, BOOL raw);
+@@ -783,6 +804,7 @@ struct client_surface *WAYLAND_CreateClientSurface(HWND hwnd, int pixel_format,
  BOOL WAYLAND_CreateWindowSurface(HWND hwnd, BOOL layered, const RECT *surface_rect, struct window_surface **surface);
  BOOL WAYLAND_GetWindowStyleMasks(HWND hwnd,  UINT style, UINT ex_style, UINT *style_mask, UINT *ex_style_mask);
+ BOOL WAYLAND_GetWindowStateUpdates(HWND hwnd, UINT *state_cmd, UINT *swp_flags, RECT *rect, HWND *foreground);
++BOOL WAYLAND_GetWindowMaxTrackSize(HWND hwnd, SIZE *size);
+ BOOL WAYLAND_HasWindowManager(const char *name);
+ UINT WAYLAND_VulkanInit(UINT version, void *vulkan_handle, const struct vulkan_driver_funcs **driver_funcs);
+ UINT WAYLAND_OpenGLInit(UINT version, const struct opengl_funcs *opengl_funcs, const struct opengl_driver_funcs **driver_funcs);
 diff --git a/dlls/winewayland.drv/waylanddrv_main.c b/dlls/winewayland.drv/waylanddrv_main.c
-index e9991ae14afe02c6f65c13e731e4ccfd694edea8..ee66b590bd4af9f67a2e298bd0cd20dad8dc3629 100644
+index e9991ae14af..ee66b590bd4 100644
 --- a/dlls/winewayland.drv/waylanddrv_main.c
 +++ b/dlls/winewayland.drv/waylanddrv_main.c
 @@ -66,6 +66,7 @@ static const struct user_driver_funcs waylanddrv_funcs =
@@ -406,11 +406,11 @@ index e9991ae14afe02c6f65c13e731e4ccfd694edea8..ee66b590bd4af9f67a2e298bd0cd20da
      .pVulkanInit = WAYLAND_VulkanInit,
      .pOpenGLInit = WAYLAND_OpenGLInit,
 diff --git a/dlls/winewayland.drv/window.c b/dlls/winewayland.drv/window.c
-index 091631aecbb8ac41532cfad0cc1f327ccc0d16b6..9672ad604b006b197841af479ea35665cafad6fe 100644
+index 6e5290c1feb..3e1510c6751 100644
 --- a/dlls/winewayland.drv/window.c
 +++ b/dlls/winewayland.drv/window.c
-@@ -1627,6 +1627,20 @@ void set_client_surface(HWND hwnd, struct wayland_client_surface *new_client)
-     wayland_win_data_release(data);
+@@ -1684,6 +1684,20 @@ BOOL WAYLAND_GetWindowStateUpdates(HWND hwnd, UINT *state_cmd, UINT *swp_flags,
+     return TRUE;
  }
  
 +BOOL WAYLAND_GetWindowMaxTrackSize(HWND hwnd, SIZE *size)
@@ -431,7 +431,7 @@ index 091631aecbb8ac41532cfad0cc1f327ccc0d16b6..9672ad604b006b197841af479ea35665
   * or reparented client does not count. */
  static BOOL window_client_surface_attached(struct wayland_win_data *data)
 diff --git a/include/wine/gdi_driver.h b/include/wine/gdi_driver.h
-index 2e558bbe4aaa415b704b8958d201a6f2e42c0568..c4d9428a855bd259579f0c10319e350bdfabd585 100644
+index 2e558bbe4aa..c4d9428a855 100644
 --- a/include/wine/gdi_driver.h
 +++ b/include/wine/gdi_driver.h
 @@ -224,7 +224,7 @@ struct gdi_dc_funcs
