@@ -105,7 +105,7 @@ index 2251d6b7f51..ebe192093bf 100644
 +     * without pumping messages. */
 +    if (allow_inline)
      {
-         NtUserExposeWindowSurface(hwnd, 0, NULL, 0);
+         NtUserExposeWindowSurface(hwnd, 0, NULL);
          return;
 @@ -959,52 +958,16 @@ static const struct zxdg_toplevel_decoration_v1_listener zxdg_toplevel_decoratio
      zxdg_toplevel_decoration_v1_configure

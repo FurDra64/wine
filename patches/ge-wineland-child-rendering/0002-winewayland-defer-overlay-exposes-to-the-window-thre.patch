@@ -32,7 +32,7 @@ index 69cc5ee9553..178458a1367 100644
 +     * event thread taking the surface lock before win_data_mutex. */
 +    if (allow_inline && !window_surface_needs_child_overlays(hwnd))
 +    {
-+        NtUserExposeWindowSurface(hwnd, 0, NULL, 0);
++        NtUserExposeWindowSurface(hwnd, 0, NULL);
 +        return;
 +    }
 +
@@ -124,7 +124,7 @@ index 4f9a5845576..cf9d7d47917 100644
 +    case WM_WAYLAND_EXPOSE:
 +        /* Event-thread callbacks use this for exposes that must follow the
 +         * window-thread lock order. */
-+        NtUserExposeWindowSurface(hwnd, 0, NULL, 0);
++        NtUserExposeWindowSurface(hwnd, 0, NULL);
          return 0;
      default:
          FIXME("got window msg %x hwnd %p wp %lx lp %lx\n", msg, hwnd, (long)wp, lp);
