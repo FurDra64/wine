@@ -17,7 +17,7 @@ Original commit: 64f5e7717f44103bff67e02de78bec9ecbabb3c8
  3 files changed, 37 insertions(+)
 
 diff --git a/dlls/win32u/hwnd_dmabuf.c b/dlls/win32u/hwnd_dmabuf.c
-index 9d13f9bfdef807d60b43c7a78c517ee29aee6a62..60c33c2b42b222e19395ba358e85237c0197581a 100644
+index 9d13f9bfdef..60c33c2b42b 100644
 --- a/dlls/win32u/hwnd_dmabuf.c
 +++ b/dlls/win32u/hwnd_dmabuf.c
 @@ -24,6 +24,11 @@ void hwnd_dmabuf_post_wake( HWND hwnd )
@@ -44,11 +44,11 @@ index 9d13f9bfdef807d60b43c7a78c517ee29aee6a62..60c33c2b42b222e19395ba358e85237c
      return fd;
  }
 diff --git a/dlls/win32u/ntuser_private.h b/dlls/win32u/ntuser_private.h
-index 8f61a6b54abb5024153b214cdc2b331cee7b9958..b513c260f4b7eb17423114d3f27417f0a4b81303 100644
+index 20aec440835..aa50f8f66d1 100644
 --- a/dlls/win32u/ntuser_private.h
 +++ b/dlls/win32u/ntuser_private.h
-@@ -247,6 +247,7 @@ extern void release_opengl_drawables( struct list *drawables );
- extern struct vulkan_instance *vulkan_instance_create( const struct vulkan_instance_extensions *extensions );
+@@ -247,6 +247,7 @@ extern struct vulkan_instance *get_d3dkmt_vulkan_instance( void );
+ extern BOOL vulkan_init_in_progress( void );
  
  /* hwnd_dmabuf.c */
 +extern unsigned int hwnd_dmabuf_set_pending( HWND hwnd, BOOL pending );
@@ -56,10 +56,10 @@ index 8f61a6b54abb5024153b214cdc2b331cee7b9958..b513c260f4b7eb17423114d3f27417f0
  extern int hwnd_dmabuf_open_channel_exclusive( HWND hwnd );
  extern void hwnd_dmabuf_close_channel( HWND hwnd, int channel_fd );
 diff --git a/dlls/win32u/vulkan.c b/dlls/win32u/vulkan.c
-index d53b2a7ab34d45822b1ae81567983fd0e5733781..078e2300d598ab10f519b232a253be00b4e29dda 100644
+index e2fe2858d9c..4820eedcb03 100644
 --- a/dlls/win32u/vulkan.c
 +++ b/dlls/win32u/vulkan.c
-@@ -274,6 +274,9 @@ struct wine_managed_swapchain
+@@ -401,6 +401,9 @@ struct wine_managed_swapchain
      VkFence present_fence;          /* per-frame render-complete fence (export gate) */
      PFN_vkWaitForFences p_vkWaitForFences;
      PFN_vkResetFences p_vkResetFences;
@@ -69,7 +69,7 @@ index d53b2a7ab34d45822b1ae81567983fd0e5733781..078e2300d598ab10f519b232a253be00
  };
  
  struct swapchain
-@@ -2937,6 +2940,10 @@ static void managed_free( struct vulkan_device *device, struct wine_managed_swap
+@@ -4022,6 +4025,10 @@ static void managed_free( struct vulkan_device *device, struct wine_managed_swap
          managed_destroy_image( device, &managed->images[i] );
      if (managed->present_fence) device->p_vkDestroyFence( device->host.device, managed->present_fence, NULL );
      if (managed->channel_fd >= 0) close( managed->channel_fd );
@@ -80,7 +80,7 @@ index d53b2a7ab34d45822b1ae81567983fd0e5733781..078e2300d598ab10f519b232a253be00
      pthread_mutex_destroy( &managed->lock );
      free( managed );
  }
-@@ -3137,6 +3144,7 @@ static VkResult managed_swapchain_create( struct vulkan_device *device, struct s
+@@ -4222,6 +4229,7 @@ static VkResult managed_swapchain_create( struct vulkan_device *device, struct s
      uint32_t modifier_count, count, i;
      VkImageUsageFlags usage;
      VkResult res;
@@ -88,7 +88,7 @@ index d53b2a7ab34d45822b1ae81567983fd0e5733781..078e2300d598ab10f519b232a253be00
  
      *out = NULL;
  
-@@ -3158,6 +3166,7 @@ static VkResult managed_swapchain_create( struct vulkan_device *device, struct s
+@@ -4243,6 +4251,7 @@ static VkResult managed_swapchain_create( struct vulkan_device *device, struct s
      if (!(managed = calloc( 1, sizeof(*managed) ))) return VK_ERROR_OUT_OF_HOST_MEMORY;
      pthread_mutex_init( &managed->lock, NULL );
      managed->channel_fd = -1;
@@ -96,7 +96,7 @@ index d53b2a7ab34d45822b1ae81567983fd0e5733781..078e2300d598ab10f519b232a253be00
      managed->format = create_info->imageFormat;
      managed->fourcc = fourcc;
      /* If the chosen fourcc is the opaque X-variant, tell the compositor to ignore
-@@ -3172,6 +3181,16 @@ static VkResult managed_swapchain_create( struct vulkan_device *device, struct s
+@@ -4257,6 +4266,16 @@ static VkResult managed_swapchain_create( struct vulkan_device *device, struct s
          managed->producer_unique_id = InterlockedIncrement64( &managed_next_producer_id );
      managed->ring_generation = 1;
  
@@ -113,7 +113,7 @@ index d53b2a7ab34d45822b1ae81567983fd0e5733781..078e2300d598ab10f519b232a253be00
      /* At least 3 images for fire-and-forget publishing (no FIFO pacing). */
      count = max( create_info->minImageCount, 3u );
      if (count > WINE_VK_MANAGED_MAX_IMAGES) count = WINE_VK_MANAGED_MAX_IMAGES;
-@@ -3203,6 +3222,15 @@ static VkResult managed_swapchain_create( struct vulkan_device *device, struct s
+@@ -4288,6 +4307,15 @@ static VkResult managed_swapchain_create( struct vulkan_device *device, struct s
      }
  
      managed->channel_fd = hwnd_dmabuf_open_channel( surface->hwnd );

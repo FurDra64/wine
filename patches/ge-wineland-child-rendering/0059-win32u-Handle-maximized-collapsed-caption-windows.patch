@@ -10,34 +10,67 @@ non-client geometry instead of excluding maximized windows.
 
 Source: https://github.com/nanomatters/wine-salkim/commit/37b786b5186d7bee5639858988d8ed0c346c7cd2
 ---
- dlls/win32u/window.c          | 7 +++++--
- dlls/winewayland.drv/window.c | 8 --------
- 2 files changed, 5 insertions(+), 10 deletions(-)
+ dlls/win32u/window.c | 34 ++++++++++++++++------------------
+ 1 file changed, 16 insertions(+), 18 deletions(-)
 
 diff --git a/dlls/win32u/window.c b/dlls/win32u/window.c
-index a37188d3848..3ab2f15674d 100644
+index 231adde143f..f597c5ced2e 100644
 --- a/dlls/win32u/window.c
 +++ b/dlls/win32u/window.c
-@@ -2248,7 +2248,7 @@ static BOOL has_collapsed_caption( UINT style, UINT ex_style,
+@@ -2238,37 +2238,35 @@ static BOOL has_collapsed_frame( const RECT *window, const RECT *client, BOOL al
+            left <= 1 && top <= 1 && right <= 1 && bottom <= 1;
+ }
+ 
+-/* Custom title bars can collapse the caption while keeping resize borders. */
+-static BOOL has_collapsed_caption( UINT style, const RECT *window, const RECT *client )
++static BOOL has_collapsed_caption( UINT style, UINT ex_style,
++                                   const RECT *window, const RECT *client )
+ {
+-    int top = client->top - window->top;
++    RECT border = {0};
++    int border_top, top = client->top - window->top;
+ 
+     if ((style & WS_CAPTION) != WS_CAPTION) return FALSE;
+-    if (style & WS_MAXIMIZE) return FALSE;
      if (top < 0 || client->left < window->left ||
          client->right > window->right || client->bottom > window->bottom)
          return FALSE;
--    if (!adjust_window_rect( &border, style & ~WS_CAPTION, FALSE, ex_style, get_system_dpi() ))
-+    if (!adjust_window_rect( &border, style & ~WS_DLGFRAME, FALSE, ex_style, get_system_dpi() ))
-         return FALSE;
+-    return top <= 1;
++    if (!adjust_window_rect( &border, style & ~WS_CAPTION, FALSE, ex_style, get_system_dpi() ))
++        return FALSE;
++
++    border_top = max( 0, -border.top );
++    return top <= border_top;
+ }
  
-     border_top = max( 0, -border.top );
-@@ -2259,6 +2259,9 @@ static BOOL is_frameless_window( HWND hwnd, UINT style, UINT ex_style,
-     const struct window_rects *rects )
+-static BOOL is_frameless_window( HWND hwnd, UINT style, const struct window_rects *rects )
++static BOOL is_frameless_window( HWND hwnd, UINT style, UINT ex_style,
++    const struct window_rects *rects )
  {
      if (!window_has_frame_style( style )) return FALSE;
-+    if ((style & (WS_MAXIMIZE | WS_THICKFRAME)) == (WS_MAXIMIZE | WS_THICKFRAME) &&
-+        (style & WS_CAPTION) != WS_CAPTION)
-+        return TRUE;
-     return has_collapsed_frame( &rects->window, &rects->client, get_custom_frame( hwnd ) ) ||
-            has_collapsed_caption( style, ex_style, &rects->window, &rects->client );
+-    if (NtUserGetProp( hwnd, frameless_window_prop )) return TRUE;
+-    if (has_collapsed_caption( style, &rects->window, &rects->client )) return TRUE;
+-    return get_custom_frame( hwnd ) && has_collapsed_frame( &rects->window, &rects->client, TRUE );
++    return has_collapsed_frame( &rects->window, &rects->client, get_custom_frame( hwnd ) ) ||
++           has_collapsed_caption( style, ex_style, &rects->window, &rects->client );
  }
-@@ -2279,7 +2282,7 @@ static RECT get_visible_rect( HWND hwnd, BOOL shaped, UINT style, UINT ex_style,
+ 
+ static void update_frameless_window( HWND hwnd, WND *win )
+ {
+-    BOOL frameless = FALSE;
+-
+-    if (win->dwStyle & WS_MAXIMIZE) return;
+-    if (window_has_frame_style( win->dwStyle ))
+-        frameless = has_collapsed_frame( &win->rects.window, &win->rects.client, get_custom_frame( hwnd ) ) ||
+-                    has_collapsed_caption( win->dwStyle, &win->rects.window, &win->rects.client );
+-
+-    if (frameless) NtUserSetProp( hwnd, frameless_window_prop, (HANDLE)1 );
++    if (is_frameless_window( hwnd, win->dwStyle, win->dwExStyle, &win->rects ))
++        NtUserSetProp( hwnd, frameless_window_prop, (HANDLE)1 );
+     else NtUserRemoveProp( hwnd, frameless_window_prop );
+ }
+ 
+@@ -2281,7 +2279,7 @@ static RECT get_visible_rect( HWND hwnd, BOOL shaped, UINT style, UINT ex_style,
      if (get_present_rect( hwnd, &rect, get_thread_dpi() )) return rect;
      if (IsRectEmpty( &rects->window ) || EqualRect( &rects->window, &rects->client ) || shaped || !decorated_mode) return rects->window;
      /* Kept borders are non-client space; present only the client area. */
@@ -46,22 +79,3 @@ index a37188d3848..3ab2f15674d 100644
      if (!user_driver->pGetWindowStyleMasks( hwnd, style, ex_style, &style_mask, &ex_style_mask )) return rects->window;
      if (!adjust_window_rect( &rect, style & style_mask, FALSE, ex_style & ex_style_mask, round_dpi( dpi ) )) return rects->window;
  
-diff --git a/dlls/winewayland.drv/window.c b/dlls/winewayland.drv/window.c
-index 01bc40faf66..5c1fa8a07ab 100644
---- a/dlls/winewayland.drv/window.c
-+++ b/dlls/winewayland.drv/window.c
-@@ -1100,14 +1100,6 @@ static void wayland_configure_window(HWND hwnd)
-         window_height += offset_y;
-         window_width += offset_x;
-     }
--    else if (data->frameless)
--    {
--        window_width += (data->rects.client.left - data->rects.window.left) +
--                        (data->rects.window.right - data->rects.client.right);
--        window_height += (data->rects.client.top - data->rects.window.top) +
--                         (data->rects.window.bottom - data->rects.client.bottom);
--    }
--
-     SetRect(&rect, 0, 0, window_width, window_height);
-     OffsetRect(&rect, data->rects.window.left, data->rects.window.top);
-     if (!IsRectEmpty(&rect)) rect = window_rect_from_visible(&data->rects, rect);

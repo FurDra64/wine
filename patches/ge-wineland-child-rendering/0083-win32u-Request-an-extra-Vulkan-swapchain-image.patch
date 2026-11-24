@@ -21,10 +21,10 @@ Source: https://github.com/nanomatters/wine-salkim/commit/19d4bf0c51eb47fd1470a7
  1 file changed, 12 insertions(+)
 
 diff --git a/dlls/win32u/vulkan.c b/dlls/win32u/vulkan.c
-index 39d3e219781..4e4a27c9481 100644
+index 64f03f29a42..7600693d23d 100644
 --- a/dlls/win32u/vulkan.c
 +++ b/dlls/win32u/vulkan.c
-@@ -3812,6 +3812,18 @@ static VkResult win32u_vkCreateSwapchainKHR( VkDevice client_device, const VkSwa
+@@ -4901,6 +4901,18 @@ static VkResult win32u_vkCreateSwapchainKHR( VkDevice client_device, const VkSwa
      create_info_host.imageExtent.width = max( create_info_host.imageExtent.width, capabilities.minImageExtent.width );
      create_info_host.imageExtent.height = max( create_info_host.imageExtent.height, capabilities.minImageExtent.height );
  
@@ -40,9 +40,6 @@ index 39d3e219781..4e4a27c9481 100644
 +               create_info_host.minImageCount, capabilities.minImageCount );
 +    }
 +
-     /* If the swapchain image size is not equal to the presentation size (e.g. because of DPI virtualization or
-      * display mode change emulation), MoltenVK's vkQueuePresentKHR returns VK_SUBOPTIMAL_KHR.
-      * Create the swapchain with VkSwapchainPresentScalingCreateInfoEXT to avoid this.
--- 
-2.55.0
-
+     if (!is_color_space_supported( physical_device, surface, create_info->imageFormat, VK_COLOR_SPACE_PASS_THROUGH_EXT ))
+         client_surface_set_color_space( surface->client, -1 );
+     else if (client_surface_set_color_space( surface->client, create_info->imageColorSpace ))
