@@ -115,6 +115,7 @@ apply_all_in_dir() { :; }
     apply_patch "../patches/wine-hotfixes/pending/stale.patch"
     apply_patch "../patches/wine-hotfixes/pending/breaker.patch"
     apply_patch "../patches/wine-hotfixes/pending/slot.patch"
+    apply_patch "../patches/wine-hotfixes/pending/held.patch"
     apply_patch "../patches/wine-hotfixes/pending/sleepy.patch"
     apply_patch "../patches/wine-hotfixes/pending/never.patch"
     apply_all_in_dir "../patches/wine-hotfixes/wine-staging/Foo_Bar/"
@@ -129,6 +130,7 @@ ge-pending-twin
 ge-pending-clash
 # NEEDS-REBASE 2026-01-01: ge-pending-slot
 # NEEDS-REBASE 2026-01-01: ge-pending-sleepy
+# DISABLED 2026-01-01 (retired on purpose): ge-pending-held
 local-tail
 """
 
@@ -181,6 +183,7 @@ def build(root):
     p["sleepy-new"] = as_mail("sleepy", wine.diff_of({"g.txt": {20: "sleepy new"}}))
     p["never-old"] = as_mail("never", wine.diff_of({"g.txt": {3: "never old"}}))
     p["never-new"] = as_mail("never", wine.diff_of({"g.txt": {3: "never new"}}))
+    p["held"] = as_mail("held", wine.diff_of({"h.txt": {8: "held"}}))
     p["slot"] = as_mail("slot", wine.diff_of({"h.txt": {3: "slot"}}))
     p["staging-x"] = as_mail("staging x", wine.diff_of({"h.txt": {15: "staging x"}}))
     p["staging-y"] = as_mail("staging y", wine.diff_of({"h.txt": {25: "staging y"}}))
@@ -243,6 +246,7 @@ def build(root):
         "wine-hotfixes/pending/stale.patch": p["stale"],
         "wine-hotfixes/pending/breaker.patch": p["breaker"],
         "wine-hotfixes/pending/slot.patch": p["slot"],
+        "wine-hotfixes/pending/held.patch": p["held"],
         "wine-hotfixes/pending/unused.patch": p["staging-x"],
         "wine-hotfixes/pending/sleepy.patch": p["sleepy-new"],
         "wine-hotfixes/pending/never.patch": p["never-new"],
@@ -312,6 +316,7 @@ class GeHarvestTest(unittest.TestCase):
             "wine-hotfixes/pending/stale.patch": "NEW-CONFLICT",
             "wine-hotfixes/pending/breaker.patch": "NEW-CONFLICT",
             "wine-hotfixes/pending/slot.patch": "NEW-APPLIES",
+            "wine-hotfixes/pending/held.patch": "NEW-CONFLICT",
             "wine-hotfixes/pending/unused.patch": "NEW-UNUSED",
             "wine-hotfixes/wine-staging/Foo_Bar/0001-x.patch": "NEW-APPLIES",
             "wine-hotfixes/wine-staging/Foo_Bar/0002-y.patch": "NEW-APPLIES",
@@ -367,6 +372,12 @@ class GeHarvestTest(unittest.TestCase):
         self.assertNotIn("# NEEDS-REBASE 2026-01-01: ge-pending-slot", series)
         self.assertNotIn("ge-pending-breaker", series)
         self.assertLess(series.index("ge-pending-slot"), series.index("local-tail"))
+
+    def test_retired_line_is_never_a_slot(self):
+        self.assertIn("is never reused", self.status["wine-hotfixes/pending/held.patch"]["detail"])
+        series = self.out_file("patches/series.conf").decode().split("\n")
+        self.assertIn("# DISABLED 2026-01-01 (retired on purpose): ge-pending-held", series)
+        self.assertNotIn("ge-pending-held", series)
 
     def test_cumulative_chain_demotes_breaker(self):
         self.assertIn("breaks local-tail/0001-tail.patch",

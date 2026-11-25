@@ -36,7 +36,7 @@ PROVENANCE = re.compile(r"(?:Ported from GE-Proton|from proton-ge-custom)\s+(\S+
 PATCH_NAME = re.compile(r"^[0-9]{4}[a-z]?-.+\.patch$")
 LEADING_NUMBER = re.compile(r"^([0-9]+)([a-z]?)-(.+)$")
 SERIES_NAME = re.compile(r"[_A-Za-z0-9][_A-Za-z0-9.+@-]*")
-COMMENTED_ENTRY = re.compile(r"^\s*#+\s*[A-Z][A-Z0-9-]*\b.*:\s*(%s)\s*$" % SERIES_NAME.pattern)
+TAGGED_ENTRY = re.compile(r"^\s*#+\s*[A-Z][A-Z0-9-]*\b.*:\s*(%s)\s*$" % SERIES_NAME.pattern)
 HUNK_FULL = re.compile(rb"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
 APPLY_ERROR_PATH = re.compile(r"^error: (?:patch failed: )?(.+?)(?::\d+)?(?:: .*)?$")
 PROTONPREP = "patches/protonprep-valve-staging.sh"
@@ -222,15 +222,25 @@ class Series:
                 out.append((n, name))
         return out
 
-    def mentions(self):
+    def tagged(self):
+        for n, line in enumerate(self.lines):
+            m = TAGGED_ENTRY.match(line)
+            if m:
+                tag = line.lstrip().lstrip("#").split()[0].rstrip(":")
+                yield n, tag, m.group(1)
+
+    def mentions(self, missing):
         out = {}
         for n, name in self.active():
-            out.setdefault(name, n)
-        for n, line in enumerate(self.lines):
-            m = COMMENTED_ENTRY.match(line)
-            if m:
-                out.setdefault(m.group(1), n)
+            if name in missing:
+                out.setdefault(name, n)
+        for n, tag, name in self.tagged():
+            if tag == "NEEDS-REBASE":
+                out.setdefault(name, n)
         return out
+
+    def retired(self):
+        return {name: (n, tag) for n, tag, name in self.tagged() if tag != "NEEDS-REBASE"}
 
 
 class Wine:
@@ -651,7 +661,8 @@ class Harvest:
             item.detail = "GE protonprep does not apply this file"
 
     def place_proposals(self):
-        mentions = self.wine.series.mentions()
+        mentions = self.wine.series.mentions(self.wine.missing)
+        retired = self.wine.series.retired()
         active = self.wine.series.active()
         ordered = sorted(self.proposals.values(),
                          key=lambda p: (min(prep_index(self.prep, i.rel) or 0 for i in p.items), p.name))
@@ -665,6 +676,13 @@ class Harvest:
             prop.files.sort(key=lambda fd: fd[0].encode())
             if prop.name in self.wine.dirs:
                 self.existing_name(prop)
+                continue
+            if prop.name in retired and prop.name not in mentions:
+                line, tag = retired[prop.name]
+                for i in live:
+                    i.status = "NEW-CONFLICT"
+                    i.detail = "series.conf:%d marks %s as %s; the line is never reused" % (
+                        line + 1, prop.name, tag)
                 continue
             if prop.name in mentions:
                 prop.slot_line = mentions[prop.name]
