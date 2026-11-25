@@ -154,6 +154,9 @@ def build(root):
     p["two-old"] = as_mail("dir two", wine.diff_of({"d.txt": {10: "dir two"}}))
     p["two-new"] = as_mail("dir two", wine.diff_of({"d.txt": {10: "dir two", 12: "dir two more"}}))
     p["three"] = as_mail("dir three", wine.diff_of({"d.txt": {20: "dir three"}}))
+    p["six-wine"] = as_mail("dir six", wine.diff_of({"e.txt": {28: "local six"}}))
+    p["six-ge"] = as_mail("dir six", wine.diff_of({"e.txt": {28: "ge six"}}))
+    p["seven"] = as_mail("dir two", wine.diff_of({"e.txt": {18: "dir seven"}}))
     p["bad"] = as_mail("dir bad", wine.diff_of({"d.txt": {26: "dir bad"}},
                                                pre={"d.txt": {25: "ge context 25"}}))
     p["gone"] = as_mail("gone", wine.diff_of({"e.txt": {3: "gone"}}))
@@ -172,7 +175,8 @@ def build(root):
 
     sets = {
         "ge-dirset": ("patches/dirset/", {"0001-one.patch": p["one"],
-                                          "0002-two-local.patch": p["two-old"]}),
+                                          "0002-two-local.patch": p["two-old"],
+                                          "0006-local.patch": p["six-wine"]}),
         "ge-game-gone": ("game-patches/gone.patch", {"0001-gone.patch": p["gone"]}),
         "ge-pending-alpha": ("wine-hotfixes/pending/alpha.patch", {"0001-alpha.patch": p["alpha-old"]}),
         "ge-pending-shift": ("wine-hotfixes/pending/shift.patch", {"0001-shift.patch": p["shift-wine"]}),
@@ -213,6 +217,8 @@ def build(root):
         "dirset/0002-two.patch": p["two-new"],
         "dirset/0003-three.patch": p["three"],
         "dirset/0004-bad.patch": p["bad"],
+        "dirset/0006-local.patch": p["six-ge"],
+        "dirset/0007-sub.patch": p["seven"],
         "dirset/0005-one.patch": p["one"],
         "wine-hotfixes/pending/drift.patch": p["drift-new"],
         "wine-hotfixes/pending/shift.patch": p["shift-new"],
@@ -277,6 +283,8 @@ class GeHarvestTest(unittest.TestCase):
             "dirset/0005-one.patch": "UPDATE-APPLIES",
             "dirset/0003-three.patch": "NEW-APPLIES",
             "dirset/0004-bad.patch": "NEW-CONFLICT",
+            "dirset/0006-local.patch": "UPDATE-CONFLICT",
+            "dirset/0007-sub.patch": "NEW-APPLIES",
             "wine-hotfixes/pending/fresh.patch": "NEW-APPLIES",
             "wine-hotfixes/pending/stale.patch": "NEW-CONFLICT",
             "wine-hotfixes/pending/breaker.patch": "NEW-CONFLICT",
@@ -350,6 +358,15 @@ class GeHarvestTest(unittest.TestCase):
 
     def test_deleted_names_ge_commit(self):
         self.assertTrue(self.status["game-patches/gone.patch"]["deleted_by"].startswith(self.commits[3]))
+
+    def test_added_counterpart_is_not_overwritten(self):
+        item = self.status["dirset/0006-local.patch"]
+        self.assertIn("already ported, GE-old unknown", item["detail"])
+        self.assertIn("+local six", item["ge_delta"])
+        self.assertFalse(os.path.exists(os.path.join(self.out, "patches", "ge-dirset", "0006-local.patch")))
+
+    def test_added_file_never_matches_by_subject(self):
+        self.assertEqual(self.status["dirset/0007-sub.patch"]["target_file"], "0007-sub.patch")
 
     def test_conflict_lists_paths(self):
         self.assertEqual(self.status["dirset/0004-bad.patch"]["conflicts"], ["d.txt"])

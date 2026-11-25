@@ -427,6 +427,21 @@ class Harvest:
             self.items.append(Item(change[0], rel, old, new))
         self.pair_renames()
 
+    def check_stale_clone(self):
+        ahead = [i for i in self.items if i.patchset and i.wine_data is not None and
+                 ((i.change == "A" and i.wine_data != i.new) or
+                  (i.change == "M" and i.wine_data == i.new and i.old != i.new))]
+        if not ahead:
+            return
+        paths = ["patches/" + r for r in list(self.files_map) + list(self.dirs_map)]
+        newest = self.ge.out(["log", "-1", "--format=%H", self.args.ge_new, "--"] + paths)
+        newest = newest.decode().strip()
+        self.warnings.append(
+            "default --ge-old %s (merge-base with the GE clone's HEAD) is older than GE changes the "
+            "fork already ported (e.g. %s; newest GE commit touching a mapped source: %s); the GE "
+            "clone's HEAD is probably stale, pass --ge-old" % (
+                self.args.ge_old[:11], ahead[0].rel, newest[:11] or "?"))
+
     def mapped_dir(self, rel):
         return self.dirs_map.get(dir_of(rel))
 
@@ -478,7 +493,7 @@ class Harvest:
         if len(files) == 1:
             name = files[0]
         else:
-            name = self.match_subject(ps, files, item)
+            name = self.match_subject(ps, files, item) if item.change != "A" else None
             if name is None:
                 item.status = "UNMATCHED"
                 item.detail = "patchset has %d patch files and none matches by Subject" % len(files)
@@ -490,7 +505,7 @@ class Harvest:
         files = self.wine.files_of(ps)
         lookup = base_name(item.renamed_from or item.rel)
         name = lookup if lookup in files else None
-        if name is None:
+        if name is None and item.change != "A":
             name = self.match_subject(ps, files, item)
         if name is None and len(files) == 1 and item.change == "M" and self.ge_dir_size(item.rel) == 1:
             name = files[0]
@@ -552,6 +567,15 @@ class Harvest:
         if item.wine_data == item.new and item.target_file == item.wine_file:
             item.status, item.result = "UP-TO-DATE", None
             item.detail += "; already matches GE-new"
+            return
+        if item.wine_data is None:
+            return
+        if item.old is None:
+            item.result = None
+            item.detail += "; already ported, GE-old unknown, not copied"
+        elif normalized_body(item.old) != normalized_body(item.wine_data):
+            item.result = None
+            item.detail += "; wine-side file differs from GE-old, not copied"
 
     def prepare_new_in_dir(self, item, ps):
         target = numbered_name(base_name(item.rel))
@@ -674,11 +698,17 @@ class Harvest:
         if not renaming and (W == N or normalized_body(W) == normalized_body(N)):
             item.status, item.detail = "UP-TO-DATE", "wine-side file already matches GE-new"
             return
-        drift = O is not None and normalized_body(O) != normalized_body(W)
+        if O is None:
+            item.status = "UPDATE-CONFLICT"
+            item.detail = "already ported, GE-old unknown; compare the wine-side file with GE-new"
+            item.delta = text_delta(W, N, "wine/patches/%s/%s" % (item.patchset, item.wine_file),
+                                    "ge-new/" + item.rel)
+            return
+        drift = normalized_body(O) != normalized_body(W)
         notes = []
         if item.renamed_from:
             notes.append("GE renamed %s" % base_name(item.renamed_from))
-        if O is not None and drift:
+        if drift:
             ok, _ = wine.try_apply(prev, [O])
             notes.append("wine-side file differs from GE-old" +
                          ("" if ok else "; GE-old does not apply at this position"))
@@ -1017,7 +1047,8 @@ def run(args):
         if ge.run(["rev-parse", "--git-dir"], ok=None).returncode != 0:
             raise Fatal("not a git repository: %s" % args.ge_repo)
         args.ge_new = ge.rev(args.ge_new or first_existing(ge, ["ge/master", "upstream/master"]))
-        if not args.ge_old:
+        default_old = not args.ge_old
+        if default_old:
             args.ge_old = ge.out(["merge-base", "HEAD", args.ge_new]).decode().strip()
         args.ge_old = ge.rev(args.ge_old)
         if args.patches_ref:
@@ -1036,6 +1067,8 @@ def run(args):
         harvest.classify(top_level, known)
         harvest.place_proposals()
         harvest.evaluate()
+        if default_old:
+            harvest.check_stale_clone()
         entries = harvest.validate()
         files, removed = harvest.outputs()
     finally:
