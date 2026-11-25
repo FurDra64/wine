@@ -145,31 +145,78 @@ class Patch:
 
 
 
-DIFF_START = re.compile(rb"^(diff --git |diff |Index: )")
-TRAILER = re.compile(rb"\n(-- \n[0-9][0-9A-Za-z.\-+]*\n\n*)\Z")
+MBOX_FROM = re.compile(rb"^From [0-9a-f]{40} ")
+GIT_DIFF = re.compile(rb"^diff --git a/")
+PLAIN_DIFF = re.compile(rb"^(diff |Index: )")
 INDEX_LINE = re.compile(rb"^index ([0-9a-f]+)\.\.([0-9a-f]+)((?: [0-7]+)?)$")
+HUNK = re.compile(rb"^@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@")
+
+
+def trailer_start(lines):
+    end = len(lines)
+    while end and lines[end - 1] == b"":
+        end -= 1
+    if end and lines[end - 1] == b"-- ":
+        return end - 1
+    if end >= 2 and lines[end - 2] == b"-- ":
+        return end - 2
+    return None
+
+
+def plain_diff_start(lines, begin=0):
+    for i in range(begin, len(lines)):
+        l = lines[i]
+        if GIT_DIFF.match(l):
+            return i
+        if l.startswith(b"--- ") and i + 1 < len(lines) and lines[i + 1].startswith(b"+++ "):
+            j = i
+            while j > begin and PLAIN_DIFF.match(lines[j - 1]):
+                j -= 1
+            return j
+    return None
+
+
+def body_start(lines):
+    if not (lines and lines[0].startswith(b"From ")):
+        return plain_diff_start(lines)
+    separator = next((i for i, l in enumerate(lines) if l == b"---"), None)
+    after = 0 if separator is None else separator + 1
+    for j in range(after, len(lines)):
+        if GIT_DIFF.match(lines[j]):
+            return j
+    return plain_diff_start(lines, after)
 
 
 def split_patch(data):
     lines = data.split(b"\n")
-    start = None
-    for i, l in enumerate(lines):
-        if DIFF_START.match(l):
-            start = i
-            break
-        if l.startswith(b"--- ") and i + 1 < len(lines) and lines[i + 1].startswith(b"+++ "):
-            start = i
-            break
+    start = body_start(lines)
     if start is None:
         return data, b"", b""
-    header = b"\n".join(lines[:start]) + (b"\n" if start else b"")
-    rest = b"\n".join(lines[start:])
+    cut = trailer_start(lines)
+    if cut is None or cut < start:
+        cut = len(lines)
+    header = b"".join(l + b"\n" for l in lines[:start])
+    body = b"\n".join(lines[start:cut])
     trailer = b""
-    m = TRAILER.search(rest)
-    if m:
-        trailer = m.group(1)
-        rest = rest[:m.start() + 1]
-    return header, rest, trailer
+    if cut < len(lines):
+        body += b"\n"
+        trailer = b"\n".join(lines[cut:])
+    return header, body, trailer
+
+
+def is_multi_commit(data):
+    lines = data.split(b"\n")
+    if sum(1 for l in lines if MBOX_FROM.match(l)) > 1:
+        return True
+    start = body_start(lines)
+    if start is None:
+        return False
+    cut = trailer_start(lines)
+    inner = lines[start:cut if cut is not None and cut >= start else len(lines)]
+    for i, l in enumerate(inner):
+        if l == b"-- " and any(GIT_DIFF.match(x) or MBOX_FROM.match(x) for x in inner[i + 1:]):
+            return True
+    return False
 
 
 def abbrev_of(data):
@@ -180,13 +227,25 @@ def abbrev_of(data):
 
 def count_changes(body):
     add = rem = 0
+    old_left = new_left = 0
     for l in body.split(b"\n"):
-        if l.startswith(b"+++ ") or l.startswith(b"--- "):
+        if old_left > 0 or new_left > 0:
+            if l.startswith(b"+"):
+                add += 1
+                new_left -= 1
+            elif l.startswith(b"-"):
+                rem += 1
+                old_left -= 1
+            elif l.startswith(b"\\"):
+                pass
+            else:
+                old_left -= 1
+                new_left -= 1
             continue
-        if l.startswith(b"+"):
-            add += 1
-        elif l.startswith(b"-"):
-            rem += 1
+        m = HUNK.match(l)
+        if m:
+            old_left = int(m.group(1)) if m.group(1) is not None else 1
+            new_left = int(m.group(2)) if m.group(2) is not None else 1
     return add, rem
 
 
@@ -407,6 +466,11 @@ class Retargeter:
 
     def _rebuild(self, p, cur, tree):
         git = self.git
+        if is_multi_commit(p.data):
+            self.read_tree(cur, self.idx_new)
+            p.status = "CONFLICT"
+            p.detail = "multi-commit patch file, rewrite by hand"
+            return
         header, body, trailer = split_patch(p.data)
         renames = re.search(rb"(?m)^(rename|copy) from ", p.data) is not None
         new_body = render_body(git, cur, tree, renames, abbrev_of(p.data))

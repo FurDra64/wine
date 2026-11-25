@@ -102,7 +102,18 @@ PATCH_PLAN = (
     ("set-provisional", "0001-provisional.patch"),
     ("set-generated", "0001-generated.patch"),
     ("set-renamed", "0001-renamed.patch"),
+    ("set-multi", "0001-multi.patch"),
 )
+MAIL_HEADER = (b"From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001\n"
+               b"Subject: [PATCH] %s\n\n"
+               b"diff of the window code is explained in this message\n"
+               b"Index: also just prose\n"
+               b"---\n a.txt | 2 +-\n 1 file changed, 1 insertion(+), 1 deletion(-)\n\n")
+APPLE_TRAILER = b"-- \n2.39.3 (Apple Git-145)\n\n"
+
+
+def as_mail(subject, diff, trailer=APPLE_TRAILER):
+    return MAIL_HEADER % subject + diff + trailer
 ABSORBED_LINE = "upstream adopted this distinctive replacement line"
 
 
@@ -123,12 +134,17 @@ def apply_patch_change(fixture, patchset):
         fixture.write("server/protocol.def",
                       fixture.read("server/protocol.def") + request_block("fixture_patch_request"))
         fixture.make_requests()
+    elif patchset == "set-multi":
+        fixture.write("e.txt", replace_line(fixture.read("e.txt"), 10, "e changed by first"))
+    elif patchset == "set-multi-second":
+        fixture.write("f.txt", replace_line(fixture.read("f.txt"), 10, "f changed by second"))
     elif patchset == "set-renamed":
         fixture.write("dlls/old/Makefile.in",
                       replace_line(fixture.read("dlls/old/Makefile.in"), 3, "line 03 patched"))
 
 
 def apply_upstream_change(fixture):
+    fixture.write("e.txt", replace_line(fixture.read("e.txt"), 8, "e line 08 upstream"))
     moved = replace_line(fixture.read("dlls/old/Makefile.in"), 20, "line 20 upstream")
     os.remove(fixture.path("dlls/old/Makefile.in"))
     fixture.write("dlls/new/Makefile.in", moved)
@@ -144,7 +160,7 @@ def apply_upstream_change(fixture):
 
 def build_fixture(root):
     fixture = Fixture(root)
-    for name in "abcd":
+    for name in "abcdef":
         fixture.write(name + ".txt", numbered_lines(name))
     fixture.write("dlls/old/Makefile.in", numbered_lines("makefile", 24))
     copy_server_files(fixture)
@@ -153,12 +169,20 @@ def build_fixture(root):
 
     fixture.git("checkout", "-q", "-b", "stack")
     patches = {}
-    for patchset, filename in PATCH_PLAN:
+    def commit_and_diff(patchset):
         apply_patch_change(fixture, patchset)
         fixture.commit(patchset)
-        patches[(patchset, filename)] = subprocess.run(
-            ["git", "diff", "--no-color", "HEAD~1", "HEAD"], cwd=fixture.repo, check=True,
-            stdout=subprocess.PIPE).stdout
+        return subprocess.run(["git", "diff", "--no-color", "HEAD~1", "HEAD"], cwd=fixture.repo,
+                              check=True, stdout=subprocess.PIPE).stdout
+
+    for patchset, filename in PATCH_PLAN:
+        data = commit_and_diff(patchset)
+        if patchset == "set-drift":
+            data = as_mail(b"drift", data)
+        elif patchset == "set-multi":
+            second = commit_and_diff("set-multi-second")
+            data = as_mail(b"first", data) + as_mail(b"second", second)
+        patches[(patchset, filename)] = data
 
     fixture.git("checkout", "-q", "up")
     apply_upstream_change(fixture)
@@ -197,7 +221,7 @@ class RetargetPatchesTest(unittest.TestCase):
         os.makedirs(excluded_dir)
         cls.excluded_code, cls.excluded_report = run_tool(
             cls.fixture, excluded_dir, "-W", "set-conflict", "-W", "set-blocked",
-            "-W", "set-renamed")
+            "-W", "set-renamed", "-W", "set-multi")
         cls.code, cls.report = run_tool(cls.fixture, cls.out_dir, "--write",
                                          "--write-provisional")
         cls.status = {p["patchset"]: p for p in cls.report["patches"]}
@@ -210,7 +234,7 @@ class RetargetPatchesTest(unittest.TestCase):
         expected = {"set-ok": "OK", "set-drift": "RETARGETED", "set-absorbed": "ABSORBED",
                     "set-conflict": "CONFLICT", "set-blocked": "BLOCKED-BY",
                     "set-provisional": "RETARGETED", "set-generated": "RETARGETED",
-                    "set-renamed": "CONFLICT"}
+                    "set-renamed": "CONFLICT", "set-multi": "CONFLICT"}
         self.assertEqual({k: v["status"] for k, v in self.status.items()}, expected)
         self.assertEqual(self.code, 1)
 
@@ -234,6 +258,16 @@ class RetargetPatchesTest(unittest.TestCase):
                                stdout=subprocess.PIPE).stdout.decode()
         self.assertNotIn("dlls/old/Makefile.in", listing)
         self.assertNotIn("line 03 patched", moved)
+
+    def test_mail_header_and_signature_kept(self):
+        rewritten = open(self.fixture.path("patches/set-drift/0001-drift.patch"), "rb").read()
+        self.assertTrue(rewritten.startswith(MAIL_HEADER % b"drift" + b"diff --git a/a.txt"))
+        self.assertTrue(rewritten.endswith(b"\n" + APPLE_TRAILER))
+        self.assertNotIn("shrank", self.status["set-drift"]["detail"])
+
+    def test_multi_commit_file_refused(self):
+        self.assertEqual(self.status["set-multi"]["detail"],
+                         "multi-commit patch file, rewrite by hand")
 
     def test_provisional_flagged(self):
         self.assertTrue(self.status["set-provisional"]["provisional"])
