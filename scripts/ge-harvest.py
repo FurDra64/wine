@@ -916,36 +916,58 @@ class Harvest:
                 item.status, item.result = "NEW-APPLIES", item.new
                 item.detail = "proposed %s, %s" % (prop.name, where)
 
+    def accepted_proposals(self):
+        out = []
+        for prop in sorted(self.proposals.values(), key=lambda p: p.order):
+            live = [i for i in prop.items if i.status != "NEW-UNUSED"]
+            if live and all(i.status == "NEW-APPLIES" for i in live):
+                out.append(prop)
+        return out
+
+    def final_series_lines(self):
+        lines = list(self.wine.series.lines)
+        inserts = collections.defaultdict(list)
+        for prop in self.accepted_proposals():
+            if prop.slot_line is not None:
+                lines[prop.slot_line] = prop.name
+            else:
+                inserts[prop.anchor_line].append(prop.name)
+        out = []
+        for n, line in enumerate(lines):
+            out.append(line)
+            out += inserts.get(n, [])
+        trailing = inserts.get(len(lines), [])
+        if trailing:
+            while out and out[-1] == "":
+                out.pop()
+            out += trailing + [""]
+        return out
+
     def edited_stack(self):
-        entries = [(i, 1, 0, "", e) for i, e in enumerate(self.wine.stack)]
-        drops = set()
+        contents = collections.OrderedDict()
+        for e in self.wine.stack:
+            contents.setdefault(e.patchset, {})[e.name] = e
         for item in self.items:
             if item.status not in ("UPDATE-APPLIES", "UPDATE-MERGED", "NEW-APPLIES") or item.proposal:
                 continue
+            files = contents.setdefault(item.patchset, {})
             if item.index is not None:
-                old = self.wine.stack[item.index]
-                if item.target_file == old.name:
-                    entries[item.index] = (item.index, 1, 0, "", Entry(old.patchset, old.name, item.result))
-                    entries[item.index][4].item = item
-                    continue
-                drops.add(item.index)
-                self.place_in_patchset(item, item.patchset, item.target_file)
-            pos, _, _, name = item.insert_key
+                files.pop(self.wine.stack[item.index].name, None)
             e = Entry(item.patchset, item.target_file, item.result)
             e.item = item
-            entries.append((pos, 0, 0, name, e))
-        for prop in self.proposals.values():
-            if not all(i.status == "NEW-APPLIES" for i in prop.items if i.status not in ("NEW-UNUSED",)):
-                continue
-            if not any(i.status == "NEW-APPLIES" for i in prop.items):
-                continue
+            files[item.target_file] = e
+        for prop in self.accepted_proposals():
+            files = contents.setdefault(prop.name, {})
             for f, d in prop.files:
                 e = Entry(prop.name, f, d)
                 e.item = next(i for i in prop.items if i.target_file == f)
-                entries.append((prop.position, 0, 1 + prop.order, f, e))
-        out = [x for x in entries if not (x[1] == 1 and x[0] in drops)]
-        out.sort(key=lambda x: (x[0], x[1], x[2], x[3].encode()))
-        return [x[4] for x in out]
+                files[f] = e
+        text = "\n".join(self.final_series_lines()).encode("utf-8", "surrogateescape")
+        entries = []
+        for _, ps in Series(text).active():
+            files = contents.get(ps, {})
+            entries += [files[n] for n in sorted(files, key=lambda n: n.encode())]
+        return entries
 
     def validate(self):
         while True:
@@ -963,18 +985,36 @@ class Harvest:
                 return entries
             self.demote(entries, k, paths)
 
+    def accepted_items(self):
+        return [i for i in self.items if i.status in ("UPDATE-APPLIES", "UPDATE-MERGED", "NEW-APPLIES")]
+
     def demote(self, entries, k, paths):
         failing = entries[k]
         victim = getattr(failing, "item", None)
-        if victim is None:
+        if victim is not None:
+            victims = [victim]
+        else:
             files = {p for p, _ in touched_files(failing.data)} | set(paths)
-            candidates = [e.item for e in entries[:k] if getattr(e, "item", None)]
-            sharing = [c for c in candidates if files & {p for p, _ in touched_files(c.result)}]
-            pick = sharing or candidates
-            if not pick:
+            base_pos = next((n for n, e in enumerate(self.wine.stack) if e is failing), len(self.wine.stack))
+            before = [e.item for e in entries[:k] if getattr(e, "item", None)]
+            before += [i for i in self.accepted_items()
+                       if i.index is not None and i.index < base_pos and i not in before]
+
+            def shares(i):
+                return bool(files & {p for p, _ in touched_files(i.result or b"")})
+            sharing = [c for c in before if shares(c)]
+            if sharing or before:
+                victims = [(sharing or before)[-1]]
+            else:
+                everywhere = self.accepted_items()
+                victims = [c for c in everywhere if shares(c)] or everywhere
+            if not victims:
                 raise Fatal("cumulative chain fails at untouched %s" % failing.label())
-            victim = pick[-1]
         note = "breaks %s in the cumulative chain" % failing.label()
+        for victim in victims:
+            self.demote_item(victim, note, paths)
+
+    def demote_item(self, victim, note, paths):
         if victim.proposal:
             for i in victim.proposal.items:
                 if i.status == "NEW-APPLIES":
@@ -985,29 +1025,12 @@ class Harvest:
         victim.detail = "; ".join(x for x in (victim.detail, note) if x)
         victim.conflicts = paths
         if victim.status == "UPDATE-CONFLICT":
-            victim.delta = text_delta(victim.old, victim.new, "ge-old/" + victim.rel, "ge-new/" + victim.rel)
+            victim.delta = text_delta(victim.old, victim.new, "ge-old/" + (victim.renamed_from or victim.rel),
+                                      "ge-new/" + victim.rel)
         victim.result = None
 
     def series_text(self):
-        lines = list(self.wine.series.lines)
-        inserts = collections.defaultdict(list)
-        for prop in sorted(self.proposals.values(), key=lambda p: p.order):
-            if not any(i.status == "NEW-APPLIES" for i in prop.items):
-                continue
-            if prop.slot_line is not None:
-                lines[prop.slot_line] = prop.name
-            else:
-                inserts[prop.anchor_line].append(prop.name)
-        out = []
-        for n, line in enumerate(lines):
-            out.append(line)
-            out += inserts.get(n, [])
-        trailing = inserts.get(len(lines), [])
-        if trailing:
-            while out and out[-1] == "":
-                out.pop()
-            out += trailing + [""]
-        return "\n".join(out).encode("utf-8", "surrogateescape")
+        return "\n".join(self.final_series_lines()).encode("utf-8", "surrogateescape")
 
     def outputs(self):
         files, removed = [], []
@@ -1018,14 +1041,11 @@ class Harvest:
             files.append(("patches/%s/%s" % (item.patchset, item.target_file), item.result))
             if item.wine_file and item.wine_file != item.target_file:
                 removed.append("patches/%s/%s" % (item.patchset, item.wine_file))
-        for prop in self.proposals.values():
-            if not any(i.status == "NEW-APPLIES" for i in prop.items):
-                continue
+        for prop in self.accepted_proposals():
             files.append(("patches/%s/definition" % prop.name, prop.definition()))
             for f, d in prop.files:
                 files.append(("patches/%s/%s" % (prop.name, f), d))
-        if any(p.position is not None and any(i.status == "NEW-APPLIES" for i in p.items)
-               for p in self.proposals.values()):
+        if self.accepted_proposals():
             files.append(("patches/series.conf", self.series_text()))
         return files, removed
 

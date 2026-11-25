@@ -464,6 +464,65 @@ class GeHarvestWriteTest(unittest.TestCase):
             remove_tree(root)
 
 
+def build_order(root):
+    wine = Repo(os.path.join(root, "wine"))
+    wine.write("x.txt", numbered_lines("x", 40))
+    wine.commit("upstream")
+    p = {}
+    p["a"] = as_mail("game a", wine.diff_of({"x.txt": {3: "game a"}}))
+    p["e"] = as_mail("dir e", wine.diff_of({"x.txt": {30: "dir e"}}))
+    p["local"] = wine.diff_of({"x.txt": {31: "local on e"}}, pre={"x.txt": {30: "dir e"}})
+    p["d"] = as_mail("dir d", wine.diff_of({"x.txt": {12: "dir d"}}))
+    p["p"] = as_mail("game p", wine.diff_of({"x.txt": {13: "game p"}}, pre={"x.txt": {12: "dir d"}}))
+    wine.write("patches/ge-game-a/definition", definition("ge-game-a", "game-patches/a.patch"))
+    wine.write("patches/ge-game-a/0001-a.patch", p["a"])
+    wine.write("patches/ge-dirx/definition", definition("ge-dirx", "patches/dirx/"))
+    wine.write("patches/ge-dirx/0001-e.patch", p["e"])
+    wine.write("patches/ge-dirx/0002-local.patch", p["local"])
+    wine.write("patches/series.conf", "ge-game-a\nge-dirx\n")
+    wine.commit("overlay")
+    ge = Repo(os.path.join(root, "ge"))
+    ge.write("patches/game-patches/a.patch", p["a"])
+    ge.write("patches/dirx/0001-e.patch", p["e"])
+    ge.write("patches/protonprep-valve-staging.sh",
+             '    apply_patch "../patches/game-patches/a.patch"\n'
+             '    apply_all_in_dir "../patches/dirx/"\n'
+             '    apply_patch "../patches/game-patches/p.patch"\n')
+    c0 = ge.commit("ge old")
+    ge.write("patches/dirx/0000-d.patch", p["d"])
+    ge.write("patches/game-patches/p.patch", p["p"])
+    ge.remove("patches/dirx/0001-e.patch")
+    ge.write("patches/dirx/0005-e.patch", p["e"])
+    c1 = ge.commit("ge new")
+    return wine, ge, (c0, c1)
+
+
+class GeHarvestOrderTest(unittest.TestCase):
+    def test_validation_follows_written_series_order(self):
+        root = tempfile.mkdtemp(prefix="ge-harvest-order-")
+        try:
+            wine, ge, commits = build_order(root)
+            out = os.path.join(root, "out")
+            os.makedirs(out)
+            code, report = run_tool(wine, ge, out, commits[0], commits[1], "--write")
+            status = {i["ge_path"]: i for i in report["items"]}
+            self.assertEqual(code, 1)
+            self.assertEqual(status["game-patches/p.patch"]["status"], "NEW-CONFLICT")
+            self.assertIn("breaks", status["game-patches/p.patch"]["detail"])
+            self.assertEqual(status["dirx/0000-d.patch"]["status"], "NEW-APPLIES")
+            self.assertEqual(status["dirx/0005-e.patch"]["status"], "UPDATE-CONFLICT")
+            self.assertIn("breaks ge-dirx/0002-local.patch", status["dirx/0005-e.patch"]["detail"])
+            self.assertTrue(os.path.exists(os.path.join(out, "report.md")))
+            self.assertEqual(wine.read("patches/series.conf"), b"ge-game-a\nge-dirx\n")
+            bash = find_bash()
+            if bash:
+                check = subprocess.run([bash, APPLY, "--check"], cwd=wine.path,
+                                       stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                self.assertEqual(check.returncode, 0, check.stderr.decode("utf-8", "replace"))
+        finally:
+            remove_tree(root)
+
+
 def load_tool_module():
     spec = importlib.util.spec_from_file_location("ge_harvest", TOOL)
     module = importlib.util.module_from_spec(spec)
