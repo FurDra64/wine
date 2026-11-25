@@ -346,7 +346,16 @@ class Retargeter:
                 skipped.append((p, touched_ng))
                 continue
             gen_touched = [g for g in GENERATED if g in p.touched]
-            if gen_touched:
+            changes_protocol = "server/protocol.def" in p.touched
+            if conflicts and not changes_protocol:
+                p.status = "CONFLICT"
+                p.conflicts = conflicts
+                p.detail = ("conflicts only in generated files, but the patch does not change "
+                            "server/protocol.def, so they cannot be regenerated: "
+                            + ", ".join(conflicts))
+                skipped.append((p, touched_ng))
+                continue
+            if gen_touched and changes_protocol:
                 tree = self._fix_generated(tree, cur, gen_touched)
                 p.generated = True
             if tree == cur:
