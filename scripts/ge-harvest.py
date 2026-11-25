@@ -200,6 +200,7 @@ class Proposal:
         self.anchor_line = None
         self.position = None
         self.candidates = []
+        self.grouped = False
         self.order = 0
 
     def definition(self):
@@ -495,6 +496,34 @@ class Harvest:
                     item.status = "UNMATCHED"
                     item.detail = "modified in GE but never ported (check AUDITED notes in series.conf)"
 
+    def mark_collisions(self):
+        for prop in self.proposals.values():
+            names = collections.Counter(f for f, _ in prop.files)
+            clash = len(prop.items) > 1 and not prop.grouped
+            clash = clash or any(n > 1 for n in names.values())
+            if not clash:
+                continue
+            sources = ", ".join(i.rel for i in prop.items)
+            for i in prop.items:
+                if i.status in (None, "NEW-UNUSED"):
+                    i.status = "NEW-CONFLICT"
+                    i.detail = "name collision: %s from %s" % (prop.name, sources)
+        targets = collections.defaultdict(list)
+        for i in self.items:
+            if i.status is None and not i.proposal and i.target_file and (
+                    i.insert_key is not None or i.target_file != i.wine_file):
+                targets[(i.patchset, i.target_file)].append(i)
+        for (ps, name), group in targets.items():
+            taken = name in self.wine.files_of(ps)
+            if len(group) == 1 and not taken:
+                continue
+            sources = ", ".join(i.label() for i in group)
+            for i in group:
+                i.status = "UPDATE-CONFLICT" if i.index is not None else "NEW-CONFLICT"
+                i.insert_key = None
+                i.detail = "name collision: %s/%s from %s%s" % (
+                    ps, name, sources, " (file already exists)" if taken else "")
+
     def hold_replacements(self):
         deletions = {}
         for item in self.items:
@@ -651,6 +680,7 @@ class Harvest:
         if prop is None:
             summary = "GE-rebased wine-staging pick." if grouped else subject_of(item.new)
             prop = Proposal(name, provenance, summary, self.author, family)
+            prop.grouped = grouped
             self.proposals[key] = prop
         file_name = numbered_name(base_name(item.rel), len(prop.files) + 1)
         prop.files.append((file_name, item.new))
@@ -1221,6 +1251,7 @@ def run(args):
         top_level = {p.split("/")[0] for p in known}
         harvest.classify(top_level, known)
         harvest.hold_replacements()
+        harvest.mark_collisions()
         harvest.place_proposals()
         harvest.evaluate()
         if default_old:

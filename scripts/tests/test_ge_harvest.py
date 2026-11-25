@@ -247,6 +247,10 @@ def build(root):
         "wine-hotfixes/pending/breaker.patch": p["breaker"],
         "wine-hotfixes/pending/slot.patch": p["slot"],
         "wine-hotfixes/pending/held.patch": p["held"],
+        "wine-hotfixes/pending/0001-dup.patch": p["staging-x"],
+        "wine-hotfixes/pending/dup.patch": p["staging-y"],
+        "dirset/1-ten.patch": p["staging-x"],
+        "dirset/0001-ten.patch": p["staging-y"],
         "wine-hotfixes/pending/unused.patch": p["staging-x"],
         "wine-hotfixes/pending/sleepy.patch": p["sleepy-new"],
         "wine-hotfixes/pending/never.patch": p["never-new"],
@@ -317,6 +321,10 @@ class GeHarvestTest(unittest.TestCase):
             "wine-hotfixes/pending/breaker.patch": "NEW-CONFLICT",
             "wine-hotfixes/pending/slot.patch": "NEW-APPLIES",
             "wine-hotfixes/pending/held.patch": "NEW-CONFLICT",
+            "wine-hotfixes/pending/0001-dup.patch": "NEW-CONFLICT",
+            "wine-hotfixes/pending/dup.patch": "NEW-CONFLICT",
+            "dirset/1-ten.patch": "NEW-CONFLICT",
+            "dirset/0001-ten.patch": "NEW-CONFLICT",
             "wine-hotfixes/pending/unused.patch": "NEW-UNUSED",
             "wine-hotfixes/wine-staging/Foo_Bar/0001-x.patch": "NEW-APPLIES",
             "wine-hotfixes/wine-staging/Foo_Bar/0002-y.patch": "NEW-APPLIES",
@@ -372,6 +380,13 @@ class GeHarvestTest(unittest.TestCase):
         self.assertNotIn("# NEEDS-REBASE 2026-01-01: ge-pending-slot", series)
         self.assertNotIn("ge-pending-breaker", series)
         self.assertLess(series.index("ge-pending-slot"), series.index("local-tail"))
+
+    def test_name_collisions_fail_closed(self):
+        for rel in ("wine-hotfixes/pending/0001-dup.patch", "wine-hotfixes/pending/dup.patch",
+                    "dirset/1-ten.patch", "dirset/0001-ten.patch"):
+            self.assertIn("name collision", self.status[rel]["detail"])
+        self.assertFalse(os.path.exists(os.path.join(self.out, "patches", "ge-pending-dup")))
+        self.assertFalse(os.path.exists(os.path.join(self.out, "patches", "ge-dirset", "0001-ten.patch")))
 
     def test_retired_line_is_never_a_slot(self):
         self.assertIn("is never reused", self.status["wine-hotfixes/pending/held.patch"]["detail"])
