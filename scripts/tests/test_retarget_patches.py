@@ -9,6 +9,7 @@ import sys
 import tempfile
 import unittest
 
+sys.dont_write_bytecode = True
 SCRIPTS_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 REPO_ROOT = os.path.dirname(SCRIPTS_DIR)
 TOOL = os.path.join(SCRIPTS_DIR, "retarget-patches.py")
@@ -260,7 +261,8 @@ class RetargetPatchesTest(unittest.TestCase):
         self.assertNotIn("line 03 patched", moved)
 
     def test_mail_header_and_signature_kept(self):
-        rewritten = open(self.fixture.path("patches/set-drift/0001-drift.patch"), "rb").read()
+        with open(self.fixture.path("patches/set-drift/0001-drift.patch"), "rb") as handle:
+            rewritten = handle.read()
         self.assertTrue(rewritten.startswith(MAIL_HEADER % b"drift" + b"diff --git a/a.txt"))
         self.assertTrue(rewritten.endswith(b"\n" + APPLE_TRAILER))
         self.assertNotIn("shrank", self.status["set-drift"]["detail"])
