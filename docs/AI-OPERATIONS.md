@@ -45,6 +45,40 @@ git checkout conflict/<date>-<sha>   # from the Issue
 4. Push to the conflict branch, open PR to `master`. One patchset per commit.
 5. CI re-runs the check on the PR.
 
+## Retarget after upstream moves
+
+Run this first, before fixing any patch by hand:
+
+```bash
+python scripts/retarget-patches.py --report retarget.md --json retarget.json [--write]
+python scripts/tests/test_retarget_patches.py   # self-test on synthetic repos
+```
+
+The defaults are `--old-base $(git merge-base HEAD mirror/master)` and
+`--new-base mirror/master`. The tool replays the stack twice in temporary
+indexes, using only git plumbing (no checkout). The stack must be strict-green
+on the old base. On the new base, a patch that fails strict apply is merged
+3-way with `git merge-tree`.
+
+- `OK`: the patch applies strictly. Its file is never touched.
+- `RETARGETED`: the 3-way merge was clean and the tool regenerated the diff
+  body. The header and trailer are kept. `--write` rewrites only these files.
+  Review them anyway, because a clean merge does not prove the code is right.
+  If the report says the hunks shrank, upstream took part of the change.
+  `generated` means the tool reran `tools/make_requests`, which raises
+  `SERVER_PROTOCOL_VERSION` by one per patch.
+- `ABSORBED`: upstream already contains the whole change. The report gives
+  the evidence commit found with `git log -S` and the `# OBSOLETE ...`
+  series.conf line to use. Retiring the patch is still a human decision
+  (GOVERNANCE R1).
+- `CONFLICT` and `BLOCKED-BY:<patch>`: these patches are left for a human or
+  AI to fix. A `BLOCKED-BY` patch conflicts in files that an earlier failed
+  patch touches. Fix that earlier patch first, then rerun the tool.
+
+Exit codes: 0 means nothing is left, 1 means CONFLICT or BLOCKED-BY patches
+remain, 2 means a usage or precondition error. `scripts/apply-patches.sh --check`
+stays the gate.
+
 ## Safety invariants (non-negotiable)
 
 - Never `push --force` on `master` or `upstream`. Conflict branches are
