@@ -611,7 +611,7 @@ def main(argv=None):
     for p in stack:
         if p.status in ("CONFLICT", "BLOCKED-BY"):
             print("%s %s %s" % (p.status, p.label(), p.detail))
-    return 1 if counts["CONFLICT"] or counts["BLOCKED-BY"] else 0
+    return 1 if counts["CONFLICT"] or counts["BLOCKED-BY"] or counts["OLD-FAIL"] else 0
 
 
 if __name__ == "__main__":

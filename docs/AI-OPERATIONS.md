@@ -78,7 +78,7 @@ on the old base. On the new base, a patch that fails strict apply is merged
   AI to fix. A `BLOCKED-BY` patch conflicts in files that an earlier failed
   patch touches. Fix that earlier patch first, then rerun the tool.
 
-Exit codes: 0 means nothing is left, 1 means CONFLICT or BLOCKED-BY patches
+Exit codes: 0 means nothing is left, 1 means CONFLICT, BLOCKED-BY or OLD-FAIL patches
 remain, 2 means a usage or precondition error. `scripts/apply-patches.sh --check`
 stays the gate.
 
