@@ -66,7 +66,10 @@ on the old base. On the new base, a patch that fails strict apply is merged
   Review them anyway, because a clean merge does not prove the code is right.
   If the report says the hunks shrank, upstream took part of the change.
   `generated` means the tool reran `tools/make_requests`, which raises
-  `SERVER_PROTOCOL_VERSION` by one per patch.
+  `SERVER_PROTOCOL_VERSION` by one per patch. A RETARGETED patch is
+  `provisional` when it touches files of a skipped patch. The tool does not
+  write it unless you pass `--write-provisional`, because its context may
+  change once that earlier patch is fixed.
 - `ABSORBED`: upstream already contains the whole change. The report gives
   the evidence commit found with `git log -S` and the `# OBSOLETE ...`
   series.conf line to use. Retiring the patch is still a human decision
