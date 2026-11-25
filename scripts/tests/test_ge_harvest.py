@@ -249,7 +249,7 @@ class GeHarvestTest(unittest.TestCase):
         cls.out = os.path.join(cls.root, "out")
         os.makedirs(cls.out)
         cls.code, cls.report = run_tool(cls.wine, cls.ge, cls.out, cls.commits[0], cls.commits[3],
-                                        "--out-dir", cls.out)
+                                        "--out-dir", cls.out, "--write-inactive")
         cls.status = {i["ge_path"]: i for i in cls.report["items"]}
 
     @classmethod
@@ -332,6 +332,9 @@ class GeHarvestTest(unittest.TestCase):
     def test_cumulative_chain_demotes_breaker(self):
         self.assertIn("breaks local-tail/0001-tail.patch",
                       self.status["wine-hotfixes/pending/breaker.patch"]["detail"])
+
+    def test_inactive_copied_only_on_request(self):
+        self.assertEqual(self.out_file("patches/ge-pending-sleepy/0001-sleepy.patch"), self.p["sleepy-new"])
 
     def test_deleted_names_ge_commit(self):
         self.assertTrue(self.status["game-patches/gone.patch"]["deleted_by"].startswith(self.commits[3]))

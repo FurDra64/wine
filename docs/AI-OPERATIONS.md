@@ -136,7 +136,9 @@ index, and evaluates every item at its own place in the stack.
 - `DELETED-IN-GE`: a retirement candidate, with the GE commit that deleted
   it. Nothing is disabled (R1). Check absorption with `retarget-patches.py`.
 - `INACTIVE`: the counterpart is commented out in series.conf or lives under
-  `<patchset>/disabled/`.
+  `<patchset>/disabled/`. `--write-inactive` copies GE-new verbatim into a
+  commented-out patchset, as hand ports did. The gate does not apply it, so
+  this cannot break `--check`, but it is not tested either.
 - `UNMATCHED`: no wine-side counterpart was found, or GE modified a file that
   was never ported.
 - `PROTON-SIDE`: the patch touches paths that are not in the wine tree

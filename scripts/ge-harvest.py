@@ -531,16 +531,22 @@ class Harvest:
     def prepare_update(self, item, ps, name):
         item.wine_file = name
         item.wine_data = self.wine.read(ps, name)
-        if ps not in self.wine.active_sets:
-            item.status = "INACTIVE"
-            item.detail = "patchset %s is not active in series.conf" % ps
-            return
         if item.change == "R":
             item.target_file = numbered_name(base_name(item.rel))
         else:
             item.target_file = name
+        if ps not in self.wine.active_sets:
+            self.mark_inactive(item, ps)
+            return
         item.index = next(i for i, e in enumerate(self.wine.stack)
                           if e.patchset == ps and e.name == name)
+
+    def mark_inactive(self, item, ps):
+        item.status, item.result = "INACTIVE", item.new
+        item.detail = "patchset %s is not active in series.conf" % ps
+        if item.wine_data == item.new and item.target_file == item.wine_file:
+            item.status, item.result = "UP-TO-DATE", None
+            item.detail += "; already matches GE-new"
 
     def prepare_new_in_dir(self, item, ps):
         target = numbered_name(base_name(item.rel))
@@ -549,8 +555,7 @@ class Harvest:
             return
         item.target_file = target
         if ps not in self.wine.active_sets:
-            item.status = "INACTIVE"
-            item.detail = "patchset %s is not active in series.conf" % ps
+            self.mark_inactive(item, ps)
             return
         self.place_in_patchset(item, ps, target)
 
@@ -848,7 +853,8 @@ class Harvest:
     def outputs(self):
         files, removed = [], []
         for item in self.items:
-            if item.status not in WRITABLE or item.proposal:
+            inactive = self.args.write_inactive and item.status == "INACTIVE" and item.result
+            if (item.status not in WRITABLE and not inactive) or item.proposal:
                 continue
             files.append(("patches/%s/%s" % (item.patchset, item.target_file), item.result))
             if item.wine_file and item.wine_file != item.target_file:
@@ -1061,6 +1067,8 @@ def main(argv=None):
                     help="skip stack patches that fail on the base instead of aborting")
     ap.add_argument("--write", action="store_true",
                     help="write UPDATE-APPLIES, UPDATE-MERGED and NEW-APPLIES results to the work tree")
+    ap.add_argument("--write-inactive", action="store_true",
+                    help="also copy GE-new verbatim into patchsets that series.conf does not apply")
     ap.add_argument("--out-dir", help="write the same results under DIR/patches/...")
     ap.add_argument("--report", help="Markdown report path")
     ap.add_argument("--json", help="JSON report path")
