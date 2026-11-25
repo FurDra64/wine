@@ -138,6 +138,7 @@ class Patch:
         self.touched = []
         self.new_data = None
         self.generated = False
+        self.provisional = False
 
     def label(self):
         return "%s/%s" % (self.patchset, self.name)
@@ -357,6 +358,9 @@ class Retargeter:
             if p.status == "CONFLICT":
                 skipped.append((p, touched_ng))
                 continue
+            if near:
+                p.provisional = True
+                near_note = "provisional, not written: " + near_note
             p.detail = "; ".join(x for x in (p.detail, near_note) if x)
             cur = tree
         self.final_tree = cur
@@ -496,7 +500,8 @@ def write_json(path, args, stack, counts, final_tree):
            "patches": [{"patchset": p.patchset, "file": p.name, "status": p.status,
                         "detail": p.detail, "conflicts": p.conflicts,
                         "blocked_by": p.blocked_by, "evidence": p.evidence,
-                        "generated": p.generated, "touched": p.touched}
+                        "generated": p.generated, "provisional": p.provisional,
+                        "touched": p.touched}
                        for p in stack],
            "obsolete_suggestions": obsolete_lines(stack)}
     with open(path, "w", encoding="utf-8", newline="\n") as f:
@@ -522,6 +527,9 @@ def main(argv=None):
                     help="exclude patchset NAME (repeatable, like apply-patches.sh)")
     ap.add_argument("--write", action="store_true",
                     help="rewrite RETARGETED patch files in the work tree")
+    ap.add_argument("--write-provisional", action="store_true",
+                    help="also write RETARGETED patches merged while files they touch "
+                    "belong to a skipped CONFLICT/BLOCKED patch")
     ap.add_argument("--out-dir", help="write RETARGETED patch files under DIR/patches/...")
     ap.add_argument("--report", help="Markdown report path")
     ap.add_argument("--json", help="JSON report path")
@@ -575,7 +583,7 @@ def main(argv=None):
 
     counts = summary(stack)
     for p in stack:
-        if p.status != "RETARGETED":
+        if p.status != "RETARGETED" or (p.provisional and not args.write_provisional):
             continue
         targets = []
         if args.write:

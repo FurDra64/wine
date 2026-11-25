@@ -91,6 +91,7 @@ PATCH_PLAN = (
     ("set-absorbed", "0001-absorbed.patch"),
     ("set-conflict", "0001-conflict.patch"),
     ("set-blocked", "0001-blocked.patch"),
+    ("set-provisional", "0001-provisional.patch"),
     ("set-generated", "0001-generated.patch"),
 )
 ABSORBED_LINE = "upstream adopted this distinctive replacement line"
@@ -107,6 +108,8 @@ def apply_patch_change(fixture, patchset):
         fixture.write("c.txt", replace_line(fixture.read("c.txt"), 5, "c line 05 patch side"))
     elif patchset == "set-blocked":
         fixture.write("c.txt", replace_line(fixture.read("c.txt"), 6, "c line 06 on top of patch"))
+    elif patchset == "set-provisional":
+        fixture.write("c.txt", replace_line(fixture.read("c.txt"), 18, "c line 18 far from conflict"))
     elif patchset == "set-generated":
         fixture.write("server/protocol.def",
                       fixture.read("server/protocol.def") + request_block("fixture_patch_request"))
@@ -116,7 +119,8 @@ def apply_patch_change(fixture, patchset):
 def apply_upstream_change(fixture):
     fixture.write("a.txt", replace_line(fixture.read("a.txt"), 8, "a line 08 upstream"))
     fixture.write("b.txt", replace_line(fixture.read("b.txt"), 5, ABSORBED_LINE))
-    fixture.write("c.txt", replace_line(fixture.read("c.txt"), 5, "c line 05 upstream side"))
+    upstream_c = replace_line(fixture.read("c.txt"), 5, "c line 05 upstream side")
+    fixture.write("c.txt", replace_line(upstream_c, 16, "c line 16 upstream drift"))
     fixture.write("server/protocol.def",
                   insert_before_nth_request(fixture.read("server/protocol.def"),
                                             request_block("fixture_upstream_request"), 10))
@@ -177,7 +181,8 @@ class RetargetPatchesTest(unittest.TestCase):
         os.makedirs(excluded_dir)
         cls.excluded_code, cls.excluded_report = run_tool(
             cls.fixture, excluded_dir, "-W", "set-conflict", "-W", "set-blocked")
-        cls.code, cls.report = run_tool(cls.fixture, cls.out_dir, "--write")
+        cls.code, cls.report = run_tool(cls.fixture, cls.out_dir, "--write",
+                                         "--write-provisional")
         cls.status = {p["patchset"]: p for p in cls.report["patches"]}
 
     @classmethod
@@ -187,7 +192,7 @@ class RetargetPatchesTest(unittest.TestCase):
     def test_statuses(self):
         expected = {"set-ok": "OK", "set-drift": "RETARGETED", "set-absorbed": "ABSORBED",
                     "set-conflict": "CONFLICT", "set-blocked": "BLOCKED-BY",
-                    "set-generated": "RETARGETED"}
+                    "set-provisional": "RETARGETED", "set-generated": "RETARGETED"}
         self.assertEqual({k: v["status"] for k, v in self.status.items()}, expected)
         self.assertEqual(self.code, 1)
 
@@ -199,11 +204,16 @@ class RetargetPatchesTest(unittest.TestCase):
                          ["set-conflict/0001-conflict.patch"])
         self.assertEqual(self.status["set-conflict"]["conflicts"], ["c.txt"])
 
+    def test_provisional_flagged(self):
+        self.assertTrue(self.status["set-provisional"]["provisional"])
+        self.assertFalse(self.status["set-drift"]["provisional"])
+
     def test_only_retargeted_files_rewritten(self):
         changed = self.fixture.git("status", "--porcelain").split()
         self.assertEqual(sorted(c for c in changed if c.endswith(".patch")),
                          ["patches/set-drift/0001-drift.patch",
-                          "patches/set-generated/0001-generated.patch"])
+                          "patches/set-generated/0001-generated.patch",
+                          "patches/set-provisional/0001-provisional.patch"])
 
     def test_generated_regenerated_step_by_step(self):
         self.assertTrue(self.status["set-generated"]["generated"])
@@ -223,7 +233,7 @@ class RetargetPatchesTest(unittest.TestCase):
         subprocess.run(["git", "worktree", "add", "-q", "--detach", work, "up"],
                        cwd=self.fixture.repo, check=True)
         try:
-            for patchset in ("set-ok", "set-drift", "set-generated"):
+            for patchset in ("set-ok", "set-drift", "set-provisional", "set-generated"):
                 directory = self.fixture.path("patches/" + patchset)
                 for name in sorted(os.listdir(directory)):
                     if name.endswith(".patch"):
