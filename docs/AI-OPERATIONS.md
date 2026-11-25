@@ -92,6 +92,67 @@ patch files only after every rewrite has been verified.
 byte (C) order. The report has a WARN section that lists patchsets whose order
 would differ under a locale-aware glob sort.
 
+## Harvest GE-Proton patch changes
+
+Run this before porting GE patches by hand:
+
+```bash
+python scripts/ge-harvest.py --ge-repo ../proton-ge-custom --report harvest.md --json harvest.json [--write]
+python scripts/tests/test_ge_harvest.py
+```
+
+The defaults are `--ge-new ge/master` (else `upstream/master`),
+`--ge-old $(git -C <ge-repo> merge-base HEAD <ge-new>)`, and `--author` from
+`git config`. The tool reads the `Ported from GE-Proton <path>` line in every
+`definition` to map GE files and directories to patchsets. It then classifies
+each `*.patch` that changed under GE `patches/` in that range. It replays
+the stack once on the base tree (`HEAD`, or `--patches-ref`) in a temporary
+index, and evaluates every item at its own place in the stack.
+
+- `UPDATE-APPLIES`: GE-new applies strictly where the wine-side file sits,
+  and the wine-side file equals GE-old. It replaces the file verbatim.
+- `UPDATE-MERGED`: the wine-side file differs from GE-old (a local rebase or
+  edit). The tool merges the three patch texts with `git merge-file`, with
+  ours = the wine-side file, base = GE-old and theirs = GE-new. Hunk line
+  numbers and index lines are normalized first. The merged text is applied
+  with `--recount`, and the body is regenerated from the trees, keeping the
+  wine-side header and trailer. GE-new cannot be built as a tree on this
+  stack, so the merge works on patch text, not on trees. Hunks are placed by
+  search, and duplicated context can land on its first match, so review
+  these files.
+- `UPDATE-CONFLICT`: the report carries the GE delta (GE-old vs GE-new patch
+  text) for a hand port.
+- `NEW-APPLIES` / `NEW-CONFLICT`: a new file inside a mapped GE directory
+  goes into that patchset in name order. An unmapped wine-side file becomes a
+  proposed patchset: `ge-pending-<slug>`, `ge-game-<slug>`, `ge-proton-<slug>`,
+  `ge-staging-<dir>` (one patchset per wine-staging directory), or
+  `ge-<dir>-<file>` (as for bluetooth-le and llvm-libc). A series.conf line
+  that already names the patchset (an active entry without a directory, or a
+  commented `NEEDS-REBASE` entry) is used as its slot, and `--write`
+  uncomments it. Otherwise the proposal goes after the last entry of its
+  family, then at the end of the series if that fails. New items are tried in
+  GE protonprep order, each on top of the ones accepted before it.
+- `NEW-UNUSED`: GE carries the file, but protonprep does not apply it.
+- `DELETED-IN-GE`: a retirement candidate, with the GE commit that deleted
+  it. Nothing is disabled (R1). Check absorption with `retarget-patches.py`.
+- `INACTIVE`: the counterpart is commented out in series.conf or lives under
+  `<patchset>/disabled/`.
+- `UNMATCHED`: no wine-side counterpart was found, or GE modified a file that
+  was never ported.
+- `PROTON-SIDE`: the patch touches paths that are not in the wine tree
+  (dxvk, vkd3d-proton, lsteamclient, steam_helper, ...). Report only.
+- `UP-TO-DATE` / `IGNORED`: nothing to do.
+
+Before anything is written, every accepted change is replayed with the whole
+stack in one cumulative strict chain. If a later patch breaks, the tool
+demotes the nearest accepted change that shares files with it and replays
+again. `--write` touches only the `*-APPLIES` and `UPDATE-MERGED` results, so
+`scripts/apply-patches.sh --check` stays green. `--out-dir DIR` writes the
+same files under `DIR/patches/` instead. Exit codes follow tool 1: 0 =
+nothing left for a human, 1 = UPDATE-CONFLICT, NEW-CONFLICT, UNMATCHED,
+INACTIVE or DELETED-IN-GE items remain, 2 = usage or precondition error,
+3 = internal error. Use `--allow-old-fail` for history that was not strict.
+
 ## Safety invariants (non-negotiable)
 
 - Never `push --force` on `master` or `upstream`. Conflict branches are
