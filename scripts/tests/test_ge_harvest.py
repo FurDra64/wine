@@ -91,6 +91,11 @@ class Repo:
         return data
 
 
+def twin_lines():
+    return "".join("dup %02d\n" % (i - 15 if 25 <= i <= 31 else i) if 10 <= i <= 16 or 25 <= i <= 31
+                   else "t line %02d\n" % i for i in range(1, 41))
+
+
 def as_mail(subject, diff):
     return (b"From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001\n"
             b"From: fixture <>\n"
@@ -120,6 +125,7 @@ ge-game-gone
 ge-pending-alpha
 ge-pending-shift
 ge-pending-drift
+ge-pending-twin
 ge-pending-clash
 # NEEDS-REBASE 2026-01-01: ge-pending-slot
 # NEEDS-REBASE 2026-01-01: ge-pending-sleepy
@@ -136,6 +142,7 @@ def build(root):
     wine = Repo(os.path.join(root, "wine"))
     for tag in "abcdefgh":
         wine.write(tag + ".txt", numbered_lines(tag))
+    wine.write("t.txt", twin_lines())
     wine.commit("upstream")
 
     p = {}
@@ -144,6 +151,9 @@ def build(root):
     p["shift-old"] = as_mail("shift", wine.diff_of({"a.txt": {15: "shift"}}))
     p["shift-wine"] = as_mail("shift", wine.diff_of({"a.txt": {15: "shift", 18: "shift local"}}))
     p["shift-new"] = p["shift-old"].replace(b"@@ -12,7 +12,7 @@", b"@@ -40,7 +40,7 @@")
+    p["twin-old"] = as_mail("twin", wine.diff_of({"t.txt": {28: "ge old 28"}}))
+    p["twin-wine"] = as_mail("twin", wine.diff_of({"t.txt": {20: "wine 20", 28: "ge old 28"}}))
+    p["twin-new"] = as_mail("twin", wine.diff_of({"t.txt": {28: "ge old 28", 36: "ge new 36"}}))
     p["drift-old"] = as_mail("drift", wine.diff_of({"b.txt": {10: "drift old"}}))
     p["drift-wine"] = as_mail("drift", wine.diff_of({"b.txt": {8: "local tweak", 10: "drift old"}}))
     p["drift-new"] = as_mail("drift", wine.diff_of({"b.txt": {10: "drift old", 22: "ge addition"}}))
@@ -180,6 +190,7 @@ def build(root):
         "ge-game-gone": ("game-patches/gone.patch", {"0001-gone.patch": p["gone"]}),
         "ge-pending-alpha": ("wine-hotfixes/pending/alpha.patch", {"0001-alpha.patch": p["alpha-old"]}),
         "ge-pending-shift": ("wine-hotfixes/pending/shift.patch", {"0001-shift.patch": p["shift-wine"]}),
+        "ge-pending-twin": ("wine-hotfixes/pending/twin.patch", {"0001-twin.patch": p["twin-wine"]}),
         "ge-pending-drift": ("wine-hotfixes/pending/drift.patch", {"0001-drift.patch": p["drift-wine"]}),
         "ge-pending-clash": ("wine-hotfixes/pending/clash.patch", {"0001-clash.patch": p["clash-old"]}),
         "ge-pending-sleepy": ("wine-hotfixes/pending/sleepy.patch",
@@ -202,6 +213,7 @@ def build(root):
         "wine-hotfixes/pending/alpha.patch": p["alpha-old"],
         "wine-hotfixes/pending/drift.patch": p["drift-old"],
         "wine-hotfixes/pending/shift.patch": p["shift-old"],
+        "wine-hotfixes/pending/twin.patch": p["twin-old"],
         "wine-hotfixes/pending/clash.patch": p["clash-old"],
         "wine-hotfixes/pending/sleepy.patch": p["sleepy-old"],
         "wine-hotfixes/pending/never.patch": p["never-old"],
@@ -222,6 +234,7 @@ def build(root):
         "dirset/0005-one.patch": p["one"],
         "wine-hotfixes/pending/drift.patch": p["drift-new"],
         "wine-hotfixes/pending/shift.patch": p["shift-new"],
+        "wine-hotfixes/pending/twin.patch": p["twin-new"],
         "wine-hotfixes/pending/clash.patch": p["clash-new"],
         "wine-hotfixes/pending/stale.patch": p["stale"],
         "wine-hotfixes/pending/breaker.patch": p["breaker"],
@@ -278,6 +291,7 @@ class GeHarvestTest(unittest.TestCase):
             "wine-hotfixes/pending/alpha.patch": "UPDATE-APPLIES",
             "wine-hotfixes/pending/drift.patch": "UPDATE-MERGED",
             "wine-hotfixes/pending/shift.patch": "UP-TO-DATE",
+            "wine-hotfixes/pending/twin.patch": "UPDATE-CONFLICT",
             "wine-hotfixes/pending/clash.patch": "UPDATE-CONFLICT",
             "dirset/0002-two.patch": "UPDATE-APPLIES",
             "dirset/0005-one.patch": "UPDATE-APPLIES",
@@ -367,6 +381,11 @@ class GeHarvestTest(unittest.TestCase):
 
     def test_added_file_never_matches_by_subject(self):
         self.assertEqual(self.status["dirset/0007-sub.patch"]["target_file"], "0007-sub.patch")
+
+    def test_merge_refuses_moved_duplicate_hunk(self):
+        self.assertIn("would move from line 25 to 10",
+                      self.status["wine-hotfixes/pending/twin.patch"]["detail"])
+        self.assertFalse(os.path.exists(os.path.join(self.out, "patches", "ge-pending-twin")))
 
     def test_conflict_lists_paths(self):
         self.assertEqual(self.status["dirset/0004-bad.patch"]["conflicts"], ["d.txt"])

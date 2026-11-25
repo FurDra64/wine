@@ -730,7 +730,7 @@ class Harvest:
         if merged == normalized_body(N) and tree_n is not None:
             self.accept_update(item, N, "UPDATE-APPLIES", notes + ["GE-new already carries the wine-side edits"])
             return
-        result, why, tree = self.rebuild(prev, W, N, merged)
+        result, why, tree = self.rebuild(prev, W, O, N, merged, after)
         if result is None:
             self.update_conflict(item, paths_n, notes + [why])
             return
@@ -739,7 +739,7 @@ class Harvest:
             return
         self.accept_update(item, result, "UPDATE-MERGED", notes + ["review: hunks were placed by search"])
 
-    def rebuild(self, prev, W, N, merged_body):
+    def rebuild(self, prev, W, O, N, merged_body, after):
         wine = self.wine
         if rt.is_multi_commit(W) or rt.is_multi_commit(N):
             return None, "multi-commit patch file, merge by hand", None
@@ -751,6 +751,11 @@ class Harvest:
         foreign = [p for p in wine.git.changed_paths(prev, tree) if p not in allowed]
         if foreign:
             return None, "merge changed paths neither side touches: " + ", ".join(foreign), None
+        why = moved_hunk(wine.git, prev, W, merged_body)
+        if why:
+            return None, why, None
+        if tree_delta(wine.git, after, tree) != patch_delta(O, N):
+            return None, "merge result differs from GE's own old-to-new line delta", None
         renames = re.search(rb"(?m)^(rename|copy) from ", N) is not None
         body = rt.render_body(wine.git, prev, tree, renames, rt.abbrev_of(N))
         data = header + body + trailer
@@ -911,6 +916,106 @@ class Harvest:
                for p in self.proposals.values()):
             files.append(("patches/series.conf", self.series_text()))
         return files, removed
+
+
+def hunks_of(body):
+    out, cur_file, cur = [], None, None
+    for line in body.split(b"\n"):
+        if line.startswith(b"diff --git "):
+            m = re.match(rb"^diff --git a/\S+ b/(\S+)", line)
+            cur_file, cur = (m.group(1) if m else None), None
+            continue
+        if cur is None and line.startswith(b"+++ "):
+            if line[4:].startswith(b"b/"):
+                cur_file = line[6:].split(b"\t")[0].strip()
+            continue
+        m = HUNK_FULL.match(line)
+        if m:
+            cur = []
+            out.append((cur_file, int(m.group(1)), cur))
+            continue
+        if cur is not None and line[:1] in (b" ", b"+", b"-", b"\\"):
+            cur.append(line)
+        else:
+            cur = None
+    return [(f, start, tuple(lines)) for f, start, lines in out]
+
+
+def line_net(body):
+    net = collections.defaultdict(collections.Counter)
+    for f, _, lines in hunks_of(rt.split_patch(body)[1] if body else b""):
+        for line in lines:
+            if line[:1] == b"+":
+                net[f][line[1:].rstrip()] += 1
+            elif line[:1] == b"-":
+                net[f][line[1:].rstrip()] -= 1
+    return net
+
+
+def signed(counter_by_file):
+    out = {}
+    for f, c in counter_by_file.items():
+        kept = {k: v for k, v in c.items() if v}
+        if kept:
+            out[f] = kept
+    return out
+
+
+def patch_delta(old, new):
+    a, b = line_net(old), line_net(new)
+    out = collections.defaultdict(collections.Counter)
+    for f in set(a) | set(b):
+        for k in set(a[f]) | set(b[f]):
+            out[f][k] = b[f][k] - a[f][k]
+    return signed(out)
+
+
+def blob_lines(git, tree, path):
+    p = git.run(["cat-file", "blob", "%s:%s" % (tree, path)], ok=None)
+    if p.returncode != 0:
+        return []
+    data = p.stdout[:-1] if p.stdout.endswith(b"\n") else p.stdout
+    return data.split(b"\n") if data else []
+
+
+def tree_delta(git, a, b):
+    out = collections.defaultdict(collections.Counter)
+    for path in git.changed_paths(a, b):
+        key = path.encode("utf-8", "surrogateescape")
+        for line in blob_lines(git, b, path):
+            out[key][line.rstrip()] += 1
+        for line in blob_lines(git, a, path):
+            out[key][line.rstrip()] -= 1
+    return signed(out)
+
+
+def find_pos(lines, pre, hint):
+    limit = len(lines) - len(pre)
+    for off in range(0, max(limit, 0) + abs(hint) + 2):
+        for cand in ((hint,) if off == 0 else (hint - off, hint + off)):
+            if 0 <= cand <= limit and lines[cand:cand + len(pre)] == pre:
+                return cand
+    return None
+
+
+def moved_hunk(git, prev, W, merged_body):
+    wine_hunks = {}
+    for f, start, lines in hunks_of(rt.split_patch(W)[1]):
+        wine_hunks.setdefault((f, lines), start)
+    for f, _, lines in hunks_of(merged_body):
+        if (f, lines) not in wine_hunks:
+            continue
+        pre = [l[1:] for l in lines if l[:1] in (b" ", b"-")]
+        if not pre:
+            continue
+        text = blob_lines(git, prev, f.decode("utf-8", "surrogateescape"))
+        was = find_pos(text, pre, max(wine_hunks[(f, lines)] - 1, 0))
+        now = find_pos(text, pre, 1)
+        if was is None or was != now:
+            return "unchanged wine-side hunk of %s would move from line %s to %s" % (
+                f.decode("utf-8", "replace"), "?" if was is None else was + 1,
+                "?" if now is None else now + 1)
+    return ""
 
 
 def merge_text(tmpdir, ours, base, theirs):
