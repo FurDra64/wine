@@ -302,7 +302,7 @@ class Retargeter:
             p.old_next = cur
 
     def merge(self, base, ours, theirs):
-        p = self.git.run(["merge-tree", "--write-tree", "-z", "--name-only",
+        p = self.git.run(["merge-tree", "--write-tree", "-z", "--name-only", "-X", "no-renames",
                           "--merge-base=" + base, ours, theirs], ok=(0, 1))
         fields = p.stdout.split(b"\0")
         tree = fields[0].decode().strip()
@@ -358,6 +358,14 @@ class Retargeter:
             if gen_touched and changes_protocol:
                 tree = self._fix_generated(tree, cur, gen_touched)
                 p.generated = True
+            allowed = set(p.touched) | set(GENERATED)
+            foreign = [x for x in git.changed_paths(cur, tree) if x not in allowed]
+            if foreign:
+                p.status = "CONFLICT"
+                p.conflicts = foreign
+                p.detail = "merge changed paths the patch does not touch: " + ", ".join(foreign)
+                skipped.append((p, touched_ng))
+                continue
             if tree == cur:
                 p.status = "ABSORBED"
                 self._evidence(p)
@@ -520,7 +528,8 @@ def write_json(path, args, stack, counts, final_tree):
 
 def overlay_tree(git, base, ov, new_base):
     up = git.out(["merge-base", ov, new_base]).decode().strip()
-    p = git.run(["merge-tree", "--write-tree", "-z", "--name-only", "--merge-base=" + up,
+    p = git.run(["merge-tree", "--write-tree", "-z", "--name-only", "-X", "no-renames",
+                 "--merge-base=" + up,
                  base, ov], ok=(0, 1))
     if p.returncode != 0:
         raise Fatal("overlay %s does not merge cleanly onto %s" % (ov[:12], base[:12]))

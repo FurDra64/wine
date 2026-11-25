@@ -101,6 +101,7 @@ PATCH_PLAN = (
     ("set-blocked", "0001-blocked.patch"),
     ("set-provisional", "0001-provisional.patch"),
     ("set-generated", "0001-generated.patch"),
+    ("set-renamed", "0001-renamed.patch"),
 )
 ABSORBED_LINE = "upstream adopted this distinctive replacement line"
 
@@ -122,9 +123,15 @@ def apply_patch_change(fixture, patchset):
         fixture.write("server/protocol.def",
                       fixture.read("server/protocol.def") + request_block("fixture_patch_request"))
         fixture.make_requests()
+    elif patchset == "set-renamed":
+        fixture.write("dlls/old/Makefile.in",
+                      replace_line(fixture.read("dlls/old/Makefile.in"), 3, "line 03 patched"))
 
 
 def apply_upstream_change(fixture):
+    moved = replace_line(fixture.read("dlls/old/Makefile.in"), 20, "line 20 upstream")
+    os.remove(fixture.path("dlls/old/Makefile.in"))
+    fixture.write("dlls/new/Makefile.in", moved)
     fixture.write("a.txt", replace_line(fixture.read("a.txt"), 8, "a line 08 upstream"))
     fixture.write("b.txt", replace_line(fixture.read("b.txt"), 5, ABSORBED_LINE))
     upstream_c = replace_line(fixture.read("c.txt"), 5, "c line 05 upstream side")
@@ -139,6 +146,7 @@ def build_fixture(root):
     fixture = Fixture(root)
     for name in "abcd":
         fixture.write(name + ".txt", numbered_lines(name))
+    fixture.write("dlls/old/Makefile.in", numbered_lines("makefile", 24))
     copy_server_files(fixture)
     fixture.make_requests()
     old_base = fixture.commit("upstream base")
@@ -188,7 +196,8 @@ class RetargetPatchesTest(unittest.TestCase):
         excluded_dir = os.path.join(cls.root, "out-excluded")
         os.makedirs(excluded_dir)
         cls.excluded_code, cls.excluded_report = run_tool(
-            cls.fixture, excluded_dir, "-W", "set-conflict", "-W", "set-blocked")
+            cls.fixture, excluded_dir, "-W", "set-conflict", "-W", "set-blocked",
+            "-W", "set-renamed")
         cls.code, cls.report = run_tool(cls.fixture, cls.out_dir, "--write",
                                          "--write-provisional")
         cls.status = {p["patchset"]: p for p in cls.report["patches"]}
@@ -200,7 +209,8 @@ class RetargetPatchesTest(unittest.TestCase):
     def test_statuses(self):
         expected = {"set-ok": "OK", "set-drift": "RETARGETED", "set-absorbed": "ABSORBED",
                     "set-conflict": "CONFLICT", "set-blocked": "BLOCKED-BY",
-                    "set-provisional": "RETARGETED", "set-generated": "RETARGETED"}
+                    "set-provisional": "RETARGETED", "set-generated": "RETARGETED",
+                    "set-renamed": "CONFLICT"}
         self.assertEqual({k: v["status"] for k, v in self.status.items()}, expected)
         self.assertEqual(self.code, 1)
 
@@ -211,6 +221,19 @@ class RetargetPatchesTest(unittest.TestCase):
         self.assertEqual(self.status["set-blocked"]["blocked_by"],
                          ["set-conflict/0001-conflict.patch"])
         self.assertEqual(self.status["set-conflict"]["conflicts"], ["c.txt"])
+
+    def test_upstream_rename_does_not_move_change(self):
+        renamed = self.status["set-renamed"]
+        self.assertEqual(renamed["status"], "CONFLICT")
+        self.assertNotIn("dlls/new/Makefile.in", renamed["conflicts"])
+        listing = subprocess.run(["git", "ls-tree", "-r", "--name-only", self.report["final_tree"]],
+                                 cwd=self.fixture.repo, check=True,
+                                 stdout=subprocess.PIPE).stdout.decode()
+        moved = subprocess.run(["git", "show", self.report["final_tree"] + ":dlls/new/Makefile.in"],
+                               cwd=self.fixture.repo, check=True,
+                               stdout=subprocess.PIPE).stdout.decode()
+        self.assertNotIn("dlls/old/Makefile.in", listing)
+        self.assertNotIn("line 03 patched", moved)
 
     def test_provisional_flagged(self):
         self.assertTrue(self.status["set-provisional"]["provisional"])
