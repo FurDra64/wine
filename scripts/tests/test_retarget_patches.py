@@ -3,6 +3,7 @@ import json
 import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -13,6 +14,13 @@ REPO_ROOT = os.path.dirname(SCRIPTS_DIR)
 TOOL = os.path.join(SCRIPTS_DIR, "retarget-patches.py")
 SERVER_FILES = ("server/protocol.def", "include/wine/server_protocol.h",
                 "server/request_handlers.h", "server/request_trace.h", "tools/make_requests")
+
+
+def remove_tree(path):
+    def make_writable_and_retry(function, target, _):
+        os.chmod(target, stat.S_IWRITE)
+        function(target)
+    shutil.rmtree(path, onerror=make_writable_and_retry)
 
 
 def numbered_lines(tag, count=20):
@@ -187,7 +195,7 @@ class RetargetPatchesTest(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        shutil.rmtree(cls.root, ignore_errors=True)
+        remove_tree(cls.root)
 
     def test_statuses(self):
         expected = {"set-ok": "OK", "set-drift": "RETARGETED", "set-absorbed": "ABSORBED",
