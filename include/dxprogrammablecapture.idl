@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 Zhiyi Zhang for CodeWeavers
+ * Copyright (C) 2026 Biswapriyo Nath
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -14,13 +14,16 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
- */
+*/
 
-#ifndef __VKD3D_UTF8_H
-#define __VKD3D_UTF8_H
+import "oaidl.idl";
 
-#include "vkd3d_common.h"
-
-char *vkd3d_strdup_w_utf8(const WCHAR *wstr, size_t wchar_size);
-
-#endif /* __VKD3D_UTF8_H */
+[
+    uuid(9f251514-9d4d-4902-9d60-18988ab7d4b5),
+    object
+]
+interface IDXGraphicsAnalysis : IUnknown
+{
+    void BeginCapture();
+    void EndCapture();
+}

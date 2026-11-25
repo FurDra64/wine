@@ -219,11 +219,6 @@ C_ASSERT( sizeof( struct syscall_frame ) == 0x330 );
 #define ESR_ELx_ISS_DFSC(esr)           ((esr) & 0x3f)
 #define ESR_ELx_ISS_DFSC_ALIGN_FAULT    0x21
 
-/* Preserve all CPSR bits not covered by user context in signal handlers.
- * Additionally, preserve the host SSBS bit, which is allowed to be set on
- * Windows, but is volatile and restored on kernel transition anyway. */
-static const ULONG cpsr_host_mask = ~cpsr_user_mask | 0x1000;
-
 /***********************************************************************
  *           context_init_empty_xstate
  *
@@ -359,7 +354,7 @@ static void restore_context( struct thread_data *data, const CONTEXT *context, u
 
     FP_sig(sigcontext)     = context->Fp;   /* Frame pointer */
     LR_sig(sigcontext)     = context->Lr;   /* Link register */
-    PSTATE_sig(sigcontext) = (PSTATE_sig(sigcontext) & cpsr_host_mask) | (context->Cpsr & ~cpsr_host_mask);
+    PSTATE_sig(sigcontext) = (PSTATE_sig(sigcontext) & ~cpsr_user_mask) | (context->Cpsr & cpsr_user_mask);
     for (i = 0; i <= 28; i++) REGn_sig( i, sigcontext ) = context->X[i];
     restore_fpu( context, sigcontext );
 }
@@ -604,7 +599,20 @@ NTSTATUS set_thread_wow64_context( HANDLE handle, const void *ctx, ULONG size )
         {
             memcpy( &wow_frame->FloatSave, &context->FloatSave, sizeof(context->FloatSave) );
         }
-        /* FIXME: CONTEXT_I386_XSTATE */
+        if (flags & CONTEXT_I386_XSTATE)
+        {
+            CONTEXT_EX *xctx = (CONTEXT_EX *)(context + 1);
+            CONTEXT_EX *wow_xctx = (CONTEXT_EX *)(wow_frame + 1);
+            XSTATE *xs = (XSTATE *)((char *)xctx + xctx->XState.Offset);
+            XSTATE *wow_xs = (XSTATE *)((char *)wow_xctx + wow_xctx->XState.Offset);
+
+            if (xs->Mask & XSTATE_MASK_AVX)
+            {
+                wow_xs->Mask = XSTATE_MASK_AVX;
+                wow_xs->YmmContext = xs->YmmContext;
+            }
+            else wow_xs->Mask = 0;
+        }
         break;
     }
 
@@ -635,7 +643,7 @@ NTSTATUS set_thread_wow64_context( HANDLE handle, const void *ctx, ULONG size )
             wow_frame->Sp = context->Sp;
             wow_frame->Lr = context->Lr;
             wow_frame->Pc = context->Pc & ~1;
-            wow_frame->Cpsr = context->Cpsr & cpsr_user_mask;
+            wow_frame->Cpsr = context->Cpsr;
             if (context->Cpsr & 0x20) wow_frame->Pc |= 1; /* thumb */
         }
         if (flags & CONTEXT_FLOATING_POINT)
@@ -730,7 +738,27 @@ NTSTATUS get_thread_wow64_context( HANDLE handle, void *ctx, ULONG size )
             context->Dr6 = wow_frame->Dr6;
             context->Dr7 = wow_frame->Dr7;
         }
-        /* FIXME: CONTEXT_I386_XSTATE */
+        if (needed_flags & CONTEXT_I386_XSTATE)
+        {
+            CONTEXT_EX *xctx = (CONTEXT_EX *)(context + 1);
+            CONTEXT_EX *wow_xctx = (CONTEXT_EX *)(wow_frame + 1);
+            XSTATE *xs = (XSTATE *)((char *)xctx + xctx->XState.Offset);
+            XSTATE *wow_xs = (XSTATE *)((char *)wow_xctx + wow_xctx->XState.Offset);
+
+            if (xctx->XState.Length < sizeof(XSAVE_AREA_HEADER) || xctx->XState.Length > sizeof(XSTATE))
+                return STATUS_INVALID_PARAMETER;
+
+            xs->Mask &= XSTATE_MASK_AVX;
+            xs->CompactionMask = 0;
+            memset( xs->Reserved, 0, sizeof(xs->Reserved) );
+            if (xs->Mask)
+            {
+                if (xctx->XState.Length < sizeof(XSTATE)) return STATUS_BUFFER_OVERFLOW;
+                if (wow_xs->Mask & XSTATE_MASK_AVX) xs->YmmContext = wow_xs->YmmContext;
+                else memset( &xs->YmmContext, 0, sizeof(xs->YmmContext) );
+            }
+            context->ContextFlags |= CONTEXT_I386_XSTATE;
+        }
         set_context_exception_reporting_flags( &context->ContextFlags, CONTEXT_SERVICE_ACTIVE );
         break;
     }
@@ -1529,7 +1557,7 @@ static void usr2_handler( int signal, siginfo_t *siginfo, void *_sigcontext )
     }
     FP_sig(sigcontext)     = frame->fp;
     LR_sig(sigcontext)     = frame->lr;
-    PSTATE_sig(sigcontext) = (PSTATE_sig(sigcontext) & cpsr_host_mask) | frame->cpsr;
+    PSTATE_sig(sigcontext) = (PSTATE_sig(sigcontext) & ~cpsr_user_mask) | frame->cpsr;
     for (i = 0; i <= 28; i++) REGn_sig( i, sigcontext ) = frame->x[i];
 
 #ifdef linux
@@ -1644,7 +1672,7 @@ void init_syscall_frame( LPTHREAD_START_ROUTINE entry, void *arg, TEB *teb )
     if ((i386_context = get_cpu_area( data, IMAGE_FILE_MACHINE_I386 )))
     {
         XMM_SAVE_AREA32 *fpu = (XMM_SAVE_AREA32 *)i386_context->ExtendedRegisters;
-        i386_context->ContextFlags = CONTEXT_I386_ALL;
+        i386_context->ContextFlags = CONTEXT_I386_ALL | CONTEXT_I386_XSTATE;
         i386_context->Eax = (ULONG_PTR)entry;
         i386_context->Ebx = (arg == peb ? (ULONG_PTR)wow_peb : (ULONG_PTR)arg);
         i386_context->Esp = get_wow_teb( teb )->Tib.StackBase - 16;
