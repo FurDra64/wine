@@ -257,6 +257,7 @@ def build(root):
         "wine-hotfixes/wine-staging/Foo_Bar/0001-x.patch": p["staging-x"],
         "wine-hotfixes/wine-staging/Foo_Bar/0002-y.patch": p["staging-y"],
         "dxvk/foo.patch": PROTON_PATCH,
+        "wine-hotfixes/pending/ghost.patch": PROTON_PATCH,
     }
     for rel, data in new_files.items():
         ge.write("patches/" + rel, data)
@@ -332,6 +333,7 @@ class GeHarvestTest(unittest.TestCase):
             "wine-hotfixes/pending/never.patch": "UNMATCHED",
             "game-patches/gone.patch": "DELETED-IN-GE",
             "dxvk/foo.patch": "PROTON-SIDE",
+            "wine-hotfixes/pending/ghost.patch": "NEW-CONFLICT",
         }
         self.assertEqual({k: v["status"] for k, v in self.status.items()}, expected)
         self.assertEqual(self.code, 1)
@@ -380,6 +382,10 @@ class GeHarvestTest(unittest.TestCase):
         self.assertNotIn("# NEEDS-REBASE 2026-01-01: ge-pending-slot", series)
         self.assertNotIn("ge-pending-breaker", series)
         self.assertLess(series.index("ge-pending-slot"), series.index("local-tail"))
+
+    def test_wine_side_dirs_are_never_proton_side(self):
+        self.assertIn("targets files missing in wine",
+                      self.status["wine-hotfixes/pending/ghost.patch"]["detail"])
 
     def test_name_collisions_fail_closed(self):
         for rel in ("wine-hotfixes/pending/0001-dup.patch", "wine-hotfixes/pending/dup.patch",

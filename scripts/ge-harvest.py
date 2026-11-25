@@ -40,6 +40,7 @@ TAGGED_ENTRY = re.compile(r"^\s*#+\s*[A-Z][A-Z0-9-]*\b.*:\s*(%s)\s*$" % SERIES_N
 HUNK_FULL = re.compile(rb"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
 APPLY_ERROR_PATH = re.compile(r"^error: (?:patch failed: )?(.+?)(?::\d+)?(?:: .*)?$")
 PROTONPREP = "patches/protonprep-valve-staging.sh"
+WINE_ROOTS = ("wine-hotfixes", "game-patches", "proton", "proton-ds5-haptic", "ge-video-rework")
 PROTONPREP_FILE = re.compile(r"\.\./patches/([^\"'\s]+\.patch)")
 PROTONPREP_DIR = re.compile(r"(?:apply_all_in_dir\s+[\"']?|for \w+ in )\.\./patches/([^\"'\s*]+?)/?(?:\*\.patch)?[\"']?(?:;|\s|$)")
 
@@ -389,6 +390,32 @@ def protonprep_order(ge, ref):
     return order
 
 
+def protonprep_wine_roots(ge, ref):
+    roots = set(WINE_ROOTS)
+    text = rt.PatchSource(ge, ref).read(PROTONPREP)
+    if text is None:
+        return roots
+    dirs = []
+    for line in text.decode("utf-8", "replace").split("\n"):
+        words = line.split("#", 1)[0].split()
+        if len(words) >= 2 and words[0] in ("pushd", "cd"):
+            if words[0] == "cd" and dirs:
+                dirs.pop()
+            dirs.append(words[1].strip("\"'").rstrip("/"))
+            continue
+        if words[:1] == ["popd"] and dirs:
+            dirs.pop()
+            continue
+        if not dirs or dirs[-1] != "wine":
+            continue
+        for m in PROTONPREP_FILE.finditer(line):
+            roots.add(m.group(1).split("/")[0])
+        m = PROTONPREP_DIR.search(line)
+        if m:
+            roots.add(m.group(1).split("/")[0])
+    return roots
+
+
 def prep_index(order, rel):
     if order is None:
         return 0
@@ -424,6 +451,7 @@ class Harvest:
         self.files_map, self.dirs_map, dup = provenance_map(wine)
         self.warnings = list(wine.warnings) + dup
         self.prep = protonprep_order(ge, args.ge_new)
+        self.wine_roots = protonprep_wine_roots(ge, args.ge_new)
         self.final_tree = None
 
     def collect(self):
@@ -486,7 +514,11 @@ class Harvest:
             else:
                 data = item.new if item.new is not None else item.old
                 why = proton_side(data, top_level, known_paths)
-                if why:
+                wine_side = item.rel.split("/")[0] in self.wine_roots
+                if why and wine_side and item.change == "A":
+                    item.status = "NEW-CONFLICT"
+                    item.detail = "targets files missing in wine (%s)" % why
+                elif why and not wine_side:
                     item.status, item.detail = "PROTON-SIDE", why
                 elif item.change == "A":
                     self.propose(item)
