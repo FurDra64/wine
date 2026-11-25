@@ -1920,14 +1920,6 @@ index 1b431fe125fda6701b57502bb2dfe75afe25bdb4..975fe9c3a610c16360d0b696164a97a7
  
  /* display manager interface, used to initialize display device registry data */
  
-@@ -415,6 +417,7 @@ struct user_driver_funcs
-     LRESULT (*pDesktopWindowProc)(HWND,UINT,WPARAM,LPARAM);
-     void    (*pDestroyWindow)(HWND);
-     void    (*pFlashWindowEx)(FLASHWINFO*);
-+    BOOL    (*pHasWindowManager)(const char *);
-     void    (*pGetDC)(HDC,HWND,HWND,const RECT *,const RECT *,DWORD);
-     BOOL    (*pProcessEvents)(DWORD);
-     void    (*pReleaseDC)(HWND,HDC);
 diff --git a/include/wine/opengl_driver.h b/include/wine/opengl_driver.h
 index 38bdecd8d1d3ef8ddae9eca277cecb6486b7d4e9..3a910482dfb34e45ff76977ee596f4e93ca65068 100644
 --- a/include/wine/opengl_driver.h

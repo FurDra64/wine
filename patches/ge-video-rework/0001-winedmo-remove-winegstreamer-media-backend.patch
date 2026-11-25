@@ -45,6 +45,18 @@ index 70e9c2aabee..1d63a6ef085 100644
  HID support
  M:	Rémi Bernon <rbernon@codeweavers.com> @rbernon
  P:	Aric Stewart <aric@codeweavers.com> @aricstewart
+diff --git a/configure b/configure
+index 4de5bbc428ba..0c93f77b5f66 100755
+--- a/configure
++++ b/configure
+@@ -22892,7 +22892,6 @@
+ wine_fn_config_makefile dlls/winecoreaudio.drv enable_winecoreaudio_drv
+ wine_fn_config_makefile dlls/wined3d enable_wined3d
+ wine_fn_config_makefile dlls/winedmo enable_winedmo
+-wine_fn_config_makefile dlls/winegstreamer enable_winegstreamer
+ wine_fn_config_makefile dlls/winehid.sys enable_winehid_sys
+ wine_fn_config_makefile dlls/winemac.drv enable_winemac_drv
+ wine_fn_config_makefile dlls/winemapi enable_winemapi
 diff --git a/configure.ac b/configure.ac
 index 0396c398781..8d1a259a84e 100644
 --- a/configure.ac
