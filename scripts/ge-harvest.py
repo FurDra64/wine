@@ -27,10 +27,11 @@ rt = load_retarget()
 Fatal = rt.Fatal
 
 STATUSES = ["UPDATE-APPLIES", "UPDATE-MERGED", "UPDATE-CONFLICT", "UNMATCHED",
-            "NEW-APPLIES", "NEW-CONFLICT", "NEW-UNUSED", "DELETED-IN-GE", "INACTIVE",
+            "NEW-APPLIES", "NEW-CONFLICT", "NEW-UNUSED", "REPLACE-CONFLICT", "DELETED-IN-GE", "INACTIVE",
             "UP-TO-DATE", "IGNORED", "PROTON-SIDE"]
 WRITABLE = ("UPDATE-APPLIES", "UPDATE-MERGED", "NEW-APPLIES")
-LEFT_FOR_HUMAN = ("UPDATE-CONFLICT", "UNMATCHED", "NEW-CONFLICT", "DELETED-IN-GE", "INACTIVE")
+LEFT_FOR_HUMAN = ("UPDATE-CONFLICT", "UNMATCHED", "NEW-CONFLICT", "REPLACE-CONFLICT", "DELETED-IN-GE",
+                  "INACTIVE")
 PROVENANCE = re.compile(r"(?:Ported from GE-Proton|from proton-ge-custom)\s+(\S+)")
 PATCH_NAME = re.compile(r"^[0-9]{4}[a-z]?-.+\.patch$")
 LEADING_NUMBER = re.compile(r"^([0-9]+)([a-z]?)-(.+)$")
@@ -483,6 +484,37 @@ class Harvest:
                 else:
                     item.status = "UNMATCHED"
                     item.detail = "modified in GE but never ported (check AUDITED notes in series.conf)"
+
+    def hold_replacements(self):
+        deletions = {}
+        for item in self.items:
+            if item.change != "A" or not self.mapped_dir(item.rel):
+                continue
+            if item.status not in (None, "INACTIVE"):
+                continue
+            commit = self.ge.out(["log", "--diff-filter=A", "--format=%H", "-1",
+                                  "%s..%s" % (self.args.ge_old, self.args.ge_new), "--",
+                                  "patches/" + item.rel]).decode().strip()
+            if not commit:
+                continue
+            if commit not in deletions:
+                raw = self.ge.out(["show", "--format=", "--name-only", "--no-renames",
+                                   "--diff-filter=D", commit])
+                deletions[commit] = [x for x in raw.decode("utf-8", "surrogateescape").split("\n")
+                                     if x.endswith(".patch")]
+            renamed = {i.renamed_from for i in self.items if i.renamed_from}
+            gone = [p[len("patches/"):] for p in deletions[commit]
+                    if dir_of(p[len("patches/"):]) == dir_of(item.rel) and
+                    p[len("patches/"):] not in renamed]
+            if not gone:
+                continue
+            item.status, item.result = "REPLACE-CONFLICT", None
+            item.insert_key = None
+            item.detail = "GE commit %s deletes %s and adds this file in its place; port both together" % (
+                commit[:11], ", ".join(base_name(g) for g in gone))
+            for other in self.items:
+                if other.change == "D" and other.rel in gone:
+                    other.detail += "; replaced by %s in %s" % (base_name(item.rel), commit[:11])
 
     def classify_single(self, item, ps):
         item.patchset = ps
@@ -1170,6 +1202,7 @@ def run(args):
             known |= {p for p, new in touched_files(item.new or b"") if new}
         top_level = {p.split("/")[0] for p in known}
         harvest.classify(top_level, known)
+        harvest.hold_replacements()
         harvest.place_proposals()
         harvest.evaluate()
         if default_old:

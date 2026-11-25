@@ -167,6 +167,8 @@ def build(root):
     p["six-wine"] = as_mail("dir six", wine.diff_of({"e.txt": {28: "local six"}}))
     p["six-ge"] = as_mail("dir six", wine.diff_of({"e.txt": {28: "ge six"}}))
     p["seven"] = as_mail("dir two", wine.diff_of({"e.txt": {18: "dir seven"}}))
+    p["eight"] = as_mail("dir eight", wine.diff_of({"e.txt": {8: "old eight"}}))
+    p["repl"] = as_mail("dir replacement", wine.diff_of({"e.txt": {23: "replacement"}}))
     p["bad"] = as_mail("dir bad", wine.diff_of({"d.txt": {26: "dir bad"}},
                                                pre={"d.txt": {25: "ge context 25"}}))
     p["gone"] = as_mail("gone", wine.diff_of({"e.txt": {3: "gone"}}))
@@ -186,7 +188,8 @@ def build(root):
     sets = {
         "ge-dirset": ("patches/dirset/", {"0001-one.patch": p["one"],
                                           "0002-two-local.patch": p["two-old"],
-                                          "0006-local.patch": p["six-wine"]}),
+                                          "0006-local.patch": p["six-wine"],
+                                          "0008-old.patch": p["eight"]}),
         "ge-game-gone": ("game-patches/gone.patch", {"0001-gone.patch": p["gone"]}),
         "ge-pending-alpha": ("wine-hotfixes/pending/alpha.patch", {"0001-alpha.patch": p["alpha-old"]}),
         "ge-pending-shift": ("wine-hotfixes/pending/shift.patch", {"0001-shift.patch": p["shift-wine"]}),
@@ -209,6 +212,7 @@ def build(root):
     old_files = {
         "dirset/0001-one.patch": p["one"],
         "dirset/0002-two.patch": p["two-old"],
+        "dirset/0008-old.patch": p["eight"],
         "game-patches/gone.patch": p["gone"],
         "wine-hotfixes/pending/alpha.patch": p["alpha-old"],
         "wine-hotfixes/pending/drift.patch": p["drift-old"],
@@ -250,9 +254,12 @@ def build(root):
         ge.write("patches/" + rel, data)
     ge.remove("patches/dirset/0001-one.patch")
     c2 = ge.commit("ge more changes")
+    ge.remove("patches/dirset/0008-old.patch")
+    ge.write("patches/dirset/0009-repl.patch", p["repl"])
+    c2b = ge.commit("ge replaces eight")
     ge.remove("patches/game-patches/gone.patch")
     c3 = ge.commit("ge drops gone")
-    return wine, ge, p, (c0, c1, c2, c3)
+    return wine, ge, p, (c0, c1, c2, c2b, c3)
 
 
 def run_tool(wine, ge, out, ge_old, ge_new, *extra):
@@ -274,7 +281,7 @@ class GeHarvestTest(unittest.TestCase):
         cls.wine, cls.ge, cls.p, cls.commits = build(cls.root)
         cls.out = os.path.join(cls.root, "out")
         os.makedirs(cls.out)
-        cls.code, cls.report = run_tool(cls.wine, cls.ge, cls.out, cls.commits[0], cls.commits[3],
+        cls.code, cls.report = run_tool(cls.wine, cls.ge, cls.out, cls.commits[0], cls.commits[-1],
                                         "--out-dir", cls.out, "--write-inactive")
         cls.status = {i["ge_path"]: i for i in cls.report["items"]}
 
@@ -299,6 +306,8 @@ class GeHarvestTest(unittest.TestCase):
             "dirset/0004-bad.patch": "NEW-CONFLICT",
             "dirset/0006-local.patch": "UPDATE-CONFLICT",
             "dirset/0007-sub.patch": "NEW-APPLIES",
+            "dirset/0008-old.patch": "DELETED-IN-GE",
+            "dirset/0009-repl.patch": "REPLACE-CONFLICT",
             "wine-hotfixes/pending/fresh.patch": "NEW-APPLIES",
             "wine-hotfixes/pending/stale.patch": "NEW-CONFLICT",
             "wine-hotfixes/pending/breaker.patch": "NEW-CONFLICT",
@@ -371,7 +380,7 @@ class GeHarvestTest(unittest.TestCase):
         self.assertEqual(self.out_file("patches/ge-pending-sleepy/0001-sleepy.patch"), self.p["sleepy-new"])
 
     def test_deleted_names_ge_commit(self):
-        self.assertTrue(self.status["game-patches/gone.patch"]["deleted_by"].startswith(self.commits[3]))
+        self.assertTrue(self.status["game-patches/gone.patch"]["deleted_by"].startswith(self.commits[-1]))
 
     def test_added_counterpart_is_not_overwritten(self):
         item = self.status["dirset/0006-local.patch"]
@@ -386,6 +395,13 @@ class GeHarvestTest(unittest.TestCase):
         self.assertIn("would move from line 25 to 10",
                       self.status["wine-hotfixes/pending/twin.patch"]["detail"])
         self.assertFalse(os.path.exists(os.path.join(self.out, "patches", "ge-pending-twin")))
+
+    def test_replacement_is_held_back(self):
+        held = self.status["dirset/0009-repl.patch"]["detail"]
+        self.assertIn(self.commits[3][:11], held)
+        self.assertIn("0008-old.patch", held)
+        self.assertIn("replaced by 0009-repl.patch", self.status["dirset/0008-old.patch"]["detail"])
+        self.assertFalse(os.path.exists(os.path.join(self.out, "patches", "ge-dirset", "0009-repl.patch")))
 
     def test_conflict_lists_paths(self):
         self.assertEqual(self.status["dirset/0004-bad.patch"]["conflicts"], ["d.txt"])
