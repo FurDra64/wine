@@ -4,6 +4,7 @@ import argparse
 import collections
 import datetime
 import json
+import locale
 import os
 import re
 import shutil
@@ -428,6 +429,9 @@ class Retargeter:
             if tree == cur:
                 p.status = "ABSORBED"
                 self._evidence(p)
+                if near:
+                    p.provisional = True
+                    near_note = "provisional, no OBSOLETE suggestion: " + near_note
                 p.detail = "; ".join(x for x in (p.detail, near_note) if x)
                 continue
             self._rebuild(p, cur, tree)
@@ -539,11 +543,58 @@ def obsolete_lines(stack):
     for ps, ps_list in by_set.items():
         if all(p.status == "ABSORBED" for p in ps_list):
             ev = [p.evidence[0][:11] for p in ps_list if p.evidence]
-            if ev:
+            if any(p.provisional for p in ps_list):
+                out.append("(provisional absorption next to a skipped patch, no suggestion): %s" % ps)
+            elif ev:
                 out.append("# OBSOLETE %s (absorbed upstream; evidence %s): %s" % (
                     today, " ".join(sorted(set(ev))), ps))
             else:
                 out.append("(no evidence found, cannot retire under R1): %s" % ps)
+    return out
+
+
+def glibc_like_key(name):
+    return (re.sub(r"[^0-9A-Za-z]", "", name).lower(), name)
+
+
+def locale_sorter():
+    for candidate in ("en_US.UTF-8", "en_US.utf8", "C.UTF-8"):
+        try:
+            saved = locale.setlocale(locale.LC_COLLATE)
+            locale.setlocale(locale.LC_COLLATE, candidate)
+        except locale.Error:
+            continue
+        if candidate.startswith("C."):
+            locale.setlocale(locale.LC_COLLATE, saved)
+            return None
+
+        def sort_names(names, saved=saved, candidate=candidate):
+            locale.setlocale(locale.LC_COLLATE, candidate)
+            try:
+                return sorted(names, key=locale.strxfrm)
+            finally:
+                locale.setlocale(locale.LC_COLLATE, saved)
+        locale.setlocale(locale.LC_COLLATE, saved)
+        return sort_names
+    return None
+
+
+def collation_warnings(stack):
+    by_set = collections.OrderedDict()
+    for p in stack:
+        by_set.setdefault(p.patchset, []).append(p.name)
+    sort_by_locale = locale_sorter()
+    out = []
+    for ps, names in by_set.items():
+        orders = {"heuristic": sorted(names, key=glibc_like_key)}
+        if sort_by_locale:
+            orders["en_US"] = sort_by_locale(names)
+        for how, order in orders.items():
+            if order != names:
+                moved = [n for n, m in zip(names, order) if n != m]
+                out.append("%s: order differs under %s collation (%s)" % (
+                    ps, how, ", ".join(moved[:4]) + (" ..." if len(moved) > 4 else "")))
+                break
     return out
 
 
@@ -552,7 +603,7 @@ def summary(stack):
     return {s: c.get(s, 0) for s in STATUSES}
 
 
-def write_report(path, args, stack, counts, warnings):
+def write_report(path, args, stack, counts, warnings, collation):
     lines = ["# Patch retarget report", "",
              "- old base: `%s`" % args.old_base, "- new base: `%s`" % args.new_base,
              "- patches: %s" % (args.patches_ref or "working tree"), "",
@@ -560,6 +611,11 @@ def write_report(path, args, stack, counts, warnings):
     lines += ["| %s | %d |" % (s, n) for s, n in counts.items() if n]
     for w in warnings:
         lines.append("\nwarning: " + w)
+    if collation:
+        lines += ["", "## WARN: patch order depends on locale", "",
+                  "apply-patches.sh sorts with the shell glob, which follows the locale. "
+                  "This tool uses byte (C) order. These patchsets sort differently:", ""]
+        lines += ["- " + w for w in collation]
     lines += ["", "| patchset | file | status | detail |", "|---|---|---|---|"]
     for p in stack:
         if p.status == "OK" and not p.detail and not args.report_ok:
@@ -575,7 +631,7 @@ def write_report(path, args, stack, counts, warnings):
         f.write("\n".join(lines) + "\n")
 
 
-def write_json(path, args, stack, counts, final_tree):
+def write_json(path, args, stack, counts, final_tree, collation):
     doc = {"old_base": args.old_base, "new_base": args.new_base,
            "patches_ref": args.patches_ref, "counts": counts, "final_tree": final_tree,
            "patches": [{"patchset": p.patchset, "file": p.name, "status": p.status,
@@ -584,7 +640,8 @@ def write_json(path, args, stack, counts, final_tree):
                         "generated": p.generated, "provisional": p.provisional,
                         "touched": p.touched}
                        for p in stack],
-           "obsolete_suggestions": obsolete_lines(stack)}
+           "obsolete_suggestions": obsolete_lines(stack),
+           "collation_warnings": collation}
     with open(path, "w", encoding="utf-8", newline="\n") as f:
         json.dump(doc, f, indent=1)
         f.write("\n")
@@ -631,6 +688,37 @@ def main(argv=None):
               file=sys.stderr)
         return 2
 
+    for stale in (args.report, args.json):
+        if stale and os.path.exists(stale):
+            os.remove(stale)
+    try:
+        return run(args)
+    except Fatal as e:
+        print("error: %s" % e, file=sys.stderr)
+        return 2
+    except Exception as e:
+        print("error: unexpected %s: %s" % (type(e).__name__, e), file=sys.stderr)
+        return 3
+
+
+def write_files_atomically(files):
+    staged = []
+    try:
+        for target, data in files:
+            os.makedirs(os.path.dirname(target), exist_ok=True)
+            temp = target + ".retarget-tmp"
+            with open(temp, "wb") as f:
+                f.write(data)
+            staged.append((temp, target))
+        for temp, target in staged:
+            os.replace(temp, target)
+    finally:
+        for temp, _ in staged:
+            if os.path.exists(temp):
+                os.remove(temp)
+
+
+def run(args):
     repo = args.repo or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     tmpdir = tempfile.mkdtemp(prefix="retarget-")
     try:
@@ -648,6 +736,8 @@ def main(argv=None):
         stack, warnings = load_stack(PatchSource(git, args.patches_ref), set(args.excludes))
         for w in warnings:
             print("warn: " + w, file=sys.stderr)
+        if any(b"server/protocol.def" in p.data for p in stack) and not shutil.which("perl"):
+            raise Fatal("perl not found; needed to regenerate server protocol files")
         old_tree = new_tree = None
         if not args.no_overlay:
             ov = git.rev(args.overlay or args.patches_ref or "HEAD")
@@ -657,34 +747,34 @@ def main(argv=None):
                         old_tree, new_tree)
         rt.old_chain()
         rt.new_chain()
-    except Fatal as e:
-        print("error: %s" % e, file=sys.stderr)
-        return 2
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 
     counts = summary(stack)
+    collation = collation_warnings(stack)
+    files = []
     for p in stack:
         if p.status != "RETARGETED" or (p.provisional and not args.write_provisional):
             continue
-        targets = []
         if args.write:
-            targets.append(os.path.join(git.repo, *p.path.split("/")))
+            files.append((os.path.join(git.repo, *p.path.split("/")), p.new_data))
         if args.out_dir:
-            targets.append(os.path.join(args.out_dir, *p.path.split("/")))
-        for t in targets:
-            os.makedirs(os.path.dirname(t), exist_ok=True)
-            with open(t, "wb") as f:
-                f.write(p.new_data)
+            files.append((os.path.join(args.out_dir, *p.path.split("/")), p.new_data))
+    write_files_atomically(files)
     if args.report:
-        write_report(args.report, args, stack, counts, warnings)
+        write_report(args.report, args, stack, counts, warnings, collation)
     if args.json:
-        write_json(args.json, args, stack, counts, rt.final_tree)
+        write_json(args.json, args, stack, counts, rt.final_tree, collation)
+    for w in collation:
+        print("warn: " + w, file=sys.stderr)
     print(" ".join("%s=%d" % kv for kv in counts.items()))
     for p in stack:
-        if p.status in ("CONFLICT", "BLOCKED-BY"):
+        if p.status in ("CONFLICT", "BLOCKED-BY", "ABSORBED", "OLD-FAIL"):
             print("%s %s %s" % (p.status, p.label(), p.detail))
-    return 1 if counts["CONFLICT"] or counts["BLOCKED-BY"] or counts["OLD-FAIL"] else 0
+    failing = ("CONFLICT", "BLOCKED-BY", "ABSORBED", "OLD-FAIL")
+    return 1 if any(counts[s] for s in failing) else 0
+
+
 
 
 if __name__ == "__main__":

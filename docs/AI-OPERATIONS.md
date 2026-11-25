@@ -78,9 +78,19 @@ on the old base. On the new base, a patch that fails strict apply is merged
   AI to fix. A `BLOCKED-BY` patch conflicts in files that an earlier failed
   patch touches. Fix that earlier patch first, then rerun the tool.
 
-Exit codes: 0 means nothing is left, 1 means CONFLICT, BLOCKED-BY or OLD-FAIL patches
-remain, 2 means a usage or precondition error. `scripts/apply-patches.sh --check`
-stays the gate.
+Exit codes:
+
+- 0: the gate will pass once the RETARGETED files are written.
+- 1: CONFLICT, BLOCKED-BY, ABSORBED or OLD-FAIL patches remain. An ABSORBED
+  patch still fails the gate until a human retires it.
+- 2: usage or precondition error.
+- 3: unexpected internal error.
+
+The tool deletes old `--json` and `--report` files when it starts, and writes
+patch files only after every rewrite has been verified.
+`scripts/apply-patches.sh --check` is still the gate. The tool applies patches in
+byte (C) order. The report has a WARN section that lists patchsets whose order
+would differ under a locale-aware glob sort.
 
 ## Safety invariants (non-negotiable)
 

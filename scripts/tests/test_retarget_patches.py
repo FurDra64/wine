@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import importlib.util
 import json
 import os
 import re
@@ -221,7 +222,7 @@ class RetargetPatchesTest(unittest.TestCase):
         excluded_dir = os.path.join(cls.root, "out-excluded")
         os.makedirs(excluded_dir)
         cls.excluded_code, cls.excluded_report = run_tool(
-            cls.fixture, excluded_dir, "-W", "set-conflict", "-W", "set-blocked",
+            cls.fixture, excluded_dir, "-W", "set-conflict", "-W", "set-blocked", "-W", "set-absorbed",
             "-W", "set-renamed", "-W", "set-multi")
         cls.code, cls.report = run_tool(cls.fixture, cls.out_dir, "--write",
                                          "--write-provisional")
@@ -320,6 +321,47 @@ class RetargetPatchesTest(unittest.TestCase):
         self.assertEqual(self.excluded_code, 0)
         counts = self.excluded_report["counts"]
         self.assertEqual(counts["CONFLICT"] + counts["BLOCKED-BY"], 0)
+
+
+def load_tool_module():
+    spec = importlib.util.spec_from_file_location("retarget_patches", TOOL)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+class PatchTextTest(unittest.TestCase):
+    tool = load_tool_module()
+
+    def test_bare_signature_kept(self):
+        data = b"diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1 +1 @@\n-a\n+b\n-- \n"
+        header, body, trailer = self.tool.split_patch(data)
+        self.assertEqual((header, trailer), (b"", b"-- \n"))
+        self.assertEqual(self.tool.count_changes(body), (1, 1))
+
+    def test_locale_dependent_order_reported(self):
+        names = ["0012-base.patch", "0012a-insert.patch", "0012c-insert.patch"]
+        stack = [self.tool.Patch("set-haptic", n, b"") for n in names]
+        stack += [self.tool.Patch("set-plain", n, b"") for n in ("0001-a.patch", "0002-b.patch")]
+        warnings = self.tool.collation_warnings(stack)
+        self.assertEqual(len(warnings), 1)
+        self.assertTrue(warnings[0].startswith("set-haptic:"))
+
+
+class StaleOutputTest(unittest.TestCase):
+    def test_stale_json_removed_on_error(self):
+        root = tempfile.mkdtemp(prefix="retarget-stale-")
+        try:
+            stale = os.path.join(root, "old.json")
+            with open(stale, "w", encoding="utf-8") as handle:
+                handle.write("{}")
+            result = subprocess.run([sys.executable, TOOL, "--old-base", "no-such-commit-xyz",
+                                     "--json", stale], stdout=subprocess.PIPE,
+                                    stderr=subprocess.PIPE)
+            self.assertEqual(result.returncode, 2)
+            self.assertFalse(os.path.exists(stale))
+        finally:
+            remove_tree(root)
 
 
 if __name__ == "__main__":
