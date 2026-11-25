@@ -492,6 +492,8 @@ class Harvest:
         name = lookup if lookup in files else None
         if name is None:
             name = self.match_subject(ps, files, item)
+        if name is None and len(files) == 1 and item.change == "M" and self.ge_dir_size(item.rel) == 1:
+            name = files[0]
         if name is None and lookup in self.wine.files_of(ps, "disabled"):
             item.status, item.detail = "INACTIVE", "counterpart is under %s/disabled/" % ps
             return
@@ -509,6 +511,9 @@ class Harvest:
             self.prepare_new_in_dir(item, ps)
             return
         self.prepare_update(item, ps, name)
+
+    def ge_dir_size(self, rel):
+        return len(self.ge_src_new.patch_files("patches/" + dir_of(rel).rstrip("/")))
 
     def match_subject(self, ps, files, item):
         want = bare_subject(item.old if item.old is not None else item.new)
@@ -678,6 +683,10 @@ class Harvest:
             notes.append("wine-side file differs from GE-old" +
                          ("" if ok else "; GE-old does not apply at this position"))
         tree_n, paths_n = wine.try_apply(prev, [N])
+        after = wine.prev[item.index + 1]
+        if tree_n == after and not renaming:
+            item.status, item.detail = "UP-TO-DATE", "GE-new gives the same tree as the wine-side file"
+            return
         if not drift and tree_n is not None:
             self.accept_update(item, N, "UPDATE-APPLIES", notes)
             return
@@ -691,31 +700,34 @@ class Harvest:
         if merged == normalized_body(N) and tree_n is not None:
             self.accept_update(item, N, "UPDATE-APPLIES", notes + ["GE-new already carries the wine-side edits"])
             return
-        result, why = self.rebuild(prev, W, N, merged)
+        result, why, tree = self.rebuild(prev, W, N, merged)
         if result is None:
             self.update_conflict(item, paths_n, notes + [why])
+            return
+        if tree == after and not renaming:
+            item.status, item.detail = "UP-TO-DATE", "GE delta is context-only; merge gives the wine-side tree"
             return
         self.accept_update(item, result, "UPDATE-MERGED", notes + ["review: hunks were placed by search"])
 
     def rebuild(self, prev, W, N, merged_body):
         wine = self.wine
         if rt.is_multi_commit(W) or rt.is_multi_commit(N):
-            return None, "multi-commit patch file, merge by hand"
+            return None, "multi-commit patch file, merge by hand", None
         header, _, trailer = rt.split_patch(W)
         tree, paths = wine.try_apply(prev, [merged_body], recount=True)
         if tree is None:
-            return None, "merged patch text does not apply (%s)" % ", ".join(paths)
+            return None, "merged patch text does not apply (%s)" % ", ".join(paths), None
         allowed = {p for p, _ in touched_files(W)} | {p for p, _ in touched_files(N)}
         foreign = [p for p in wine.git.changed_paths(prev, tree) if p not in allowed]
         if foreign:
-            return None, "merge changed paths neither side touches: " + ", ".join(foreign)
+            return None, "merge changed paths neither side touches: " + ", ".join(foreign), None
         renames = re.search(rb"(?m)^(rename|copy) from ", N) is not None
         body = rt.render_body(wine.git, prev, tree, renames, rt.abbrev_of(N))
         data = header + body + trailer
         check, _ = wine.try_apply(prev, [data])
         if check != tree:
-            return None, "regenerated patch does not reproduce the merge"
-        return data, ""
+            return None, "regenerated patch does not reproduce the merge", None
+        return data, "", tree
 
     def accept_update(self, item, data, status, notes):
         item.result, item.status = data, status

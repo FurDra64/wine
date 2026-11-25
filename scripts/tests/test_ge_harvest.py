@@ -118,6 +118,7 @@ SERIES = """# fixture series
 ge-dirset
 ge-game-gone
 ge-pending-alpha
+ge-pending-shift
 ge-pending-drift
 ge-pending-clash
 # NEEDS-REBASE 2026-01-01: ge-pending-slot
@@ -140,6 +141,9 @@ def build(root):
     p = {}
     p["alpha-old"] = as_mail("alpha", wine.diff_of({"a.txt": {3: "alpha old"}}))
     p["alpha-new"] = as_mail("alpha", wine.diff_of({"a.txt": {3: "alpha new", 5: "alpha five"}}))
+    p["shift-old"] = as_mail("shift", wine.diff_of({"a.txt": {15: "shift"}}))
+    p["shift-wine"] = as_mail("shift", wine.diff_of({"a.txt": {15: "shift", 18: "shift local"}}))
+    p["shift-new"] = p["shift-old"].replace(b"@@ -12,7 +12,7 @@", b"@@ -40,7 +40,7 @@")
     p["drift-old"] = as_mail("drift", wine.diff_of({"b.txt": {10: "drift old"}}))
     p["drift-wine"] = as_mail("drift", wine.diff_of({"b.txt": {8: "local tweak", 10: "drift old"}}))
     p["drift-new"] = as_mail("drift", wine.diff_of({"b.txt": {10: "drift old", 22: "ge addition"}}))
@@ -171,6 +175,7 @@ def build(root):
                                           "0002-two-local.patch": p["two-old"]}),
         "ge-game-gone": ("game-patches/gone.patch", {"0001-gone.patch": p["gone"]}),
         "ge-pending-alpha": ("wine-hotfixes/pending/alpha.patch", {"0001-alpha.patch": p["alpha-old"]}),
+        "ge-pending-shift": ("wine-hotfixes/pending/shift.patch", {"0001-shift.patch": p["shift-wine"]}),
         "ge-pending-drift": ("wine-hotfixes/pending/drift.patch", {"0001-drift.patch": p["drift-wine"]}),
         "ge-pending-clash": ("wine-hotfixes/pending/clash.patch", {"0001-clash.patch": p["clash-old"]}),
         "ge-pending-sleepy": ("wine-hotfixes/pending/sleepy.patch",
@@ -192,6 +197,7 @@ def build(root):
         "game-patches/gone.patch": p["gone"],
         "wine-hotfixes/pending/alpha.patch": p["alpha-old"],
         "wine-hotfixes/pending/drift.patch": p["drift-old"],
+        "wine-hotfixes/pending/shift.patch": p["shift-old"],
         "wine-hotfixes/pending/clash.patch": p["clash-old"],
         "wine-hotfixes/pending/sleepy.patch": p["sleepy-old"],
         "wine-hotfixes/pending/never.patch": p["never-old"],
@@ -209,6 +215,7 @@ def build(root):
         "dirset/0004-bad.patch": p["bad"],
         "dirset/0005-one.patch": p["one"],
         "wine-hotfixes/pending/drift.patch": p["drift-new"],
+        "wine-hotfixes/pending/shift.patch": p["shift-new"],
         "wine-hotfixes/pending/clash.patch": p["clash-new"],
         "wine-hotfixes/pending/stale.patch": p["stale"],
         "wine-hotfixes/pending/breaker.patch": p["breaker"],
@@ -264,6 +271,7 @@ class GeHarvestTest(unittest.TestCase):
         expected = {
             "wine-hotfixes/pending/alpha.patch": "UPDATE-APPLIES",
             "wine-hotfixes/pending/drift.patch": "UPDATE-MERGED",
+            "wine-hotfixes/pending/shift.patch": "UP-TO-DATE",
             "wine-hotfixes/pending/clash.patch": "UPDATE-CONFLICT",
             "dirset/0002-two.patch": "UPDATE-APPLIES",
             "dirset/0005-one.patch": "UPDATE-APPLIES",
@@ -332,6 +340,10 @@ class GeHarvestTest(unittest.TestCase):
     def test_cumulative_chain_demotes_breaker(self):
         self.assertIn("breaks local-tail/0001-tail.patch",
                       self.status["wine-hotfixes/pending/breaker.patch"]["detail"])
+
+    def test_context_only_change_not_written(self):
+        self.assertNotEqual(self.p["shift-new"], self.p["shift-old"])
+        self.assertFalse(os.path.exists(os.path.join(self.out, "patches", "ge-pending-shift")))
 
     def test_inactive_copied_only_on_request(self):
         self.assertEqual(self.out_file("patches/ge-pending-sleepy/0001-sleepy.patch"), self.p["sleepy-new"])
