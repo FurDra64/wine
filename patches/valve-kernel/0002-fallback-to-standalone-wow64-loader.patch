@@ -1,0 +1,45 @@
+--- a/dlls/ntdll/unix/loader.c
++++ b/dlls/ntdll/unix/loader.c
+@@ -482,18 +482,34 @@
+ static void preloader_exec( char **argv, WORD machine )
+ {
+ #ifdef HAVE_WINE_PRELOADER
++    argv[0] = NULL;
+ #if !defined(__arm__) && !defined(__aarch64__)
+-    const char *p;
+-
+-    if (machine == IMAGE_FILE_MACHINE_AMD64
+-        && ((p = remove_tail( argv[1], "x86_64-unix/wine" )) || (p = remove_tail( argv[1], "i386-unix/wine64" ))))
++    if (machine == IMAGE_FILE_MACHINE_AMD64)
+     {
+-        asprintf( &argv[0], "%si386-unix/wine64-preloader", p );
+-        asprintf( &argv[1], "%si386-unix/wine64", p );
++        char *p = remove_tail( argv[1], "x86_64-unix/wine" );
++        if (!p) p = remove_tail( argv[1], "i386-unix/wine64" );
++        if (p)
++        {
++            char *loader = build_path( p, "i386-unix/wine64" );
++            char *preloader = build_path( p, "i386-unix/wine64-preloader" );
++
++            /* An installed new WoW64 build has only the x86_64 Unix loader. */
++            if (!access( loader, X_OK ) && !access( preloader, X_OK ))
++            {
++                free( argv[1] );
++                argv[1] = loader;
++                argv[0] = preloader;
++            }
++            else
++            {
++                free( loader );
++                free( preloader );
++            }
++            free( p );
++        }
+     }
+-    else
+ #endif
+-        asprintf( &argv[0], "%s-preloader", argv[1] );
++    if (!argv[0]) asprintf( &argv[0], "%s-preloader", argv[1] );
+ 
+ #ifdef __APPLE__
+     {

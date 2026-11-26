@@ -1,0 +1,92 @@
+diff --git a/dlls/opengl32/make_opengl b/dlls/opengl32/make_opengl
+--- a/dlls/opengl32/make_opengl
++++ b/dlls/opengl32/make_opengl
+@@ -1219,4 +1219,5 @@
+     (
+      "EGL_MESA_device_software" => 1,
++     "WGL_NV_DX_interop2" => 1, # adds no entry points of its own
+      # exposed by native drivers, but not included in registry xml:
+      "GL_APPLE_packed_pixels" => 1, # no specification
+diff --git a/include/wine/wgl.h b/include/wine/wgl.h
+--- a/include/wine/wgl.h
++++ b/include/wine/wgl.h
+@@ -10781,4 +10781,5 @@
+     USE_GL_EXT(WGL_EXT_swap_control_tear) \
+     USE_GL_EXT(WGL_NV_DX_interop) \
++    USE_GL_EXT(WGL_NV_DX_interop2) \
+     USE_GL_EXT(WGL_NV_float_buffer) \
+     USE_GL_EXT(WGL_NV_multigpu_context) \
+diff --git a/dlls/win32u/opengl.c b/dlls/win32u/opengl.c
+--- a/dlls/win32u/opengl.c
++++ b/dlls/win32u/opengl.c
+@@ -4308,6 +4308,6 @@
+         display_funcs.p_wglDXObjectAccessNV           = win32u_wglDXObjectAccessNV;
+         display_funcs.p_wglDXSetResourceShareHandleNV = win32u_wglDXSetResourceShareHandleNV;
+-        register_extension( wgl_extensions, ARRAY_SIZE(wgl_extensions), "WGL_NV_DX_interop" );
+-        register_extension( wgl_extensions, ARRAY_SIZE(wgl_extensions), "WGL_NV_DX_interop2" );
++        root->extensions[WGL_NV_DX_interop] = 1;
++        root->extensions[WGL_NV_DX_interop2] = 1;
+     }
+     else
+diff --git a/dlls/win32u/vulkan.c b/dlls/win32u/vulkan.c
+--- a/dlls/win32u/vulkan.c
++++ b/dlls/win32u/vulkan.c
+@@ -4647,5 +4647,5 @@
+     if (res) return res;
+
+-    if (get_swapchain_surface_rect( surface->hwnd, &client_rect, NtUserGetDpiForWindow( surface->hwnd ) ) &&
++    if (get_swapchain_surface_rect( surface->hwnd, &client_rect, get_dpi_for_window( surface->hwnd ) ) &&
+         !extents_equals( &managed->extents, &client_rect ))
+         return VK_SUBOPTIMAL_KHR;
+@@ -4774,5 +4774,5 @@
+
+     /* The window changed size, recreate is required. */
+-    if (!get_surface_rect( surface->hwnd, &client_rect, NtUserGetDpiForWindow( surface->hwnd ) ))
++    if (!get_surface_rect( surface->hwnd, &client_rect, get_dpi_for_window( surface->hwnd ) ))
+         return VK_ERROR_OUT_OF_DATE_KHR;
+
+diff --git a/dlls/win32u/window.c b/dlls/win32u/window.c
+--- a/dlls/win32u/window.c
++++ b/dlls/win32u/window.c
+@@ -3040,5 +3040,5 @@
+ }
+
+-static HWND first_window_from_point( HWND hwnd, POINT pt, UINT dpi, DWORD *style )
++static HWND first_window_from_point( HWND hwnd, POINT pt, struct ratio dpi, DWORD *style )
+ {
+     HWND ret = 0;
+@@ -3065,9 +3065,9 @@
+     HWND hwnd_root = NtUserGetAncestor( hwnd, GA_ROOT );
+     HWND desktop = NtUserGetDesktopWindow();
+-    UINT dpi, raw_dpi;
++    struct ratio dpi = get_thread_dpi(), raw_dpi;
+     HWND *list, ret = 0;
+     int i;
+
+-    if (!(dpi = get_thread_dpi())) dpi = get_win_monitor_dpi( desktop, &raw_dpi );
++    if (!dpi.num) dpi = get_win_monitor_dpi( desktop, &raw_dpi );
+     if (!(list = list_children_from_point( desktop, pt, dpi ))) return 0;
+
+diff --git a/server/protocol.def b/server/protocol.def
+--- a/server/protocol.def
++++ b/server/protocol.def
+@@ -2959,5 +2959,5 @@
+     int            x;             /* point in parent coordinates */
+     int            y;
+-    int            dpi;           /* dpi for the point coordinates */
++    struct ratio   dpi;           /* dpi for the point coordinates */
+ @REPLY
+     user_handle_t  handle;        /* window handle */
+diff --git a/server/window.c b/server/window.c
+--- a/server/window.c
++++ b/server/window.c
+@@ -2952,8 +2952,5 @@
+
+     if (!parent) return;
+-    {
+-        struct ratio dpi = { req->dpi, 1 };
+-        if (!(win = first_window_from_point( parent, req->x, req->y, dpi ))) return;
+-    }
++    if (!(win = first_window_from_point( parent, req->x, req->y, req->dpi ))) return;
+
+     reply->handle = win->handle;
