@@ -1,0 +1,90 @@
+--- a/dlls/winex11.drv/mouse.c
++++ b/dlls/winex11.drv/mouse.c
+@@ -150,14 +150,6 @@
+ #undef MAKE_FUNCPTR
+ #endif
+ 
+-#ifdef HAVE_X11_EXTENSIONS_XINPUT_H
+-#define MAKE_FUNCPTR(f) static typeof(f) * p##f
+-MAKE_FUNCPTR(XOpenDevice);
+-MAKE_FUNCPTR(XCloseDevice);
+-MAKE_FUNCPTR(XGetDeviceButtonMapping);
+-#undef MAKE_FUNCPTR
+-#endif
+-
+ /***********************************************************************
+  *		X11DRV_Xcursor_Init
+  *
+@@ -244,48 +236,6 @@
+     XFlush( gdi_display );
+ }
+ 
+-struct mouse_button_mapping
+-{
+-    int deviceid;
+-    unsigned int button_count;
+-    unsigned char buttons[256];
+-};
+-
+-static struct mouse_button_mapping *pointer_mapping;
+-static struct mouse_button_mapping *device_mapping;
+-
+-#ifdef HAVE_X11_EXTENSIONS_XINPUT_H
+-
+-static void update_pointer_mapping( Display *display )
+-{
+-    struct mouse_button_mapping *tmp;
+-
+-    if (!(tmp = malloc( sizeof(*tmp) )))
+-    {
+-        WARN("Unable to allocate device mapping.\n");
+-        return;
+-    }
+-
+-    tmp->button_count = ARRAY_SIZE( tmp->buttons );
+-    tmp->button_count = XGetPointerMapping( display, tmp->buttons, tmp->button_count );
+-
+-    free( InterlockedExchangePointer( (void**)&pointer_mapping, tmp ) );
+-}
+-
+-void X11DRV_InitMouse( Display *display )
+-{
+-    update_pointer_mapping( display );
+-}
+-
+-#else /* HAVE_X11_EXTENSIONS_XINPUT_H */
+-
+-void X11DRV_InitMouse( Display *display )
+-{
+-}
+-
+-#endif /* HAVE_X11_EXTENSIONS_XINPUT_H */
+-
+-
+ #ifdef HAVE_X11_EXTENSIONS_XINPUT2_H
+ 
+ struct mouse_button_mapping
+@@ -681,6 +631,12 @@
+ 
+     if ((flags & MOUSEEVENTF_ABSOLUTE) || pos.x || pos.y) flags |= MOUSEEVENTF_MOVE;
+ 
++    input.mi.dx = pos.x;
++    input.mi.dy = pos.y;
++    input.mi.dwFlags = flags;
++    input.mi.mouseData = data;
++    input.mi.time = time;
++
+     NtUserSendHardwareInput( hwnd, SEND_HWMSG_RAWINPUT, &input, (LPARAM)raw );
+ }
+ 
+--- a/dlls/winex11.drv/event.c
++++ b/dlls/winex11.drv/event.c
+@@ -521,7 +521,7 @@
+     if (data->current_event) mask = 0;  /* don't process nested events */
+ 
+     prev_event.type = 0;
+-    for (count = 0; XCheckIfEvent( data->display, &event, filter_event, (XPointer)(UINT_PTR)mask ); count++)
++    for (;;)
+     {
+         if (!XCheckIfEvent( data->display, &event, filter_event, (XPointer)(UINT_PTR)mask ))
+         {
