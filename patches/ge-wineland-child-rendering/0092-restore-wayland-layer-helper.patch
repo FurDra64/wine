@@ -1,0 +1,32 @@
+diff --git a/dlls/winewayland.drv/waylanddrv.h b/dlls/winewayland.drv/waylanddrv.h
+--- a/dlls/winewayland.drv/waylanddrv.h
++++ b/dlls/winewayland.drv/waylanddrv.h
+@@ -601,4 +601,5 @@
+ void wayland_client_surface_attach_image_description(struct wayland_client_surface *surface,
+                                                      struct wp_image_description_v1 *image_desc);
++BOOL wayland_dmabuf_format_supported(uint32_t format, uint64_t modifier);
+ void wayland_surface_update_hwnd_dmabufs(struct wayland_surface *surface);
+ void wayland_surface_coords_from_window(struct wayland_surface *surface,
+diff --git a/dlls/winewayland.drv/wayland_surface.c b/dlls/winewayland.drv/wayland_surface.c
+--- a/dlls/winewayland.drv/wayland_surface.c
++++ b/dlls/winewayland.drv/wayland_surface.c
+@@ -4020,6 +4020,4 @@
+ }
+
+-/**********************************************************************
+- *          wayland_surface_reconfigure_xdg
+ static BOOL wayland_surface_reconfigure_layer(struct wayland_surface *surface)
+ {
+@@ -4886,5 +4884,5 @@
+     struct wayland_win_data *toplevel_data;
+     struct wayland_surface *surface = NULL;
+-    RECT dst;
++    RECT dst, configured_rect;
+     struct wayland_child_visibility_info visibility;
+
+@@ -4960,5 +4958,4 @@
+         /* Keep own-toplevel client surfaces in the same geometry generation as
+          * the parent surface during xdg configure / rawpos transitions. */
+-        RECT configured_rect;
+         SetRect(&configured_rect, 0, 0,
+                 surface->window.client_rect.right - surface->window.client_rect.left,

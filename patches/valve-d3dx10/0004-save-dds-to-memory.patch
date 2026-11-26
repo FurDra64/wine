@@ -500,7 +500,7 @@ index c7dea98..f7e426f 100644
 +        return hr;
 +
 +    buffer->buffer_iface = buffer_iface;
-+    buffer->buffer_data = ID3DBlob_GetBufferPointer(buffer_iface);
++    buffer->buffer_data = ID3D10Blob_GetBufferPointer(buffer_iface);
 +    return S_OK;
 +}
 +

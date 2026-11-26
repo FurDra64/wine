@@ -86,6 +86,8 @@ jobs:
             libjpeg-dev libjpeg-dev:i386 \
             libpng-dev libpng-dev:i386 \
             libfaudio-dev \
+            libavcodec-dev libavformat-dev libavutil-dev libswresample-dev libswscale-dev \
+            libwayland-dev libxkbcommon-dev libxkbregistry-dev \
             liblcms2-dev liblcms2-dev:i386 \
             libmpg123-dev libmpg123-dev:i386 \
             libopenal-dev libopenal-dev:i386 \
@@ -105,8 +107,10 @@ jobs:
 
       - name: Configure (WOW64)
         shell: bash
-        run: ./configure --enable-archs=i386,x86_64
+        run: ./configure --enable-archs=i386,x86_64 --with-wayland
 
       - name: Build
         shell: bash
-        run: make -j"$(nproc)"
+        run: |
+          make -j"$(nproc)"
+          test -s dlls/winewayland.drv/winewayland.so

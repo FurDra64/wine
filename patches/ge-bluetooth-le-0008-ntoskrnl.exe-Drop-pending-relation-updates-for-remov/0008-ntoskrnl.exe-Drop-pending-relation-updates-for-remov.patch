@@ -18,19 +18,23 @@ including the radio, is gone afterwards.
 Forget queued updates for a device once its IRP_MN_REMOVE_DEVICE has been
 sent, which also covers updates queued by the driver during removal.
 
+When Valve handles BusRelations inline, there is no queue to prune.
+Keep the cleanup for builds that retain Wine's enumeration thread.
+
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 ---
- dlls/ntoskrnl.exe/pnp.c | 23 +++++++++++++++++++++++
- 1 file changed, 23 insertions(+)
+ dlls/ntoskrnl.exe/pnp.c | 27 +++++++++++++++++++++++++++
+ 1 file changed, 27 insertions(+)
 
 diff --git a/dlls/ntoskrnl.exe/pnp.c b/dlls/ntoskrnl.exe/pnp.c
 index 11a578a7..678d987e 100644
 --- a/dlls/ntoskrnl.exe/pnp.c
 +++ b/dlls/ntoskrnl.exe/pnp.c
-@@ -448,6 +448,24 @@ static void enumerate_new_device( DEVICE_OBJECT *device, HDEVINFO set, DEVICE_OB
+@@ -448,6 +448,26 @@ static void enumerate_new_device( DEVICE_OBJECT *device, HDEVINFO set, DEVICE_OB
      start_device( device, set, &sp_device );
  }
  
++#ifndef PNP_SYNCHRONOUS_BUS_RELATIONS
 +/* Drop pending bus relation updates for a device that is going away. The queue holds bare
 + * pointers, so an update left behind would be handled after the driver deleted the device. */
 +static void forget_invalidated_device( DEVICE_OBJECT *device )
@@ -48,19 +52,22 @@ index 11a578a7..678d987e 100644
 +    invalidated_devices_count = j;
 +    LeaveCriticalSection( &invalidated_devices_cs );
 +}
++#endif
 +
  static void send_remove_device_irp( DEVICE_OBJECT *device, UCHAR code )
  {
      struct wine_device *wine_device = CONTAINING_RECORD(device, struct wine_device, device_obj);
-@@ -462,6 +480,11 @@ static void send_remove_device_irp( DEVICE_OBJECT *device, UCHAR code )
+@@ -462,6 +482,13 @@ static void send_remove_device_irp( DEVICE_OBJECT *device, UCHAR code )
      }
  
      send_pnp_irp( device, code );
 +
++#ifndef PNP_SYNCHRONOUS_BUS_RELATIONS
 +    /* The driver may have deleted the device, and may have queued updates for it while removing it.
 +     * Only the pointer value is compared from here on. */
 +    if (code == IRP_MN_REMOVE_DEVICE)
 +        forget_invalidated_device( device );
++#endif
  }
  
  static void remove_device( DEVICE_OBJECT *device )
