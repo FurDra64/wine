@@ -5778,7 +5778,7 @@ index 1415c96de1f..8f105f55923 100644
 +    offset_rect( &info->client, -host_x, -host_y );
 +    info->style = win->style;
 +    info->ex_style = win->ex_style;
-+    info->dpi = get_window_dpi( win );
++    info->dpi = get_window_dpi( win ).num;
 +}
 +
 +/* A window is a composited dmabuf child when it owns a frame socket. */

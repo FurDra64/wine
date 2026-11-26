@@ -1763,7 +1763,7 @@ index 1f092f6d478..3dfae38a704 100644
 @@ -1312,7 +1312,8 @@ static void hwnd_dmabuf_frame_info_from_window( struct window *host, struct wind
      info->style = win->style;
      info->ex_style = win->ex_style;
-     info->dpi = get_window_dpi( win );
+     info->dpi = get_window_dpi( win ).num;
 -    info->opened = win->dmabuf_producer_count != 0;
 +    if (win->dmabuf_producer_count) info->opened |= HWND_DMABUF_FRAME_OPENED;
 +    if (win->gdi_overlay_producer_count) info->opened |= HWND_DMABUF_FRAME_GDI_OVERLAY;

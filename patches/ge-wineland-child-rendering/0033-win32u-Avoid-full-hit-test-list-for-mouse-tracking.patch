@@ -239,7 +239,7 @@ index e069fc9db0e..af0eb5e8eee 100644
  }
  
 +/* return the first window containing point (in absolute coords) */
-+static struct window *first_window_from_point( struct window *top, int x, int y, unsigned int dpi )
++static struct window *first_window_from_point( struct window *top, int x, int y, struct ratio dpi )
 +{
 +    if (!is_desktop_window( top ) && !is_desktop_window( top->parent ))
 +    {
