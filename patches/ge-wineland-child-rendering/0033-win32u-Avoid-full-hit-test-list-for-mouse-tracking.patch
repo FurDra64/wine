@@ -265,7 +265,7 @@ index e069fc9db0e..af0eb5e8eee 100644
  
  /* return the thread owning a window */
  struct thread *get_window_thread( user_handle_t handle )
-@@ -2860,6 +2884,18 @@ DECL_HANDLER(get_window_children_from_point)
+@@ -2860,6 +2884,21 @@ DECL_HANDLER(get_window_children_from_point)
      else free( array.handles );
  }
  
@@ -275,7 +275,10 @@ index e069fc9db0e..af0eb5e8eee 100644
 +    struct window *win, *parent = get_window( req->parent );
 +
 +    if (!parent) return;
-+    if (!(win = first_window_from_point( parent, req->x, req->y, req->dpi ))) return;
++    {
++        struct ratio dpi = { req->dpi, 1 };
++        if (!(win = first_window_from_point( parent, req->x, req->y, dpi ))) return;
++    }
 +
 +    reply->handle = win->handle;
 +    reply->style = win->style;
