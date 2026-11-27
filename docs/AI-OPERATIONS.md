@@ -45,6 +45,53 @@ git checkout conflict/<date>-<sha>   # from the Issue
 4. Push to the conflict branch, open PR to `master`. One patchset per commit.
 5. CI re-runs the check on the PR.
 
+## Retarget after upstream moves
+
+Run this first, before fixing any patch by hand:
+
+```bash
+python scripts/retarget-patches.py --report retarget.md --json retarget.json [--write]
+python scripts/tests/test_retarget_patches.py   # self-test on synthetic repos
+```
+
+The defaults are `--old-base $(git merge-base HEAD mirror/master)` and
+`--new-base mirror/master`. The tool replays the stack twice in temporary
+indexes, using only git plumbing (no checkout). The stack must be strict-green
+on the old base. On the new base, a patch that fails strict apply is merged
+3-way with `git merge-tree`.
+
+- `OK`: the patch applies strictly. Its file is never touched.
+- `RETARGETED`: the 3-way merge was clean and the tool regenerated the diff
+  body. The header and trailer are kept. `--write` rewrites only these files.
+  Review them anyway, because a clean merge does not prove the code is right.
+  If the report says the hunks shrank, upstream took part of the change.
+  `generated` means the tool reran `tools/make_requests`, which raises
+  `SERVER_PROTOCOL_VERSION` by one per patch. A RETARGETED patch is
+  `provisional` when it touches files of a skipped patch. The tool does not
+  write it unless you pass `--write-provisional`, because its context may
+  change once that earlier patch is fixed.
+- `ABSORBED`: upstream already contains the whole change. The report gives
+  the evidence commit found with `git log -S` and the `# OBSOLETE ...`
+  series.conf line to use. Retiring the patch is still a human decision
+  (GOVERNANCE R1).
+- `CONFLICT` and `BLOCKED-BY:<patch>`: these patches are left for a human or
+  AI to fix. A `BLOCKED-BY` patch conflicts in files that an earlier failed
+  patch touches. Fix that earlier patch first, then rerun the tool.
+
+Exit codes:
+
+- 0: the gate will pass once the RETARGETED files are written.
+- 1: CONFLICT, BLOCKED-BY, ABSORBED or OLD-FAIL patches remain. An ABSORBED
+  patch still fails the gate until a human retires it.
+- 2: usage or precondition error.
+- 3: unexpected internal error.
+
+The tool deletes old `--json` and `--report` files when it starts, and writes
+patch files only after every rewrite has been verified.
+`scripts/apply-patches.sh --check` is still the gate. The tool applies patches in
+byte (C) order. The report has a WARN section that lists patchsets whose order
+would differ under a locale-aware glob sort.
+
 ## Safety invariants (non-negotiable)
 
 - Never `push --force` on `master` or `upstream`. Conflict branches are
