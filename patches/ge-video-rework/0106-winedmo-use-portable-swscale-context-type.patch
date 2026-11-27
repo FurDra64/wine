@@ -1,0 +1,10 @@
+diff --git a/dlls/winedmo/unix_transform.c b/dlls/winedmo/unix_transform.c
+--- a/dlls/winedmo/unix_transform.c
++++ b/dlls/winedmo/unix_transform.c
+@@ -86,5 +86,5 @@
+
+     /* Video output conversion */
+-    SwsContext         *sws;
++    struct SwsContext  *sws;
+     AVFrame            *sws_frame;       /* padded scaler output, copied to the caller's buffer */
+     enum AVPixelFormat  out_pix_fmt;     /* AV_PIX_FMT_NONE = native */

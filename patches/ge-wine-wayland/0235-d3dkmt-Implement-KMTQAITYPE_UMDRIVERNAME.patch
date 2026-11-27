@@ -49,7 +49,7 @@ index 3e69cd3dc68..d8b69ceea21 100644
 +
 +        TRACE("Version %u\n", info->Version);
 +
-+        if (!(adapter = get_d3dkmt_object( desc->hAdapter, D3DKMT_ADAPTER ))) return STATUS_INVALID_PARAMETER;
++        if (!(adapter = get_d3dkmt_adapter( desc->hAdapter ))) return STATUS_INVALID_PARAMETER;
 +        if (!(physical_device = adapter->physical_device)) return STATUS_INVALID_PARAMETER;
 +        instance = physical_device->instance;
 +

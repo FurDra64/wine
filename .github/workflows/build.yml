@@ -10,7 +10,7 @@ on:
     paths:
       - 'patches/**'
       - 'patches/series.conf'
-      - 'scripts/**'
+      - 'scripts/apply-patches.sh'
       - 'configure.ac'
       - 'dlls/**'
       - 'libs/**'
@@ -22,7 +22,7 @@ on:
     paths:
       - 'patches/**'
       - 'patches/series.conf'
-      - 'scripts/**'
+      - 'scripts/apply-patches.sh'
       - 'configure.ac'
       - 'dlls/**'
       - 'libs/**'
@@ -37,27 +37,40 @@ permissions:
 
 # 長時間ビルドの重複実行を防ぐ (upstream-sync とは別グループで競合なし)。
 concurrency:
-  group: build
-  cancel-in-progress: false
+  group: build-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   wow64:
     name: WOW64 build (i386,x86_64)
     runs-on: ubuntu-24.04
     timeout-minutes: 120
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_BASEDIR: ${{ github.workspace }}
+      CCACHE_MAXSIZE: 3G
+      CCACHE_COMPILERCHECK: content
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
 
+      - name: Run PR tool fixture tests
+        shell: bash
+        run: |
+          python3 scripts/tests/test_retarget_patches.py
+          python3 scripts/tests/test_ge_harvest.py
+
       - name: Install build dependencies
         shell: bash
+        timeout-minutes: 20
         run: |
           set -euo pipefail
           sudo dpkg --add-architecture i386
           sudo apt-get update
           sudo apt-get install -y \
+            ccache \
             gcc-multilib g++-multilib mingw-w64 \
             flex bison \
             libx11-dev libx11-dev:i386 \
@@ -86,6 +99,8 @@ jobs:
             libjpeg-dev libjpeg-dev:i386 \
             libpng-dev libpng-dev:i386 \
             libfaudio-dev \
+            libavcodec-dev libavformat-dev libavutil-dev libswresample-dev libswscale-dev \
+            libwayland-dev libxkbcommon-dev libxkbregistry-dev \
             liblcms2-dev liblcms2-dev:i386 \
             libmpg123-dev libmpg123-dev:i386 \
             libopenal-dev libopenal-dev:i386 \
@@ -103,10 +118,38 @@ jobs:
         shell: bash
         run: ./tools/make_requests
 
+      - name: Restore compiler cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ccache-wow64-${{ github.head_ref || github.ref_name }}-${{ github.sha }}
+          restore-keys: |
+            ccache-wow64-${{ github.head_ref || github.ref_name }}-
+            ccache-wow64-master-
+
       - name: Configure (WOW64)
         shell: bash
-        run: ./configure --enable-archs=i386,x86_64
+        run: |
+          ./configure --enable-archs=i386,x86_64 --with-wayland \
+            CC="ccache gcc" \
+            x86_64_CC="ccache x86_64-w64-mingw32-gcc" \
+            i386_CC="ccache i686-w64-mingw32-gcc"
 
       - name: Build
         shell: bash
-        run: make -j"$(nproc)"
+        run: |
+          ccache --zero-stats
+          make -j"$(nproc)"
+          test -s dlls/winewayland.drv/winewayland.so
+
+      - name: Compiler cache stats
+        if: always()
+        shell: bash
+        run: ccache --show-stats || true
+
+      - name: Save compiler cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ccache-wow64-${{ github.head_ref || github.ref_name }}-${{ github.sha }}

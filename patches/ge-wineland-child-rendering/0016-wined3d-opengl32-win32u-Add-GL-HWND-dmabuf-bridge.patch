@@ -4062,7 +4062,7 @@ index 8f105f55923..8352bb298f2 100644
 @@ -1292,12 +1298,29 @@ static void hwnd_dmabuf_frame_info_from_window( struct window *host, struct wind
      info->style = win->style;
      info->ex_style = win->ex_style;
-     info->dpi = get_window_dpi( win );
+     info->dpi = get_window_dpi( win ).num;
 +    info->opened = win->dmabuf_producer_count != 0;
  }
  

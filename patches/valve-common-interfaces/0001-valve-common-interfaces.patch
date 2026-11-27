@@ -1805,29 +1805,6 @@ index ad0eccb0519fa646d29901ce8e59712f2cce011a..999be702559076c1b5b35b813c6121eb
  struct send_hardware_input_params
  {
      UINT flags;
-diff --git a/include/pdh.h b/include/pdh.h
-index 01b96c2de8158c7beb21727af12a277ad5fe4e71..90c61e85f857c16e05435ab2ad53b0558ac0ee66 100644
---- a/include/pdh.h
-+++ b/include/pdh.h
-@@ -216,6 +216,18 @@ typedef struct _PDH_RAW_COUNTER_ITEM_W
-     PDH_RAW_COUNTER RawValue;
- } PDH_RAW_COUNTER_ITEM_W,*PPDH_RAW_COUNTER_ITEM_W;
- 
-+typedef struct _PDH_FMT_COUNTERVALUE_ITEM_A
-+{
-+    LPSTR szName;
-+    PDH_FMT_COUNTERVALUE FmtValue;
-+} PDH_FMT_COUNTERVALUE_ITEM_A, *PPDH_FMT_COUNTERVALUE_ITEM_A;
-+
-+typedef struct _PDH_FMT_COUNTERVALUE_ITEM_W
-+{
-+    LPWSTR szName;
-+    PDH_FMT_COUNTERVALUE FmtValue;
-+} PDH_FMT_COUNTERVALUE_ITEM_W, *PPDH_FMT_COUNTERVALUE_ITEM_W;
-+
- DECL_PDH_TYPE_AW(PDH_COUNTER_INFO)
- DECL_PDH_TYPE_AW(PPDH_COUNTER_INFO)
- 
 diff --git a/include/shdeprecated.idl b/include/shdeprecated.idl
 index c8bb3fd9bf0746a5e8b991c1a9ca9cd2832619b0..bb0559578e9ad1a37dcd88a1c51e6e4d0557fbd8 100644
 --- a/include/shdeprecated.idl
@@ -1920,14 +1897,6 @@ index 1b431fe125fda6701b57502bb2dfe75afe25bdb4..975fe9c3a610c16360d0b696164a97a7
  
  /* display manager interface, used to initialize display device registry data */
  
-@@ -415,6 +417,7 @@ struct user_driver_funcs
-     LRESULT (*pDesktopWindowProc)(HWND,UINT,WPARAM,LPARAM);
-     void    (*pDestroyWindow)(HWND);
-     void    (*pFlashWindowEx)(FLASHWINFO*);
-+    BOOL    (*pHasWindowManager)(const char *);
-     void    (*pGetDC)(HDC,HWND,HWND,const RECT *,const RECT *,DWORD);
-     BOOL    (*pProcessEvents)(DWORD);
-     void    (*pReleaseDC)(HWND,HDC);
 diff --git a/include/wine/opengl_driver.h b/include/wine/opengl_driver.h
 index 38bdecd8d1d3ef8ddae9eca277cecb6486b7d4e9..3a910482dfb34e45ff76977ee596f4e93ca65068 100644
 --- a/include/wine/opengl_driver.h

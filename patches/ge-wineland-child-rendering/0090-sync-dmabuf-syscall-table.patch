@@ -1,0 +1,45 @@
+diff --git a/dlls/win32u/win32u.spec b/dlls/win32u/win32u.spec
+--- a/dlls/win32u/win32u.spec
++++ b/dlls/win32u/win32u.spec
+@@ -1137,9 +1137,9 @@
+ @ stdcall -syscall NtUserHiliteMenuItem(long long long long)
+ @ stub -syscall NtUserHungWindowFromGhostWindow
+-@ stdcall -syscall NtUserHwndDmaBufCloseProducer(long long)
+-@ stdcall -syscall NtUserHwndDmaBufDrainRelease(long ptr)
+-@ stdcall -syscall NtUserHwndDmaBufGetCaps(long ptr ptr long ptr)
+-@ stdcall -syscall NtUserHwndDmaBufOpenProducer(long)
+-@ stdcall -syscall NtUserHwndDmaBufPublish(long long ptr long)
++@ stdcall -syscall=0x1604 NtUserHwndDmaBufCloseProducer(long long)
++@ stdcall -syscall=0x1605 NtUserHwndDmaBufDrainRelease(long ptr)
++@ stdcall -syscall=0x1606 NtUserHwndDmaBufGetCaps(long ptr ptr long ptr)
++@ stdcall -syscall=0x1607 NtUserHwndDmaBufOpenProducer(long)
++@ stdcall -syscall=0x1608 NtUserHwndDmaBufPublish(long long ptr long)
+ @ stub -syscall NtUserHwndQueryRedirectionInfo
+ @ stub -syscall NtUserHwndSetRedirectionInfo
+diff --git a/dlls/win32u/win32syscalls.h b/dlls/win32u/win32syscalls.h
+--- a/dlls/win32u/win32syscalls.h
++++ b/dlls/win32u/win32syscalls.h
+@@ -1541,5 +1541,10 @@
+     SYSCALL_ENTRY( 0x1601, NtUserZapActiveAndFocus, 0 ) \
+     SYSCALL_ENTRY( 0x1602, NtValidateCompositionSurfaceHandle, 0 ) \
+-    SYSCALL_ENTRY( 0x1603, NtVisualCaptureBits, 0 )
++    SYSCALL_ENTRY( 0x1603, NtVisualCaptureBits, 0 ) \
++    SYSCALL_ENTRY( 0x1604, NtUserHwndDmaBufCloseProducer, 8 ) \
++    SYSCALL_ENTRY( 0x1605, NtUserHwndDmaBufDrainRelease, 8 ) \
++    SYSCALL_ENTRY( 0x1606, NtUserHwndDmaBufGetCaps, 20 ) \
++    SYSCALL_ENTRY( 0x1607, NtUserHwndDmaBufOpenProducer, 4 ) \
++    SYSCALL_ENTRY( 0x1608, NtUserHwndDmaBufPublish, 16 )
+ #ifdef _WIN64
+ #define ALL_SYSCALLS \
+@@ -3083,5 +3088,10 @@
+     SYSCALL_ENTRY( 0x1601, NtUserZapActiveAndFocus, 0 ) \
+     SYSCALL_ENTRY( 0x1602, NtValidateCompositionSurfaceHandle, 0 ) \
+-    SYSCALL_ENTRY( 0x1603, NtVisualCaptureBits, 0 )
++    SYSCALL_ENTRY( 0x1603, NtVisualCaptureBits, 0 ) \
++    SYSCALL_ENTRY( 0x1604, NtUserHwndDmaBufCloseProducer, 16 ) \
++    SYSCALL_ENTRY( 0x1605, NtUserHwndDmaBufDrainRelease, 16 ) \
++    SYSCALL_ENTRY( 0x1606, NtUserHwndDmaBufGetCaps, 40 ) \
++    SYSCALL_ENTRY( 0x1607, NtUserHwndDmaBufOpenProducer, 8 ) \
++    SYSCALL_ENTRY( 0x1608, NtUserHwndDmaBufPublish, 32 )
+ #else
+ #define ALL_SYSCALLS ALL_SYSCALLS32

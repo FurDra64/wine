@@ -10,9 +10,9 @@ CW-Bug-Id: #22500
 CW-Bug-Id: #26790
 ---
  dlls/ntoskrnl.exe/ntoskrnl_private.h |  1 -
- dlls/ntoskrnl.exe/pnp.c              | 40 +---------------------------
+ dlls/ntoskrnl.exe/pnp.c              | 43 +++--------------------------
  dlls/ntoskrnl.exe/tests/driver_pnp.c | 11 ++++----
- 3 files changed, 6 insertions(+), 46 deletions(-)
+ 3 files changed, 9 insertions(+), 46 deletions(-)
 
 diff --git a/dlls/ntoskrnl.exe/ntoskrnl_private.h b/dlls/ntoskrnl.exe/ntoskrnl_private.h
 index d9db6f600ff..7e0f3cf1f25 100644
@@ -29,7 +29,7 @@ diff --git a/dlls/ntoskrnl.exe/pnp.c b/dlls/ntoskrnl.exe/pnp.c
 index 56e378cf770..68dd2d58ffe 100644
 --- a/dlls/ntoskrnl.exe/pnp.c
 +++ b/dlls/ntoskrnl.exe/pnp.c
-@@ -36,12 +36,6 @@ DEFINE_GUID(GUID_NULL,0,0,0,0,0,0,0,0,0,0,0);
+@@ -36,12 +36,9 @@ DEFINE_GUID(GUID_NULL,0,0,0,0,0,0,0,0,0,0,0);
  
  WINE_DEFAULT_DEBUG_CHANNEL(plugplay);
  
@@ -39,10 +39,13 @@ index 56e378cf770..68dd2d58ffe 100644
 -static DEVICE_OBJECT **invalidated_devices;
 -static size_t invalidated_devices_count;
 -
++/* BusRelations is handled inline; no pending update queue exists. */
++#define PNP_SYNCHRONOUS_BUS_RELATIONS
++
  static inline const char *debugstr_propkey( const DEVPROPKEY *id )
  {
      if (!id) return "(null)";
-@@ -570,14 +564,8 @@ void WINAPI IoInvalidateDeviceRelations( DEVICE_OBJECT *device_object, DEVICE_RE
+@@ -570,14 +567,8 @@ void WINAPI IoInvalidateDeviceRelations( DEVICE_OBJECT *device_object, DEVICE_RE
      switch (type)
      {
          case BusRelations:
@@ -58,7 +61,7 @@ index 56e378cf770..68dd2d58ffe 100644
          default:
              FIXME("Unhandled relation %#x.\n", type);
              break;
-@@ -1435,30 +1423,6 @@ static NTSTATUS WINAPI pnp_manager_driver_entry( DRIVER_OBJECT *driver, UNICODE_
+@@ -1435,30 +1426,6 @@ static NTSTATUS WINAPI pnp_manager_driver_entry( DRIVER_OBJECT *driver, UNICODE_
      return STATUS_SUCCESS;
  }
  
@@ -89,7 +92,7 @@ index 56e378cf770..68dd2d58ffe 100644
  void pnp_manager_start(void)
  {
      WCHAR endpoint[] = L"\\pipe\\wine_plugplay";
-@@ -1480,8 +1444,6 @@ void pnp_manager_start(void)
+@@ -1480,8 +1447,6 @@ void pnp_manager_start(void)
      RpcStringFreeW( &binding_str );
      if (err)
          ERR("RpcBindingFromStringBinding() failed, error %#lx\n", err);

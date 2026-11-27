@@ -1,0 +1,11 @@
+diff --git a/dlls/qasf/tests/asfreader.c b/dlls/qasf/tests/asfreader.c
+--- a/dlls/qasf/tests/asfreader.c
++++ b/dlls/qasf/tests/asfreader.c
+@@ -31,6 +31,6 @@
+ #include "wine/test.h"
+
++#include "dmoreg.h"
+ #include "initguid.h"
+-#include "dmoreg.h"
+ #include "wmsdk.h"
+ #include "wmcodecdsp.h"
